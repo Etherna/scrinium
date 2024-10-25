@@ -26,7 +26,7 @@ using System.Linq;
 
 namespace Etherna.MongODM.Core.Conventions
 {
-    public class HierarchicalProxyTolerantDiscriminatorConvention : IDiscriminatorConvention
+    public class HierarchicalProxyTolerantDiscriminatorConvention : IHierarchicalDiscriminatorConvention
     {
         // Fields.
         private readonly IDbContext? _dbContext; //remove nullability with constructors that don't ask it, when will be possible

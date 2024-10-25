@@ -60,8 +60,8 @@ namespace Etherna.MongODM.Core.Extensions
         /// <param name="take">Elements per page</param>
         /// <returns>Selected elements page</returns>
         /// <exception cref="ArgumentOutOfRangeException">Throw with invalid parameter values</exception>
-        public static IMongoQueryable<TSource> Paginate<TSource, TKey>(
-            this IMongoQueryable<TSource> values,
+        public static IQueryable<TSource> Paginate<TSource, TKey>(
+            this IQueryable<TSource> values,
             Expression<Func<TSource, TKey>> orderKeySelector,
             int page,
             int take)
@@ -114,8 +114,8 @@ namespace Etherna.MongODM.Core.Extensions
         /// <param name="take">Elements per page</param>
         /// <returns>Selected elements page</returns>
         /// <exception cref="ArgumentOutOfRangeException">Throw with invalid parameter values</exception>
-        public static IMongoQueryable<TSource> PaginateDescending<TSource, TKey>(
-            this IMongoQueryable<TSource> values,
+        public static IQueryable<TSource> PaginateDescending<TSource, TKey>(
+            this IQueryable<TSource> values,
             Expression<Func<TSource, TKey>> orderKeySelector,
             int page,
             int take)
