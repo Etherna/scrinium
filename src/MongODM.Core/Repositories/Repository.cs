@@ -291,7 +291,7 @@ namespace Etherna.MongODM.Core.Repositories
         }
 
         public virtual Task<TResult> QueryElementsAsync<TResult>(
-            Func<IMongoQueryable<TModel>, Task<TResult>> query,
+            Func<IQueryable<TModel>, Task<TResult>> query,
             AggregateOptions? aggregateOptions = null) =>
             AccessToCollectionAsync(collection =>
             {
@@ -305,7 +305,7 @@ namespace Etherna.MongODM.Core.Repositories
             });
 
         public async Task<PaginatedEnumerable<TResult>> QueryPaginatedElementsAsync<TResult, TResultKey>(
-            Func<IMongoQueryable<TModel>, IMongoQueryable<TResult>> filter,
+            Func<IQueryable<TModel>, IQueryable<TResult>> filter,
             Expression<Func<TResult, TResultKey>> orderKeySelector,
             int page,
             int take,

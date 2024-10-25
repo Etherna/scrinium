@@ -13,10 +13,10 @@
 // If not, see <https://www.gnu.org/licenses/>.
 
 using Etherna.MongoDB.Driver;
-using Etherna.MongoDB.Driver.Linq;
 using Etherna.MongODM.Core.Domain.Models;
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Linq.Expressions;
 using System.Threading;
 using System.Threading.Tasks;
@@ -120,11 +120,11 @@ namespace Etherna.MongODM.Core.Repositories
             CancellationToken cancellationToken = default);
 
         Task<TResult> QueryElementsAsync<TResult>(
-            Func<IMongoQueryable<TModel>, Task<TResult>> query,
+            Func<IQueryable<TModel>, Task<TResult>> query,
             AggregateOptions? aggregateOptions = null);
 
         Task<PaginatedEnumerable<TResult>> QueryPaginatedElementsAsync<TResult, TResultKey>(
-            Func<IMongoQueryable<TModel>, IMongoQueryable<TResult>> filter,
+            Func<IQueryable<TModel>, IQueryable<TResult>> filter,
             Expression<Func<TResult, TResultKey>> orderKeySelector,
             int page,
             int take,

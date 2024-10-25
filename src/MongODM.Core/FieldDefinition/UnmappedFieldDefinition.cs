@@ -44,7 +44,7 @@ namespace Etherna.MongODM.Core.FieldDefinition
 
         // Methods.
         public override RenderedFieldDefinition Render(RenderArgs<TDocument> args) =>
-            new(UnmappedFieldDefinitionHelper.BuildFieldPath(BaseDocumentField, UnmappedFieldName, args.DocumentSerializer, args.SerializerRegistry, args.LinqProvider),
+            new(UnmappedFieldDefinitionHelper.BuildFieldPath(BaseDocumentField, UnmappedFieldName, args.DocumentSerializer, args.SerializerRegistry),
                 UnmappedFieldSerializer);
 
         public Type? TryGetBaseDocumentType(IBsonSerializer<TDocument> documentSerializer, IBsonSerializerRegistry serializerRegistry) =>
@@ -75,7 +75,7 @@ namespace Etherna.MongODM.Core.FieldDefinition
 
         // Methods.
         public override RenderedFieldDefinition<TField> Render(RenderArgs<TDocument> args) =>
-            new(UnmappedFieldDefinitionHelper.BuildFieldPath(BaseDocumentField, UnmappedFieldName, args.DocumentSerializer, args.SerializerRegistry, args.LinqProvider),
+            new(UnmappedFieldDefinitionHelper.BuildFieldPath(BaseDocumentField, UnmappedFieldName, args.DocumentSerializer, args.SerializerRegistry),
                 UnmappedFieldSerializer,
                 UnmappedFieldSerializer,
                 UnmappedFieldSerializer);
@@ -90,13 +90,12 @@ namespace Etherna.MongODM.Core.FieldDefinition
             FieldDefinition<TDocument>? baseDocumentField,
             string fieldName,
             IBsonSerializer<TDocument> documentSerializer,
-            IBsonSerializerRegistry serializerRegistry,
-            LinqProvider linqProvider)
+            IBsonSerializerRegistry serializerRegistry)
         {
             var sb = new StringBuilder();
             if (baseDocumentField is not null)
             {
-                var baseDocRenderedField = baseDocumentField.Render(new(documentSerializer, serializerRegistry, linqProvider));
+                var baseDocRenderedField = baseDocumentField.Render(new(documentSerializer, serializerRegistry));
                 sb.Append(baseDocRenderedField.FieldName);
             }
             if (sb.Length > 0)
