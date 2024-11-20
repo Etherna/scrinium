@@ -23,7 +23,6 @@ using Etherna.MongODM.Core.FieldDefinition;
 using Etherna.MongODM.Core.FilterDefinition;
 using Etherna.MongODM.Core.Repositories;
 using Etherna.MongODM.Core.Serialization.Mapping;
-using Etherna.MongODM.Core.Serialization.Modifiers;
 using Etherna.MongODM.Core.Utility;
 using Microsoft.Extensions.Logging;
 using MoreLinq;
@@ -35,24 +34,11 @@ using System.Threading.Tasks;
 
 namespace Etherna.MongODM.Core.Tasks
 {
-    public class UpdateDocDependenciesTask : IUpdateDocDependenciesTask
+    public class UpdateDocDependenciesTask(
+        ILogger<UpdateDocDependenciesTask> logger,
+        IServiceProvider serviceProvider)
+        : IUpdateDocDependenciesTask
     {
-        // Fields.
-        private readonly ILogger<UpdateDocDependenciesTask> logger;
-        private readonly ISerializerModifierAccessor serializerModifierAccessor;
-        private readonly IServiceProvider serviceProvider;
-
-        // Constructors.
-        public UpdateDocDependenciesTask(
-            ILogger<UpdateDocDependenciesTask> logger,
-            ISerializerModifierAccessor serializerModifierAccessor,
-            IServiceProvider serviceProvider)
-        {
-            this.logger = logger;
-            this.serializerModifierAccessor = serializerModifierAccessor;
-            this.serviceProvider = serviceProvider;
-        }
-
         // Methods.
         public async Task RunAsync<TDbContext>(
             string referencedRepositoryName,
@@ -151,7 +137,7 @@ namespace Etherna.MongODM.Core.Tasks
 
                 var result = typeof(UpdateDocDependenciesTask).GetMethod(nameof(FindUpdatableDocumentsIdAsync), BindingFlags.NonPublic | BindingFlags.Static)!
                     .MakeGenericMethod(originModelType, originIdType)
-                    .Invoke(null, new[] { repository, selectedIdMemberMaps, referencedModelId });
+                    .Invoke(null, [repository, selectedIdMemberMaps, referencedModelId]);
 
                 updatableDocumentsIdByRepository.Add(repository, await ((Task<IEnumerable<object>>)result!).ConfigureAwait(false));
             }
@@ -175,14 +161,14 @@ namespace Etherna.MongODM.Core.Tasks
                 {
                     foreach (var memberMapPair in repoPair.Value)
                     {
-                        findAndUpdateAsyncMethodInfo.Invoke(null, new object[]
-                        {
+                        findAndUpdateAsyncMethodInfo.Invoke(null,
+                        [
                             repository,
                             memberMapPair.Key,
                             memberMapPair.Value,
                             updatableDocumentId,
                             referencedModelId
-                        });
+                        ]);
                     }
                 }
             }
