@@ -19,18 +19,9 @@ using System.Threading.Tasks;
 
 namespace Etherna.MongODM.Core.Tasks
 {
-    public class MigrateDbContextTask : IMigrateDbContextTask
+    public class MigrateDbContextTask(IServiceProvider serviceProvider)
+        : IMigrateDbContextTask
     {
-        // Fields.
-        private readonly IServiceProvider serviceProvider;
-
-        // Constructors.
-        public MigrateDbContextTask(
-            IServiceProvider serviceProvider)
-        {
-            this.serviceProvider = serviceProvider;
-        }
-
         // Methods.
         public async Task RunAsync<TDbContext>(string dbMigrationOpId, string taskId)
             where TDbContext : class, IDbContext
