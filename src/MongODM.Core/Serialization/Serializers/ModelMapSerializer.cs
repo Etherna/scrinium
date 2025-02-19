@@ -27,7 +27,7 @@ using System.Threading.Tasks;
 
 namespace Etherna.MongODM.Core.Serialization.Serializers
 {
-    public class ModelMapSerializer<TModel> :
+    public class ModelMapSerializer<TModel>(IDbContext dbContext) :
         SerializerBase<TModel>,
         IBsonDocumentSerializer,
         IBsonIdProvider,
@@ -35,31 +35,15 @@ namespace Etherna.MongODM.Core.Serialization.Serializers
     {
         // Fields.
         private IDiscriminatorConvention _discriminatorConvention = default!;
-        private readonly IDbContext dbContext;
-
-        // Constructor.
-        public ModelMapSerializer(
-            IDbContext dbContext)
-        {
-            ArgumentNullException.ThrowIfNull(dbContext, nameof(dbContext));
-
-            this.dbContext = dbContext;
-        }
 
         // Properties.
         public BsonClassMapSerializer<TModel> DefaultBsonClassMapSerializer =>
             (BsonClassMapSerializer<TModel>)dbContext.MapRegistry.GetModelMap(typeof(TModel)).ActiveSchema.BsonClassMap.ToSerializer();
 
-        public IDiscriminatorConvention DiscriminatorConvention
-        {
-            get
-            {
-                _discriminatorConvention ??= dbContext.DiscriminatorRegistry.LookupDiscriminatorConvention(typeof(TModel));
-                return _discriminatorConvention;
-            }
-        }
+        public IDiscriminatorConvention DiscriminatorConvention =>
+            _discriminatorConvention ??= dbContext.DiscriminatorRegistry.LookupDiscriminatorConvention(typeof(TModel));
 
-        public IEnumerable<IModelMap> HandledModelMaps => new[] { dbContext.MapRegistry.GetModelMap(typeof(TModel)) };
+        public IEnumerable<IModelMap> HandledModelMaps => [dbContext.MapRegistry.GetModelMap(typeof(TModel))];
 
         // Methods.
         public override TModel Deserialize(BsonDeserializationContext context, BsonDeserializationArgs args)
@@ -73,7 +57,7 @@ namespace Etherna.MongODM.Core.Serialization.Serializers
                 return default!;
             }
 
-            // Find pre-deserialization informations.
+            // Find pre-deserialization information.
             //get actual type and schema
             var actualType = DiscriminatorConvention.GetActualType(context.Reader, args.NominalType);
             var actualTypeModelMap = dbContext.MapRegistry.GetModelMap(actualType);
@@ -102,9 +86,9 @@ namespace Etherna.MongODM.Core.Serialization.Serializers
             TModel model;
 
             //if a correct model map is identified with its id
-            if (modelMapId != null && actualTypeModelMap.SchemasById.ContainsKey(modelMapId))
+            if (modelMapId != null && actualTypeModelMap.SchemasById.TryGetValue(modelMapId, out var modelMapSchema))
             {
-                var task = DeserializeModelMapSchemaHelperAsync(actualTypeModelMap.SchemasById[modelMapId], localContext, args);
+                var task = DeserializeModelMapSchemaHelperAsync(modelMapSchema, localContext, args);
                 task.Wait();
                 model = task.Result;
             }
@@ -230,16 +214,7 @@ namespace Etherna.MongODM.Core.Serialization.Serializers
             BsonDeserializationContext context,
             BsonDeserializationArgs args)
         {
-            /*
-             * ModelMapSerializer can't invoke another ModelMapSerializer instance.
-             * If schema has a serializer with this type, invoke BsonClassMap's serializer.
-             * Otherwise, if different, deserialize with schema's serializer.
-             */
-            var schemaSerializerType = modelMapSchema.Serializer.GetType();
-            var serializer = schemaSerializerType.IsGenericType &&
-                             schemaSerializerType.GetGenericTypeDefinition() == typeof(ModelMapSerializer<>) ?
-                modelMapSchema.BsonClassMap.ToSerializer() :
-                modelMapSchema.Serializer;
+            var serializer = modelMapSchema.BsonClassMap.ToSerializer();
 
             // If model map schema ask to override the nominal type, override it on args.
             var modelMapSchemaType = modelMapSchema.GetType();

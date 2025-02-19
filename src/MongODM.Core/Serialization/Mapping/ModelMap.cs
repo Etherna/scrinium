@@ -22,13 +22,17 @@ using System.Threading.Tasks;
 
 namespace Etherna.MongODM.Core.Serialization.Mapping
 {
-    internal abstract class ModelMap : MapBase, IModelMap
+    public abstract class ModelMap : MapBase, IModelMap
     {
         // Fields.
-        private IModelMapSchema _activeSchema = default!;
+        private IModelMapSchema _activeSchema = null!;
         private readonly List<IMemberMap> _definedMemberMaps = new();
-        private Dictionary<string, IModelMapSchema> _schemasById = default!;
+        private Dictionary<string, IModelMapSchema> _schemasById = null!;
+#pragma warning disable CA1051
+#pragma warning disable CA1002
         protected readonly List<IModelMapSchema> _secondarySchemas = new();
+#pragma warning restore CA1002
+#pragma warning restore CA1051
 
         // Constructor.
         protected ModelMap(
@@ -36,6 +40,8 @@ namespace Etherna.MongODM.Core.Serialization.Mapping
             Type modelType)
             : base(modelType)
         {
+            ArgumentNullException.ThrowIfNull(modelType, nameof(modelType));
+            
             DbContext = dbContext ?? throw new ArgumentNullException(nameof(dbContext));
 
             // Verify if uses proxy model.
@@ -202,13 +208,9 @@ namespace Etherna.MongODM.Core.Serialization.Mapping
     }
 
     [SuppressMessage("Reliability", "CA2000:Dispose objects before losing scope")]
-    internal sealed class ModelMap<TModel> : ModelMap, IModelMapBuilder<TModel>
+    public sealed class ModelMap<TModel>(IDbContext dbContext)
+        : ModelMap(dbContext, typeof(TModel)), IModelMapBuilder<TModel>
     {
-        // Constructor.
-        public ModelMap(IDbContext dbContext)
-            : base(dbContext, typeof(TModel))
-        { }
-
         // Methods.
         public IModelMapBuilder<TModel> AddFallbackCustomSerializer(IBsonSerializer<TModel> fallbackSerializer)
         {
@@ -219,7 +221,6 @@ namespace Etherna.MongODM.Core.Serialization.Mapping
         public IModelMapBuilder<TModel> AddFallbackSchema(
             Action<BsonClassMap<TModel>>? modelMapSchemaInitializer = null,
             string? baseSchemaId = null,
-            IBsonSerializer<TModel>? customSerializer = null,
             Func<TModel, Task<TModel>>? fixDeserializedModelFunc = null)
         {
             AddFallbackModelMapSchemaHelper(new ModelMapSchema<TModel>(
@@ -227,7 +228,6 @@ namespace Etherna.MongODM.Core.Serialization.Mapping
                 new BsonClassMap<TModel>(modelMapSchemaInitializer ?? (cm => cm.AutoMap())),
                 baseSchemaId,
                 fixDeserializedModelFunc,
-                customSerializer,
                 this));
             return this;
         }
@@ -236,7 +236,6 @@ namespace Etherna.MongODM.Core.Serialization.Mapping
             string id,
             Action<BsonClassMap<TModel>>? modelMapSchemaInitializer = null,
             string? baseSchemaId = null,
-            IBsonSerializer<TModel>? customSerializer = null,
             Func<TModel, Task<TModel>>? fixDeserializedModelFunc = null)
         {
             AddSecondarySchemaHelper(new ModelMapSchema<TModel>(
@@ -244,7 +243,6 @@ namespace Etherna.MongODM.Core.Serialization.Mapping
                 new BsonClassMap<TModel>(modelMapSchemaInitializer ?? (cm => cm.AutoMap())),
                 baseSchemaId,
                 fixDeserializedModelFunc,
-                customSerializer,
                 this));
             return this;
         }
@@ -253,7 +251,6 @@ namespace Etherna.MongODM.Core.Serialization.Mapping
             string id,
             Action<BsonClassMap<TOverrideNominal>>? modelMapSchemaInitializer = null,
             string? baseSchemaId = null,
-            IBsonSerializer<TOverrideNominal>? customSerializer = null,
             Func<TOverrideNominal, Task<TOverrideNominal>>? fixDeserializedModelFunc = null)
             where TOverrideNominal : class, TModel
         {
@@ -262,7 +259,6 @@ namespace Etherna.MongODM.Core.Serialization.Mapping
                 new BsonClassMap<TOverrideNominal>(modelMapSchemaInitializer ?? (cm => cm.AutoMap())),
                 baseSchemaId,
                 fixDeserializedModelFunc,
-                customSerializer,
                 this));
             return this;
         }

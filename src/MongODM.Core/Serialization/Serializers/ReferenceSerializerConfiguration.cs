@@ -20,7 +20,6 @@ using Etherna.MongODM.Core.Utility;
 using System;
 using System.Collections.Generic;
 using System.Globalization;
-using System.Linq;
 using System.Reflection;
 
 namespace Etherna.MongODM.Core.Serialization.Serializers
@@ -32,13 +31,11 @@ namespace Etherna.MongODM.Core.Serialization.Serializers
 
         private readonly Dictionary<Type, BsonElement> activeModelMapIdBsonElement = new();
         private readonly IDbContext dbContext;
-        private readonly IReferenceSerializer serializer;
 
         // Constructor.
-        internal ReferenceSerializerConfiguration(IDbContext dbContext, IReferenceSerializer serializer)
+        internal ReferenceSerializerConfiguration(IDbContext dbContext)
         {
             this.dbContext = dbContext;
-            this.serializer = serializer;
         }
 
         // Properties.
@@ -62,7 +59,6 @@ namespace Etherna.MongODM.Core.Serialization.Serializers
                     new BsonClassMap<TModel>(activeModelMapSchemaInitializer ?? (cm => cm.AutoMap())),
                     baseSchemaId,
                     null,
-                    serializer,
                     modelMap);
                 modelMap.ActiveSchema = modelMapSchema;
 
@@ -157,15 +153,14 @@ namespace Etherna.MongODM.Core.Serialization.Serializers
                 modelMapSchemaType,
                 BindingFlags.NonPublic | BindingFlags.Instance,
                 null,
-                new object[]
-                {
+                [
                     Guid.NewGuid().ToString(), //string id
                     classMap,                  //BsonClassMap<TModel> bsonClassMap
                     null!,                     //string? baseModelMapId
                     null!,                     //Func<TModel, Task<TModel>>? fixDeserializedModelFunc
                     null!,                     //IBsonSerializer<TModel>? customSerializer
                     modelSchema                //IModelSchema schema
-                },
+                ],
                 CultureInfo.InvariantCulture)!;
 
             // Set active model map.

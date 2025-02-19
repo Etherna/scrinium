@@ -17,18 +17,11 @@ using System;
 
 namespace Etherna.MongODM.Core.Serialization.Mapping
 {
-    internal sealed class CustomSerializerMap<TModel> : MapBase, ICustomSerializerMapBuilder<TModel>
+    internal sealed class CustomSerializerMap<TModel>(IBsonSerializer<TModel> customSerializer)
+        : MapBase(typeof(TModel)), ICustomSerializerMapBuilder<TModel>
     {
-        // Constructor.
-        public CustomSerializerMap(
-            IBsonSerializer<TModel> customSerializer)
-            : base(typeof(TModel))
-        {
-            ActiveSerializer = customSerializer;
-        }
-
         // Properties.
-        public override IBsonSerializer ActiveSerializer { get; }
-        public override Type? ProxyModelType => default;
+        public override IBsonSerializer ActiveSerializer { get; } = customSerializer;
+        public override Type? ProxyModelType => null;
     }
 }
