@@ -56,7 +56,7 @@ namespace Etherna.MongODM.Core.Serialization.Serializers
 
             this.dbContext = dbContext ?? throw new ArgumentNullException(nameof(dbContext));
 
-            _configuration = new ReferenceSerializerConfiguration(dbContext, this);
+            _configuration = new ReferenceSerializerConfiguration(dbContext);
             configure(_configuration);
         }
 
@@ -121,7 +121,7 @@ namespace Etherna.MongODM.Core.Serialization.Serializers
                     throw new InvalidOperationException(message);
             }
 
-            // Find pre-deserialization informations.
+            // Find pre-deserialization information.
             //get actual type
             var actualType = DiscriminatorConvention.GetActualType(context.Reader, args.NominalType);
 

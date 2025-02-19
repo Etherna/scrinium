@@ -18,18 +18,12 @@ using System;
 
 namespace Etherna.MongODM.Core.Serialization.Mapping
 {
-    internal abstract class MapBase : FreezableConfig, IMap
+    public abstract class MapBase(Type modelType)
+        : FreezableConfig, IMap
     {
-        // Constructor.
-        protected MapBase(
-            Type modelType)
-        {
-            ModelType = modelType;
-        }
-
         // Properties.
         public abstract IBsonSerializer ActiveSerializer { get; }
-        public Type ModelType { get; }
+        public Type ModelType { get; } = modelType;
         public abstract Type? ProxyModelType { get; }
     }
 }

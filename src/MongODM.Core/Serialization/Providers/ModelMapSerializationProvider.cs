@@ -21,17 +21,9 @@ using System.Reflection;
 
 namespace Etherna.MongODM.Core.Serialization.Providers
 {
-    public class ModelMapSerializationProvider : BsonSerializationProviderBase
+    public class ModelMapSerializationProvider(DbContext dbContext)
+        : BsonSerializationProviderBase
     {
-        // Fields.
-        private readonly DbContext dbContext;
-
-        // Constructor.
-        public ModelMapSerializationProvider(DbContext dbContext)
-        {
-            this.dbContext = dbContext;
-        }
-
         // Methods.
         public override IBsonSerializer? GetSerializer(Type type, IBsonSerializerRegistry serializerRegistry)
         {

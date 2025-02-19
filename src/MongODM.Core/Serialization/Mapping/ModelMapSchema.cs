@@ -30,18 +30,16 @@ namespace Etherna.MongODM.Core.Serialization.Mapping
         private readonly List<IMemberMap> _generatedMemberMaps = new();
         private IBsonSerializer? _serializer;
 
-        private readonly IBsonSerializer? customSerializer;
-
         // Constructors.
-        internal protected ModelMapSchema(
+        protected internal ModelMapSchema(
             string id,
             string? baseSchemaId,
             BsonClassMap bsonClassMap,
-            IBsonSerializer? customSerializer,
             IModelMap modelMap)
         {
             ArgumentNullException.ThrowIfNull(bsonClassMap, nameof(bsonClassMap));
             ArgumentNullException.ThrowIfNull(modelMap, nameof(modelMap));
+            
             if (string.IsNullOrEmpty(id))
                 throw new ArgumentException($"'{nameof(id)}' cannot be null or empty", nameof(id));
             if (!modelMap.ModelType.IsAssignableFrom(bsonClassMap.ClassType))
@@ -49,8 +47,7 @@ namespace Etherna.MongODM.Core.Serialization.Mapping
 
             Id = id;
             BaseSchemaId = baseSchemaId;
-            BsonClassMap = bsonClassMap ?? throw new ArgumentNullException(nameof(bsonClassMap));
-            this.customSerializer = customSerializer;
+            BsonClassMap = bsonClassMap;
             ModelMap = modelMap ?? throw new ArgumentNullException(nameof(modelMap));
         }
 
@@ -63,7 +60,20 @@ namespace Etherna.MongODM.Core.Serialization.Mapping
         public bool IsCurrentActive => ModelMap.ActiveSchema == this;
         public bool IsEntity => BsonClassMap.IsEntity();
         public IModelMap ModelMap { get; }
-        public IBsonSerializer Serializer => _serializer ??= customSerializer ?? GetDefaultSerializer();
+        public IBsonSerializer Serializer
+        {
+            get
+            {
+                if (_serializer == null)
+                {
+                    var modelMapSerializerDefinition = typeof(ModelMapSerializer<>);
+                    var modelMapSerializerType = modelMapSerializerDefinition.MakeGenericType(ModelMap.ModelType);
+                    _serializer = (IBsonSerializer)Activator.CreateInstance(modelMapSerializerType, ModelMap.DbContext)!;
+                }
+                
+                return _serializer;
+            }
+        }
 
         // Methods.
         public Task<object> FixDeserializedModelAsync(object model) =>
@@ -126,20 +136,12 @@ namespace Etherna.MongODM.Core.Serialization.Mapping
 
         protected override void FreezeAction()
         {
-            // Freeze bson class maps.
+            // Freeze bson class map.
             BsonClassMap.Freeze();
         }
 
         // Internal methods.
         internal void AddGeneratedMemberMap(IMemberMap memberMap) => _generatedMemberMaps.Add(memberMap);
-
-        // Helpers.
-        private IBsonSerializer GetDefaultSerializer()
-        {
-            var modelMapSerializerDefinition = typeof(ModelMapSerializer<>);
-            var modelMapSerializerType = modelMapSerializerDefinition.MakeGenericType(ModelMap.ModelType);
-            return (IBsonSerializer)Activator.CreateInstance(modelMapSerializerType, ModelMap.DbContext)!;
-        }
     }
 
     public class ModelMapSchema<TModel> : ModelMapSchema, IModelMapSchema<TModel>
@@ -152,9 +154,8 @@ namespace Etherna.MongODM.Core.Serialization.Mapping
             BsonClassMap<TModel>? bsonClassMap,
             string? baseSchemaId,
             Func<TModel, Task<TModel>>? fixDeserializedModelFunc,
-            IBsonSerializer? customSerializer,
             IModelMap modelMap)
-            : base(id, baseSchemaId, bsonClassMap ?? new BsonClassMap<TModel>(cm => cm.AutoMap()), customSerializer, modelMap)
+            : base(id, baseSchemaId, bsonClassMap ?? new BsonClassMap<TModel>(cm => cm.AutoMap()), modelMap)
         {
             this.fixDeserializedModelFunc = fixDeserializedModelFunc;
         }
@@ -191,9 +192,8 @@ namespace Etherna.MongODM.Core.Serialization.Mapping
             BsonClassMap<TOverrideNominal>? bsonClassMap,
             string? baseSchemaId,
             Func<TOverrideNominal, Task<TOverrideNominal>>? fixDeserializedModelFunc,
-            IBsonSerializer<TOverrideNominal>? customSerializer,
             IModelMap modelMap)
-            : base(id, baseSchemaId, bsonClassMap ?? new BsonClassMap<TOverrideNominal>(cm => cm.AutoMap()), customSerializer, modelMap)
+            : base(id, baseSchemaId, bsonClassMap ?? new BsonClassMap<TOverrideNominal>(cm => cm.AutoMap()), modelMap)
         {
             this.fixDeserializedModelFunc = fixDeserializedModelFunc;
         }

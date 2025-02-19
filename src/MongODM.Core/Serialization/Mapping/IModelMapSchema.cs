@@ -14,7 +14,6 @@
 
 using Etherna.MongoDB.Bson.Serialization;
 using Etherna.MongODM.Core.Utility;
-using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 

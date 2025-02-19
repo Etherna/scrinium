@@ -73,8 +73,7 @@ namespace Etherna.MongODM.Core.Serialization.Mapping
 
         public IModelMapBuilder<TModel> AddModelMap<TModel>(
             string activeModelMapSchemaId,
-            Action<BsonClassMap<TModel>>? activeModelMapSchemaInitializer = null,
-            IBsonSerializer<TModel>? customSerializer = null) =>
+            Action<BsonClassMap<TModel>>? activeModelMapSchemaInitializer = null) =>
             ExecuteConfigAction(() =>
             {
                 // Register and add schema configuration.
@@ -87,7 +86,6 @@ namespace Etherna.MongODM.Core.Serialization.Mapping
                     new BsonClassMap<TModel>(activeModelMapSchemaInitializer ?? (cm => cm.AutoMap())),
                     null,
                     null,
-                    customSerializer,
                     modelMap);
                 modelMap.ActiveSchema = schema;
 
