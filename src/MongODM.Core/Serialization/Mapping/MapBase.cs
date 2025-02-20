@@ -22,7 +22,7 @@ namespace Etherna.MongODM.Core.Serialization.Mapping
         : FreezableConfig, IMap
     {
         // Properties.
-        public abstract IBsonSerializer ActiveSerializer { get; }
+        public abstract IBsonSerializer Serializer { get; }
         public Type ModelType { get; } = modelType;
         public abstract Type? ProxyModelType { get; }
     }

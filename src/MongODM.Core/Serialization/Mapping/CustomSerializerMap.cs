@@ -21,7 +21,7 @@ namespace Etherna.MongODM.Core.Serialization.Mapping
         : MapBase(typeof(TModel)), ICustomSerializerMapBuilder<TModel>
     {
         // Properties.
-        public override IBsonSerializer ActiveSerializer { get; } = customSerializer;
+        public override IBsonSerializer Serializer { get; } = customSerializer;
         public override Type? ProxyModelType => null;
     }
 }

@@ -33,9 +33,8 @@ namespace Etherna.MongODM.Core.Serialization.Mapping
         private readonly Dictionary<string, IMemberMap> _memberMapsById = new();
 
         private readonly Dictionary<Type, BsonElement> activeModelMapIdBsonElement = new();
-        private IDbContext dbContext = default!;
-        private readonly ConcurrentDictionary<Type, BsonClassMap> defaultClassMapsCache = new();
-        private ILogger logger = default!;
+        private IDbContext dbContext = null!;
+        private ILogger logger = null!;
         private readonly Dictionary<IModelMap, Dictionary<string, List<IMemberMap>>> memberMapsByElementPath = new(); //model map -> element path -> member map[]
         private readonly Dictionary<MemberInfo, List<IMemberMap>> memberMapsByMemberInfo = new();
 
@@ -99,29 +98,6 @@ namespace Etherna.MongODM.Core.Serialization.Mapping
                 return modelMap;
             });
 
-        public BsonClassMap GetActiveClassMap(Type modelType)
-        {
-            // If a map is registered.
-            if (_maps.TryGetValue(modelType, out IMap? map) &&
-                map is IModelMap modelMap)
-                return modelMap.ActiveSchema.BsonClassMap;
-
-            // If we don't have a model map, look for a default classmap, or create it.
-            if (defaultClassMapsCache.TryGetValue(modelType, out BsonClassMap? bcm))
-                return bcm;
-
-            var classMapDefinition = typeof(BsonClassMap<>);
-            var classMapType = classMapDefinition.MakeGenericType(modelType);
-            var classMap = (BsonClassMap)Activator.CreateInstance(classMapType)!;
-            classMap.AutoMap();
-
-            // Register classMap (if doesn't exist) with discriminator.
-            defaultClassMapsCache.TryAdd(modelType, classMap);
-            dbContext.DiscriminatorRegistry.AddDiscriminator(modelType, classMap.Discriminator);
-
-            return classMap;
-        }
-
         public BsonElement GetActiveModelMapIdBsonElement(Type modelType)
         {
             ArgumentNullException.ThrowIfNull(modelType, nameof(modelType));
@@ -165,18 +141,18 @@ namespace Etherna.MongODM.Core.Serialization.Mapping
             return modelMap;
         }
 
-        public bool TryGetModelMap(Type modelType, out IModelMap? modelMap)
+        public bool TryGetModelMap(Type modelType, out IModelMap modelMap)
         {
             ArgumentNullException.ThrowIfNull(modelType, nameof(modelType));
 
-            if (_maps.TryGetValue(modelType, out IMap? map) &&
+            if (_maps.TryGetValue(modelType, out var map) &&
                 map is IModelMap foundModelMap)
             {
                 modelMap = foundModelMap;
                 return true;
             }
 
-            modelMap = null;
+            modelMap = null!;
             return false;
         }
 
@@ -193,13 +169,12 @@ namespace Etherna.MongODM.Core.Serialization.Mapping
                 map.Freeze();
 
                 // Register active serializer.
-                if (map.ActiveSerializer != null)
-                    ((BsonSerializerRegistry)dbContext.SerializerRegistry).RegisterSerializer(map.ModelType, map.ActiveSerializer);
+                ((BsonSerializerRegistry)dbContext.SerializerRegistry).RegisterSerializer(map.ModelType, map.Serializer);
 
                 // Register discriminators for all bson class maps.
                 if (map is IModelMap modelMap)
                     foreach (var modelMapSchema in modelMap.SchemasById.Values)
-                        dbContext.DiscriminatorRegistry.AddDiscriminator(modelMapSchema.BsonClassMap.ClassType, modelMapSchema.BsonClassMap.Discriminator);
+                        dbContext.DiscriminatorRegistry.AddDiscriminator(modelMapSchema.ModelType, modelMapSchema.Discriminator);
             }
 
             // Specific for model maps.
@@ -305,7 +280,7 @@ namespace Etherna.MongODM.Core.Serialization.Mapping
                 // Process schema's model maps.
                 foreach (var modelMapSchema in modelMap.SchemasById.Values)
                 {
-                    var baseModelType = modelMapSchema.BsonClassMap.ClassType.BaseType;
+                    var baseModelType = modelMapSchema.ModelType.BaseType;
 
                     // If don't need to be linked, because it is typeof(object).
                     if (baseModelType is null)

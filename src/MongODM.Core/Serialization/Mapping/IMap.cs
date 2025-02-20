@@ -21,7 +21,7 @@ namespace Etherna.MongODM.Core.Serialization.Mapping
     public interface IMap : IFreezableConfig
     {
         // Properties.
-        IBsonSerializer ActiveSerializer { get; }
+        IBsonSerializer Serializer { get; }
         Type ModelType { get; }
         Type? ProxyModelType { get; }
     }

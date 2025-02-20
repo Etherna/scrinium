@@ -89,7 +89,7 @@ namespace Etherna.MongODM.Core.Tasks
                     .Select(idmm =>
                     {
                         //select active schema serializer
-                        var documentSerializer = idmm.ModelMapSchema.ModelMap.ActiveSchema.Serializer;
+                        var documentSerializer = idmm.ModelMapSchema.ModelMap.Serializer;
 
                         //use cache
                         if (!serializedDocumentsCache.TryGetValue(documentSerializer, out BsonDocument? doc))

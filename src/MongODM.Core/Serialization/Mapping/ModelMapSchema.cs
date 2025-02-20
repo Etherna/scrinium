@@ -14,10 +14,10 @@
 
 using Etherna.MongoDB.Bson.Serialization;
 using Etherna.MongODM.Core.Extensions;
-using Etherna.MongODM.Core.Serialization.Serializers;
 using Etherna.MongODM.Core.Utility;
 using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.Linq;
 using System.Reflection;
 using System.Threading.Tasks;
@@ -28,7 +28,7 @@ namespace Etherna.MongODM.Core.Serialization.Mapping
     {
         // Fields.
         private readonly List<IMemberMap> _generatedMemberMaps = new();
-        private IBsonSerializer? _serializer;
+        private readonly BsonClassMap bsonClassMap;
 
         // Constructors.
         protected internal ModelMapSchema(
@@ -47,33 +47,26 @@ namespace Etherna.MongODM.Core.Serialization.Mapping
 
             Id = id;
             BaseSchemaId = baseSchemaId;
-            BsonClassMap = bsonClassMap;
+            this.bsonClassMap = bsonClassMap;
             ModelMap = modelMap ?? throw new ArgumentNullException(nameof(modelMap));
         }
 
         // Properties.
         public string Id { get; }
+        public ReadOnlyCollection<BsonMemberMap> AllMemberMaps => bsonClassMap.AllMemberMaps;
+        public IModelMapSchema? BaseSchema { get; private set; }
         public string? BaseSchemaId { get; private set; }
-        public BsonClassMap BsonClassMap { get; }
+        public string Discriminator => bsonClassMap.Discriminator;
+        public bool DiscriminatorIsRequired => bsonClassMap.DiscriminatorIsRequired;
         public IEnumerable<IMemberMap> GeneratedMemberMaps => _generatedMemberMaps;
+        public bool HasRootClass => bsonClassMap.HasRootClass;
         public IMemberMap? IdMemberMap => GeneratedMemberMaps.FirstOrDefault(mm => mm.IsIdMember);
         public bool IsCurrentActive => ModelMap.ActiveSchema == this;
-        public bool IsEntity => BsonClassMap.IsEntity();
+        public bool IsEntity => bsonClassMap.IsEntity();
+        public bool IsRootClass => bsonClassMap.IsRootClass;
         public IModelMap ModelMap { get; }
-        public IBsonSerializer Serializer
-        {
-            get
-            {
-                if (_serializer == null)
-                {
-                    var modelMapSerializerDefinition = typeof(ModelMapSerializer<>);
-                    var modelMapSerializerType = modelMapSerializerDefinition.MakeGenericType(ModelMap.ModelType);
-                    _serializer = (IBsonSerializer)Activator.CreateInstance(modelMapSerializerType, ModelMap.DbContext)!;
-                }
-                
-                return _serializer;
-            }
-        }
+        public Type ModelType => bsonClassMap.ClassType;
+        public IBsonSerializer Serializer => bsonClassMap.ToSerializer();
 
         // Methods.
         public Task<object> FixDeserializedModelAsync(object model) =>
@@ -85,8 +78,11 @@ namespace Etherna.MongODM.Core.Serialization.Mapping
                 ArgumentNullException.ThrowIfNull(baseModelMapSchema, nameof(baseModelMapSchema));
 
                 BaseSchemaId = baseModelMapSchema.Id;
-                BsonClassMap.SetBaseClassMap(baseModelMapSchema.BsonClassMap);
+                bsonClassMap.SetBaseClassMap(((ModelMapSchema)baseModelMapSchema).bsonClassMap);
             });
+
+        public BsonMemberMap? TryGetMemberMap(string memberName) =>
+            bsonClassMap.GetMemberMap(memberName);
 
         public void UseProxyGenerator(IDbContext dbContext) =>
             ExecuteConfigAction(() =>
@@ -96,23 +92,23 @@ namespace Etherna.MongODM.Core.Serialization.Mapping
                     throw new InvalidOperationException("Can't generate proxy of an abstract model");
 
                 // Remove CreatorMaps.
-                while (BsonClassMap.CreatorMaps.Any())
+                while (bsonClassMap.CreatorMaps.Any())
                 {
-                    var memberInfo = BsonClassMap.CreatorMaps.First().MemberInfo;
+                    var memberInfo = bsonClassMap.CreatorMaps.First().MemberInfo;
                     switch (memberInfo)
                     {
                         case ConstructorInfo constructorInfo:
-                            BsonClassMap.UnmapConstructor(constructorInfo);
+                            bsonClassMap.UnmapConstructor(constructorInfo);
                             break;
                         case MethodInfo methodInfo:
-                            BsonClassMap.UnmapFactoryMethod(methodInfo);
+                            bsonClassMap.UnmapFactoryMethod(methodInfo);
                             break;
                         default: throw new InvalidOperationException();
                     }
                 }
 
                 // Set creator.
-                BsonClassMap.SetCreator(() => dbContext.ProxyGenerator.CreateInstance(ModelMap.ModelType, dbContext));
+                bsonClassMap.SetCreator(() => dbContext.ProxyGenerator.CreateInstance(ModelMap.ModelType, dbContext));
             });
 
         public bool TryUseProxyGenerator(IDbContext dbContext)
@@ -137,7 +133,7 @@ namespace Etherna.MongODM.Core.Serialization.Mapping
         protected override void FreezeAction()
         {
             // Freeze bson class map.
-            BsonClassMap.Freeze();
+            bsonClassMap.Freeze();
         }
 
         // Internal methods.

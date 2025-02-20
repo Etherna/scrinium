@@ -33,6 +33,7 @@ namespace Etherna.MongODM.Core.Serialization.Mapping
         protected readonly List<IModelMapSchema> _secondarySchemas = new();
 #pragma warning restore CA1002
 #pragma warning restore CA1051
+        private IBsonSerializer? _serializer;
 
         // Constructor.
         protected ModelMap(
@@ -64,7 +65,6 @@ namespace Etherna.MongODM.Core.Serialization.Mapping
                 _activeSchema.TryUseProxyGenerator(DbContext);
             }
         }
-        public override IBsonSerializer ActiveSerializer => ActiveSchema.Serializer;
         public IEnumerable<IMemberMap> AllDescendingMemberMaps => DefinedMemberMaps.Concat(
                                                                   DefinedMemberMaps.SelectMany(mm => mm.AllDescendingMemberMaps));
         public IDbContext DbContext { get; }
@@ -102,13 +102,27 @@ namespace Etherna.MongODM.Core.Serialization.Mapping
             }
         }
         public IEnumerable<IModelMapSchema> SecondarySchemas => _secondarySchemas;
+        public override IBsonSerializer Serializer
+        {
+            get
+            {
+                if (_serializer == null)
+                {
+                    var modelMapSerializerDefinition = typeof(ModelMapSerializer<>);
+                    var modelMapSerializerType = modelMapSerializerDefinition.MakeGenericType(ModelType);
+                    _serializer = (IBsonSerializer)Activator.CreateInstance(modelMapSerializerType, DbContext)!;
+                }
+                
+                return _serializer;
+            }
+        }
 
         // Internal methods.
         internal void InitializeMemberMaps()
         {
             foreach (var schema in SchemasById.Values)
             {
-                foreach (var bsonMemberMap in schema.BsonClassMap.AllMemberMaps)
+                foreach (var bsonMemberMap in schema.AllMemberMaps)
                 {
                     var memberMap = BuildMemberMap(bsonMemberMap, schema, null);
                     _definedMemberMaps.Add(memberMap);
@@ -183,7 +197,7 @@ namespace Etherna.MongODM.Core.Serialization.Mapping
                             schema.Freeze();
 
                             // Recursion on child member maps.
-                            foreach (var childBsonMemberMap in schema.BsonClassMap.AllMemberMaps)
+                            foreach (var childBsonMemberMap in schema.AllMemberMaps)
                             {
                                 var childMemberMap = BuildMemberMap(childBsonMemberMap, schema, memberMap);
                                 memberMap.AddChildMemberMap(childMemberMap);

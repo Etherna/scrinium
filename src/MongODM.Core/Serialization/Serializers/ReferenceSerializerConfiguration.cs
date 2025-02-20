@@ -85,7 +85,7 @@ namespace Etherna.MongODM.Core.Serialization.Serializers
             return activeModelMapIdBsonElement[modelType];
         }
 
-        public IBsonSerializer? GetSerializer(Type modelType, string? modelMapSchemaId)
+        public IBsonSerializer GetSerializer(Type modelType, string? modelMapSchemaId)
         {
             ArgumentNullException.ThrowIfNull(modelType, nameof(modelType));
             if (!_modelMaps.TryGetValue(modelType, out var modelMap))
@@ -93,11 +93,11 @@ namespace Etherna.MongODM.Core.Serialization.Serializers
 
             // Find serializer.
             //if a correct model map is identified with its id, use its bson class map serializer
-            if (modelMapSchemaId != null && modelMap.SchemasById.ContainsKey(modelMapSchemaId))
-                return modelMap.SchemasById[modelMapSchemaId].BsonClassMap.ToSerializer();
+            if (modelMapSchemaId != null && modelMap.SchemasById.TryGetValue(modelMapSchemaId, out var modelMapSchema))
+                return modelMapSchema.Serializer;
 
             //else, use fallback serializer if exists, or the active schema's bsonClassMap serializer
-            return modelMap.FallbackSerializer ?? modelMap.ActiveSchema.BsonClassMap.ToSerializer();
+            return modelMap.FallbackSerializer ?? modelMap.ActiveSchema.Serializer;
         }
 
         // Protected methods.

@@ -14,7 +14,9 @@
 
 using Etherna.MongoDB.Bson.Serialization;
 using Etherna.MongODM.Core.Utility;
+using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.Threading.Tasks;
 
 namespace Etherna.MongODM.Core.Serialization.Mapping
@@ -23,21 +25,25 @@ namespace Etherna.MongODM.Core.Serialization.Mapping
     {
         // Properties.
         string Id { get; }
+        ReadOnlyCollection<BsonMemberMap> AllMemberMaps { get; }
+        IModelMapSchema? BaseSchema { get; }
         string? BaseSchemaId { get; }
-        BsonClassMap BsonClassMap { get; }
+        string Discriminator { get; }
+        bool DiscriminatorIsRequired { get; }
         IEnumerable<IMemberMap> GeneratedMemberMaps { get; }
+        bool HasRootClass { get; }
         IMemberMap? IdMemberMap { get; }
         bool IsCurrentActive { get; }
         bool IsEntity { get; }
+        bool IsRootClass { get; }
         IModelMap ModelMap { get; }
-        /// <summary>
-        /// ModelMap serializer
-        /// </summary>
+        Type ModelType { get; }
         IBsonSerializer Serializer { get; }
 
         // Methods.
         Task<object> FixDeserializedModelAsync(object model);
         void SetBaseModelMapSchema(IModelMapSchema baseModelMapSchema);
+        BsonMemberMap? TryGetMemberMap(string memberName);
         bool TryUseProxyGenerator(IDbContext dbContext);
         void UseProxyGenerator(IDbContext dbContext);
     }

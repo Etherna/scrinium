@@ -419,7 +419,7 @@ namespace Etherna.MongODM.Core.Repositories
             AccessToCollectionAsync(async collection =>
             {
                 var modelMap = DbContext.MapRegistry.GetModelMap(typeof(TModel));
-                var fieldRendered = setField.Render(new((IBsonSerializer<TModel>)modelMap.ActiveSerializer, DbContext.SerializerRegistry));
+                var fieldRendered = setField.Render(new((IBsonSerializer<TModel>)modelMap.Serializer, DbContext.SerializerRegistry));
                 
                 // Serialize model.
                 var modelBsonDoc = new BsonDocument();
@@ -428,7 +428,7 @@ namespace Etherna.MongODM.Core.Repositories
                     var context = BsonSerializationContext.CreateRoot(bsonWriter);
                     bsonWriter.WriteStartDocument();
                     bsonWriter.WriteName("model");
-                    modelMap.ActiveSerializer.Serialize(context, onInsertModel);
+                    modelMap.Serializer.Serialize(context, onInsertModel);
                     bsonWriter.WriteEndDocument();
                 }
 
