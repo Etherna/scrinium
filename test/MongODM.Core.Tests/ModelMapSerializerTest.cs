@@ -36,24 +36,16 @@ namespace Etherna.MongODM.Core
     public class ModelMapSerializerTest
     {
         // Internal classes.
-        public class DeserializationTestElement
+        public class DeserializationTestElement(
+            BsonDocument document,
+            FakeModel? expectedModel,
+            Action<BsonReader>? preAction = null,
+            Action<BsonReader>? postAction = null)
         {
-            public DeserializationTestElement(
-                BsonDocument document,
-                FakeModel? expectedModel,
-                Action<BsonReader>? preAction = null,
-                Action<BsonReader>? postAction = null)
-            {
-                Document = document;
-                ExpectedModel = expectedModel;
-                PreAction = preAction ?? (rd => { });
-                PostAction = postAction ?? (rd => { });
-            }
-
-            public BsonDocument Document { get; }
-            public FakeModel? ExpectedModel { get; }
-            public Action<BsonReader> PreAction { get; }
-            public Action<BsonReader> PostAction { get; }
+            public BsonDocument Document { get; } = document;
+            public FakeModel? ExpectedModel { get; } = expectedModel;
+            public Action<BsonReader> PreAction { get; } = preAction ?? (_ => { });
+            public Action<BsonReader> PostAction { get; } = postAction ?? (_ => { });
         }
         public class SerializationTestElement
         {
@@ -66,8 +58,8 @@ namespace Etherna.MongODM.Core
                 BsonWriter = new BsonDocumentWriter(SerializedDocument);
                 ExpectedDocument = expectedDocument;
                 Model = model;
-                PreAction = preAction ?? (wr => { });
-                PostAction = postAction ?? (wr => { });
+                PreAction = preAction ?? (_ => { });
+                PostAction = postAction ?? (_ => { });
             }
 
             public BsonWriter BsonWriter { get; }
@@ -75,7 +67,7 @@ namespace Etherna.MongODM.Core
             public FakeModel? Model { get; }
             public Action<BsonWriter> PreAction { get; }
             public Action<BsonWriter> PostAction { get; }
-            public BsonDocument SerializedDocument { get; } = new BsonDocument();
+            public BsonDocument SerializedDocument { get; } = new();
         }
 
         // Fields.
@@ -121,8 +113,7 @@ namespace Etherna.MongODM.Core
                 var tests = new List<DeserializationTestElement>
                 {
                     // Null model
-                    new DeserializationTestElement(
-                        new BsonDocument(new BsonElement("elem", BsonNull.Value)),
+                    new(new BsonDocument(new BsonElement("elem", BsonNull.Value)),
                         null,
                         preAction: rd =>
                         {
@@ -132,12 +123,11 @@ namespace Etherna.MongODM.Core
                         postAction: rd => rd.ReadEndDocument()),
 
                     // Model without extra members
-                    new DeserializationTestElement(
-                        new BsonDocument(new BsonElement[]
+                    new(new BsonDocument(new BsonElement[]
                         {
-                            new BsonElement("_id", new BsonString("idVal")),
-                            new BsonElement("IntegerProp", new BsonInt32(8)),
-                            new BsonElement("StringProp", new BsonString("ok"))
+                            new("_id", new BsonString("idVal")),
+                            new("IntegerProp", new BsonInt32(8)),
+                            new("StringProp", new BsonString("ok"))
                         } as IEnumerable<BsonElement>),
                         new FakeModel
                         {
@@ -159,12 +149,10 @@ namespace Etherna.MongODM.Core
             classMap.Freeze();
             var serializer = new ModelMapSerializer<FakeModel>(dbContextMock.Object);
 
-            modelMapMock.Setup(s => s.ActiveSchema.BsonClassMap)
-                .Returns(classMap);
             modelMapMock.Setup(s => s.ActiveSchema.Serializer)
                 .Returns(classMap.ToSerializer());
             modelMapMock.Setup(s => s.ActiveSchema.FixDeserializedModelAsync(It.IsAny<object>()))
-                .Returns<object>(m => Task.FromResult(m));
+                .Returns<object>(Task.FromResult);
 
             // Action
             test.PreAction(bsonReader);
@@ -187,8 +175,8 @@ namespace Etherna.MongODM.Core
             var bsonClassMapSerializer = new BsonClassMapSerializer<FakeModel>(classMap);
             var serializer = new ModelMapSerializer<FakeModel>(dbContextMock.Object);
 
-            modelMapMock.Setup(s => s.ActiveSchema.BsonClassMap)
-                .Returns(classMap);
+            modelMapMock.Setup(s => s.ActiveSchema.Serializer)
+                .Returns(() => classMap.ToSerializer());
 
             // Action
             var result = serializer.GetDocumentId(
@@ -220,8 +208,8 @@ namespace Etherna.MongODM.Core
             var bsonClassMapSerializer = new BsonClassMapSerializer<FakeModel>(classMap);
             var serializer = new ModelMapSerializer<FakeModel>(dbContextMock.Object);
 
-            modelMapMock.Setup(s => s.ActiveSchema.BsonClassMap)
-                .Returns(classMap);
+            modelMapMock.Setup(s => s.ActiveSchema.Serializer)
+                .Returns(() => classMap.ToSerializer());
 
             // Action
             var result = serializer.TryGetMemberSerializationInfo(memberName, out BsonSerializationInfo serializationInfo);
@@ -252,10 +240,9 @@ namespace Etherna.MongODM.Core
                         postAction: wr => wr.WriteEndDocument()),
 
                     // Complex model
-                    new SerializationTestElement(
-                        new FakeModel()
+                    new(new FakeModel
                         {
-                            EnumerableProp = new[] { new FakeModel(), null },
+                            EnumerableProp = [new FakeModel(), null],
                             Id = "idVal",
                             IntegerProp = 42,
                             ObjectProp = new FakeModel(),
@@ -263,37 +250,37 @@ namespace Etherna.MongODM.Core
                         },
                         new BsonDocument(new BsonElement[]
                         {
-                            new BsonElement("_m", new BsonString("mapId")),
-                            new BsonElement("_id", new BsonString("idVal")),
-                            new BsonElement("CreationDateTime", new BsonDateTime(new DateTime())),
-                            new BsonElement("EnumerableProp", new BsonArray(new BsonValue[]
-                            {
+                            new("_m", new BsonString("mapId")),
+                            new("_id", new BsonString("idVal")),
+                            new("CreationDateTime", new BsonDateTime(new DateTime())),
+                            new("EnumerableProp", new BsonArray(
+                            [
                                 new BsonDocument(new BsonElement[]
                                 {
                                     /*commented because serializer is not registered*/
                                     //new BsonElement("_m", new BsonString("mapId")),
-                                    new BsonElement("_id", BsonNull.Value),
-                                    new BsonElement("CreationDateTime", new BsonDateTime(new DateTime())),
-                                    new BsonElement("EnumerableProp", BsonNull.Value),
-                                    new BsonElement("IntegerProp", new BsonInt32(0)),
-                                    new BsonElement("ObjectProp", BsonNull.Value),
-                                    new BsonElement("StringProp", BsonNull.Value)
+                                    new("_id", BsonNull.Value),
+                                    new("CreationDateTime", new BsonDateTime(new DateTime())),
+                                    new("EnumerableProp", BsonNull.Value),
+                                    new("IntegerProp", new BsonInt32(0)),
+                                    new("ObjectProp", BsonNull.Value),
+                                    new("StringProp", BsonNull.Value)
                                 } as IEnumerable<BsonElement>),
                                 BsonNull.Value
-                            })),
-                            new BsonElement("IntegerProp", new BsonInt32(42)),
-                            new BsonElement("ObjectProp", new BsonDocument(new BsonElement[]
+                            ])),
+                            new("IntegerProp", new BsonInt32(42)),
+                            new("ObjectProp", new BsonDocument(new BsonElement[]
                             {
                                 /*commented because serializer is not registered*/
                                 //new BsonElement("_m", new BsonString("mapId")),
-                                new BsonElement("_id", BsonNull.Value),
-                                new BsonElement("CreationDateTime", new BsonDateTime(new DateTime())),
-                                new BsonElement("EnumerableProp", BsonNull.Value),
-                                new BsonElement("IntegerProp", new BsonInt32(0)),
-                                new BsonElement("ObjectProp", BsonNull.Value),
-                                new BsonElement("StringProp", BsonNull.Value)
+                                new("_id", BsonNull.Value),
+                                new("CreationDateTime", new BsonDateTime(new DateTime())),
+                                new("EnumerableProp", BsonNull.Value),
+                                new("IntegerProp", new BsonInt32(0)),
+                                new("ObjectProp", BsonNull.Value),
+                                new("StringProp", BsonNull.Value)
                             } as IEnumerable<BsonElement>)),
-                            new BsonElement("StringProp", new BsonString("yes")),
+                            new("StringProp", new BsonString("yes")),
                         } as IEnumerable<BsonElement>)),
                 };
 
@@ -309,8 +296,8 @@ namespace Etherna.MongODM.Core
             classMap.Freeze();
             var serializer = new ModelMapSerializer<FakeModel>(dbContextMock.Object);
 
-            modelMapMock.Setup(s => s.ActiveSchema.BsonClassMap)
-                .Returns(classMap);
+            modelMapMock.Setup(s => s.ActiveSchema.Serializer)
+                .Returns(() => classMap.ToSerializer());
             modelMapMock.Setup(s => s.ActiveSchema.Id)
                 .Returns("mapId");
 
@@ -340,8 +327,8 @@ namespace Etherna.MongODM.Core
             var bsonClassMapSerializer = new BsonClassMapSerializer<FakeModel>(classMap);
             var serializer = new ModelMapSerializer<FakeModel>(dbContextMock.Object);
 
-            modelMapMock.Setup(s => s.ActiveSchema.BsonClassMap)
-                .Returns(classMap);
+            modelMapMock.Setup(s => s.ActiveSchema.Serializer)
+                .Returns(() => classMap.ToSerializer());
 
             // Action
             serializer.SetDocumentId(model, id);

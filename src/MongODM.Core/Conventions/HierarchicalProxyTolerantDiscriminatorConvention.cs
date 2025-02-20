@@ -126,28 +126,29 @@ namespace Etherna.MongODM.Core.Conventions
         {
             // Remove proxy type.
             actualType = DbContext.ProxyGenerator.PurgeProxyType(actualType);
-
-            // Find active class map for model type.
-            var classMap = DbContext.MapRegistry.GetActiveClassMap(actualType);
-
-            // Get discriminator from class map.
-            if (actualType != nominalType || classMap.DiscriminatorIsRequired || classMap.HasRootClass)
+            
+            // Find active schema for model type.
+            if (!DbContext.MapRegistry.TryGetModelMap(actualType, out var modelMap))
+                return null;
+            var schema = modelMap.ActiveSchema;
+            
+            // Get discriminator from schema.
+            if (actualType == nominalType && schema is { DiscriminatorIsRequired: false, HasRootClass: false })
+                return null;
+            
+            if (schema is { HasRootClass: true, IsRootClass: false })
             {
-                if (classMap.HasRootClass && !classMap.IsRootClass)
+                var values = new List<BsonValue>();
+                do
                 {
-                    var values = new List<BsonValue>();
-                    for (; !classMap.IsRootClass; classMap = classMap.BaseClassMap)
-                    {
-                        values.Add(classMap.Discriminator);
-                    }
-                    values.Add(classMap.Discriminator); //add the root class's discriminator
-                    return new BsonArray(values.Reverse<BsonValue>()); //reverse to put leaf class last
-                }
-                else
-                    return classMap.Discriminator;
+                    values.Add(schema.Discriminator);
+                    schema = schema.BaseSchema;
+                } while (schema is { IsRootClass: false });
+                
+                return new BsonArray(values.Reverse<BsonValue>()); //reverse to put leaf class last
             }
 
-            return null;
+            return schema.Discriminator;
         }
     }
 }
