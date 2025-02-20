@@ -156,9 +156,8 @@ namespace Etherna.MongODM.Core.Serialization.Serializers
                 [
                     Guid.NewGuid().ToString(), //string id
                     classMap,                  //BsonClassMap<TModel> bsonClassMap
-                    null!,                     //string? baseModelMapId
+                    null!,                     //string? baseSchemaId
                     null!,                     //Func<TModel, Task<TModel>>? fixDeserializedModelFunc
-                    null!,                     //IBsonSerializer<TModel>? customSerializer
                     modelSchema                //IModelSchema schema
                 ],
                 CultureInfo.InvariantCulture)!;

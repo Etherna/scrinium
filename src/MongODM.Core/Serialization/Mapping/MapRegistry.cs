@@ -245,15 +245,13 @@ namespace Etherna.MongODM.Core.Serialization.Mapping
                 modelMapSchemaType,
                 BindingFlags.NonPublic | BindingFlags.Instance,
                 null,
-                new object[]
-                {
+                [
                     Guid.NewGuid().ToString(), //string id
                     classMap,                  //BsonClassMap<TModel> bsonClassMap
-                    null!,                     //string? baseModelMapId
+                    null!,                     //string? baseSchemaId
                     null!,                     //Func<TModel, Task<TModel>>? fixDeserializedModelFunc
-                    null!,                     //IBsonSerializer<TModel>? customSerializer
                     modelMap                   //IModelMap modelMap
-                },
+                ],
                 CultureInfo.InvariantCulture)!;
 
             // Set active model map.
