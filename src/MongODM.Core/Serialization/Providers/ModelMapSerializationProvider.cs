@@ -16,7 +16,6 @@ using Etherna.MongoDB.Bson;
 using Etherna.MongoDB.Bson.Serialization;
 using Etherna.MongODM.Core.Serialization.Serializers;
 using System;
-using System.Globalization;
 using System.Reflection;
 
 namespace Etherna.MongODM.Core.Serialization.Providers
@@ -30,13 +29,12 @@ namespace Etherna.MongODM.Core.Serialization.Providers
             ArgumentNullException.ThrowIfNull(type, nameof(type));
 
             var typeInfo = type.GetTypeInfo();
-            if (typeInfo.IsGenericType && typeInfo.ContainsGenericParameters)
-            {
-                var message = string.Format(CultureInfo.InvariantCulture, "Generic type {0} has unassigned type parameters.", BsonUtils.GetFriendlyTypeName(type));
-                throw new ArgumentException(message, nameof(type));
-            }
+            if (typeInfo is { IsGenericType: true, ContainsGenericParameters: true })
+                throw new ArgumentException(
+                    $"Generic type {BsonUtils.GetFriendlyTypeName(type)} has unassigned type parameters.",
+                    nameof(type));
 
-            if ((typeInfo.IsClass || (typeInfo.IsValueType && !typeInfo.IsPrimitive)) &&
+            if ((typeInfo.IsClass || typeInfo is { IsValueType: true, IsPrimitive: false }) &&
                 !typeof(Array).GetTypeInfo().IsAssignableFrom(type) &&
                 !typeof(Enum).GetTypeInfo().IsAssignableFrom(type))
             {
