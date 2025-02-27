@@ -4,8 +4,10 @@
     <TargetFrameworks>net8.0;net9.0</TargetFrameworks>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <RootNamespace>Etherna.MongODM.Core</RootNamespace>
+    
     <Authors>Etherna SA</Authors>
     <Description>ODM framework for MongoDB</Description>
+    
     <Nullable>enable</Nullable>
     <EnableNETAnalyzers>true</EnableNETAnalyzers>
     <AnalysisMode>AllEnabledByDefault</AnalysisMode>

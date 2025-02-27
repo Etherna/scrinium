@@ -39,7 +39,8 @@ using System.Threading.Tasks;
 
 namespace Etherna.MongODM.Core
 {
-    public abstract class DbContext : IDbContext, IDbContextBuilder, IDisposable
+    public abstract class DbContext(ILogger? logger = null)
+        : IDbContext, IDbContextBuilder, IDisposable
     {
         // Fields.
         private bool? _isSeeded;
@@ -48,15 +49,10 @@ namespace Etherna.MongODM.Core
         private bool disposed;
         private bool isInitialized;
         private readonly ReaderWriterLockSlim isSeededLock = new(); //support read/write locks
-        private readonly ILogger logger;
+        private readonly ILogger logger = logger ?? NullLogger.Instance;
         private readonly SemaphoreSlim seedingSemaphore = new(1, 1); //support async/await
 
-        // Constructor and initializer.
-        protected DbContext(ILogger? logger = null)
-        {
-            this.logger = logger ?? NullLogger.Instance;
-        }
-
+        // Initializer.
         public void Initialize(
             IDbDependencies dependencies,
             IMongoClient mongoClient,

@@ -4,11 +4,14 @@
     <TargetFrameworks>net8.0;net9.0</TargetFrameworks>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <RootNamespace>Etherna.MongODM</RootNamespace>
+    
     <Authors>Etherna SA</Authors>
     <Description>Configuration package for MongODM using Asp.Net Core and Hangfire</Description>
+    
     <Nullable>enable</Nullable>
     <EnableNETAnalyzers>true</EnableNETAnalyzers>
     <AnalysisMode>AllEnabledByDefault</AnalysisMode>
+    <IsAotCompatible>true</IsAotCompatible>
     
     <RepositoryUrl>https://github.com/Etherna/mongodm</RepositoryUrl>
     <RepositoryType>git</RepositoryType>

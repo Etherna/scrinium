@@ -74,7 +74,7 @@ namespace Etherna.MongODM.Core
 
             var interfaceType = interfacePropertyInfo.DeclaringType!;
 
-            // An interface map must be used because because there is no
+            // An interface map must be used because there is no
             // other officially documented way to derive the explicitly
             // implemented property name.
             var interfaceMap = actualType.GetInterfaceMap(interfaceType);
