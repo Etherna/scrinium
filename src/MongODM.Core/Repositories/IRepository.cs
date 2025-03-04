@@ -163,6 +163,23 @@ namespace Etherna.MongODM.Core.Repositories
             CancellationToken cancellationToken = default);
 
         /// <summary>
+        /// Find one and modify atomically with an upsert operation.
+        /// Create a new document if it doesn't exist, and apply the update on it.
+        /// </summary>
+        /// <param name="filter">The document find filter</param>
+        /// <param name="field">The field to update</param>
+        /// <param name="updateDefinition">The field update definition</param>
+        /// <param name="onInsertModel">A new model, in case of insert</param>
+        /// <param name="cancellationToken">The cancellation token</param>
+        /// <returns>The model as result from find before update</returns>
+        Task<TModel?> UpsertAsync(
+            FilterDefinition<TModel> filter,
+            FieldDefinition<TModel> field,
+            UpdateDefinition<TModel> updateDefinition,
+            TModel onInsertModel,
+            CancellationToken cancellationToken = default);
+
+        /// <summary>
         /// Find one and modify atomically with an upsert "add to set" operation.
         /// Create a new document if it doesn't exist, add the element to the set if not present, or do nothing if element is already present
         /// </summary>

@@ -396,6 +396,48 @@ namespace Etherna.MongODM.Core.Repositories
                 return null;
             }
         }
+        
+        public Task<TModel?> UpsertAsync(
+            FilterDefinition<TModel> filter,
+            FieldDefinition<TModel> field,
+            UpdateDefinition<TModel> updateDefinition,
+            TModel onInsertModel,
+            CancellationToken cancellationToken = default) =>
+            AccessToCollectionAsync(async collection =>
+            {
+                var modelMap = DbContext.MapRegistry.GetModelMap(typeof(TModel));
+                var fieldRendered = field.Render(new((IBsonSerializer<TModel>)modelMap.Serializer, DbContext.SerializerRegistry));
+                
+                // Serialize model.
+                var modelBsonDoc = new BsonDocument();
+                using (var bsonWriter = new BsonDocumentWriter(modelBsonDoc))
+                {
+                    var context = BsonSerializationContext.CreateRoot(bsonWriter);
+                    bsonWriter.WriteStartDocument();
+                    bsonWriter.WriteName("model");
+                    modelMap.Serializer.Serialize(context, onInsertModel);
+                    bsonWriter.WriteEndDocument();
+                }
+
+                // Update "update" definition with OnInsert instructions.
+                var onInsertUpdate = modelBsonDoc[0].AsBsonDocument.Elements
+                    .Where(element => element.Name != modelMap.ActiveSchema.IdMemberMap!.BsonMemberMap.ElementName && //exclude ID
+                                      element.Name != fieldRendered.FieldName.Split('.').First())                     //and the field itself
+                    .Select(element => Builders<TModel>.Update.SetOnInsert(element.Name, element.Value));
+                var upsertUpdate = Builders<TModel>.Update.Combine(onInsertUpdate.Append(updateDefinition));
+
+                // Exec on db.
+                var oldDocument = await collection.FindOneAndUpdateAsync(filter, upsertUpdate, new FindOneAndUpdateOptions<TModel>
+                {
+                    IsUpsert = true
+                }, cancellationToken).ConfigureAwait(false);
+                
+                // Remove old document from cache, if present.
+                if (oldDocument is not null)
+                    DbContext.DbCache.RemoveModel(oldDocument.Id!);
+
+                return oldDocument;
+            });
 
         public Task<TModel?> UpsertAddToSetAsync<TItem>(
             Expression<Func<TModel, bool>> filter,
@@ -416,7 +458,7 @@ namespace Etherna.MongODM.Core.Repositories
             TItem itemValue,
             TModel onInsertModel,
             CancellationToken cancellationToken = default) =>
-            UpsertHelperAsync<TItem>(
+            UpsertAsync(
                 filter,
                 setField,
                 Builders<TModel>.Update.AddToSet(setField, itemValue),
@@ -442,7 +484,7 @@ namespace Etherna.MongODM.Core.Repositories
             TItem incValue,
             TModel onInsertModel,
             CancellationToken cancellationToken = default) =>
-            UpsertHelperAsync<TItem>(
+            UpsertAsync(
                 filter,
                 incField,
                 Builders<TModel>.Update.Inc(incField, incValue),
@@ -500,7 +542,6 @@ namespace Etherna.MongODM.Core.Repositories
                 return model;
             });
 
-
         private Task ReplaceHelperAsync(
             TModel model,
             IClientSessionHandle? session,
@@ -535,48 +576,6 @@ namespace Etherna.MongODM.Core.Repositories
                 ((IAuditable)model).ResetChangedMembers();
 
                 logger.RepositoryReplacedDocument(Name, DbContext.Options.DbName, model.Id!.ToString()!);
-            });
-        
-        private Task<TModel?> UpsertHelperAsync<TItem>(
-            FilterDefinition<TModel> filter,
-            FieldDefinition<TModel> field,
-            UpdateDefinition<TModel> updateDefinition,
-            TModel onInsertModel,
-            CancellationToken cancellationToken = default) =>
-            AccessToCollectionAsync(async collection =>
-            {
-                var modelMap = DbContext.MapRegistry.GetModelMap(typeof(TModel));
-                var fieldRendered = field.Render(new((IBsonSerializer<TModel>)modelMap.Serializer, DbContext.SerializerRegistry));
-                
-                // Serialize model.
-                var modelBsonDoc = new BsonDocument();
-                using (var bsonWriter = new BsonDocumentWriter(modelBsonDoc))
-                {
-                    var context = BsonSerializationContext.CreateRoot(bsonWriter);
-                    bsonWriter.WriteStartDocument();
-                    bsonWriter.WriteName("model");
-                    modelMap.Serializer.Serialize(context, onInsertModel);
-                    bsonWriter.WriteEndDocument();
-                }
-
-                // Update "update" definition with OnInsert instructions.
-                var onInsertUpdate = modelBsonDoc[0].AsBsonDocument.Elements
-                    .Where(element => element.Name != modelMap.ActiveSchema.IdMemberMap!.BsonMemberMap.ElementName && //exclude ID
-                                      element.Name != fieldRendered.FieldName.Split('.').First())                     //and the field itself
-                    .Select(element => Builders<TModel>.Update.SetOnInsert(element.Name, element.Value));
-                var upsertUpdate = Builders<TModel>.Update.Combine(onInsertUpdate.Append(updateDefinition));
-
-                // Exec on db.
-                var oldDocument = await collection.FindOneAndUpdateAsync(filter, upsertUpdate, new FindOneAndUpdateOptions<TModel>
-                {
-                    IsUpsert = true
-                }, cancellationToken).ConfigureAwait(false);
-                
-                // Remove old document from cache, if present.
-                if (oldDocument is not null)
-                    DbContext.DbCache.RemoveModel(oldDocument.Id!);
-
-                return oldDocument;
             });
     }
 }
