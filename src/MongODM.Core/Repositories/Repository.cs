@@ -33,24 +33,19 @@ using System.Threading.Tasks;
 
 namespace Etherna.MongODM.Core.Repositories
 {
-    public class Repository<TModel, TKey> :
+    public class Repository<TModel, TKey>(RepositoryOptions<TModel> options) :
         IRepository<TModel, TKey>
         where TModel : class, IEntityModel<TKey>
     {
         // Fields.
         private ILogger logger = default!;
-        private readonly RepositoryOptions<TModel> options;
+        private readonly RepositoryOptions<TModel> options = options ?? throw new ArgumentNullException(nameof(options));
         private IMongoCollection<TModel> _collection = default!;
 
         // Constructors.
         public Repository(string name)
             : this(new RepositoryOptions<TModel>(name))
         { }
-
-        public Repository(RepositoryOptions<TModel> options)
-        {
-            this.options = options ?? throw new ArgumentNullException(nameof(options));
-        }
 
         // Initializer.
         public virtual void Initialize(IDbContext dbContext, ILogger logger)
@@ -396,6 +391,32 @@ namespace Etherna.MongODM.Core.Repositories
                 return null;
             }
         }
+
+        public Task<TModel?> UpsertAddToSetAsync<TItem>(
+            Expression<Func<TModel, bool>> filter,
+            Expression<Func<TModel, IEnumerable<TItem>>> setField,
+            TItem itemValue,
+            TModel onInsertModel,
+            CancellationToken cancellationToken = default) =>
+            UpsertAddToSetAsync(
+                new ExpressionFilterDefinition<TModel>(filter),
+                new ExpressionFieldDefinition<TModel>(setField),
+                itemValue,
+                onInsertModel,
+                cancellationToken);
+
+        public Task<TModel?> UpsertAddToSetAsync<TItem>(
+            FilterDefinition<TModel> filter,
+            FieldDefinition<TModel> setField,
+            TItem itemValue,
+            TModel onInsertModel,
+            CancellationToken cancellationToken = default) =>
+            UpsertAsync(
+                filter,
+                setField,
+                Builders<TModel>.Update.AddToSet(setField, itemValue),
+                onInsertModel,
+                cancellationToken);
         
         public Task<TModel?> UpsertAsync(
             FilterDefinition<TModel> filter,
@@ -439,32 +460,6 @@ namespace Etherna.MongODM.Core.Repositories
                 return oldDocument;
             });
 
-        public Task<TModel?> UpsertAddToSetAsync<TItem>(
-            Expression<Func<TModel, bool>> filter,
-            Expression<Func<TModel, IEnumerable<TItem>>> setField,
-            TItem itemValue,
-            TModel onInsertModel,
-            CancellationToken cancellationToken = default) =>
-            UpsertAddToSetAsync(
-                new ExpressionFilterDefinition<TModel>(filter),
-                new ExpressionFieldDefinition<TModel>(setField),
-                itemValue,
-                onInsertModel,
-                cancellationToken);
-
-        public Task<TModel?> UpsertAddToSetAsync<TItem>(
-            FilterDefinition<TModel> filter,
-            FieldDefinition<TModel> setField,
-            TItem itemValue,
-            TModel onInsertModel,
-            CancellationToken cancellationToken = default) =>
-            UpsertAsync(
-                filter,
-                setField,
-                Builders<TModel>.Update.AddToSet(setField, itemValue),
-                onInsertModel,
-                cancellationToken);
-
         public Task<TModel?> UpsertIncrementAsync<TItem>(
             Expression<Func<TModel, bool>> filter,
             Expression<Func<TModel, TItem>> incField,
@@ -488,6 +483,32 @@ namespace Etherna.MongODM.Core.Repositories
                 filter,
                 incField,
                 Builders<TModel>.Update.Inc(incField, incValue),
+                onInsertModel,
+                cancellationToken);
+
+        public Task<TModel?> UpsertSetFieldAsync<TItem>(
+            Expression<Func<TModel, bool>> filter,
+            Expression<Func<TModel, TItem>> setField,
+            TItem setValue,
+            TModel onInsertModel,
+            CancellationToken cancellationToken = default) =>
+            UpsertSetFieldAsync(
+                new ExpressionFilterDefinition<TModel>(filter),
+                new ExpressionFieldDefinition<TModel, TItem>(setField),
+                setValue,
+                onInsertModel,
+                cancellationToken);
+
+        public Task<TModel?> UpsertSetFieldAsync<TItem>(
+            FilterDefinition<TModel> filter,
+            FieldDefinition<TModel, TItem> setField,
+            TItem setValue,
+            TModel onInsertModel,
+            CancellationToken cancellationToken = default) =>
+            UpsertAsync(
+                filter,
+                setField,
+                Builders<TModel>.Update.Set(setField, setValue),
                 onInsertModel,
                 cancellationToken);
 
