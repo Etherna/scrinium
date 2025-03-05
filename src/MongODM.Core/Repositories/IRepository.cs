@@ -203,16 +203,16 @@ namespace Etherna.MongODM.Core.Repositories
         /// Create a new document if it doesn't exist, and apply the update on it.
         /// </summary>
         /// <param name="filter">The document find filter</param>
-        /// <param name="field">The field to update</param>
         /// <param name="updateDefinition">The field update definition</param>
         /// <param name="onInsertModel">A new model, in case of insert</param>
+        /// <param name="onInsertSkipFields">Model fields to skip insertion</param>
         /// <param name="cancellationToken">The cancellation token</param>
         /// <returns>The model as result from find before update</returns>
         Task<TModel?> UpsertAsync(
             FilterDefinition<TModel> filter,
-            FieldDefinition<TModel> field,
             UpdateDefinition<TModel> updateDefinition,
             TModel onInsertModel,
+            FieldDefinition<TModel>[] onInsertSkipFields,
             CancellationToken cancellationToken = default);
 
         /// <summary>

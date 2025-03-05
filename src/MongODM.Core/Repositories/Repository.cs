@@ -413,21 +413,20 @@ namespace Etherna.MongODM.Core.Repositories
             CancellationToken cancellationToken = default) =>
             UpsertAsync(
                 filter,
-                setField,
                 Builders<TModel>.Update.AddToSet(setField, itemValue),
                 onInsertModel,
+                [setField],
                 cancellationToken);
         
         public Task<TModel?> UpsertAsync(
             FilterDefinition<TModel> filter,
-            FieldDefinition<TModel> field,
             UpdateDefinition<TModel> updateDefinition,
             TModel onInsertModel,
+            FieldDefinition<TModel>[] onInsertSkipFields,
             CancellationToken cancellationToken = default) =>
             AccessToCollectionAsync(async collection =>
             {
                 var modelMap = DbContext.MapRegistry.GetModelMap(typeof(TModel));
-                var fieldRendered = field.Render(new((IBsonSerializer<TModel>)modelMap.Serializer, DbContext.SerializerRegistry));
                 
                 // Serialize model.
                 var modelBsonDoc = new BsonDocument();
@@ -441,9 +440,12 @@ namespace Etherna.MongODM.Core.Repositories
                 }
 
                 // Update "update" definition with OnInsert instructions.
+                var skipFieldsNames = onInsertSkipFields
+                    .Select(f => f.Render(new((IBsonSerializer<TModel>)modelMap.Serializer, DbContext.SerializerRegistry)))
+                    .Select(f => f.FieldName.Split('.').First());
                 var onInsertUpdate = modelBsonDoc[0].AsBsonDocument.Elements
                     .Where(element => element.Name != modelMap.ActiveSchema.IdMemberMap!.BsonMemberMap.ElementName && //exclude ID
-                                      element.Name != fieldRendered.FieldName.Split('.').First())                     //and the field itself
+                                      !skipFieldsNames.Contains(element.Name))                                        //and fields to skip
                     .Select(element => Builders<TModel>.Update.SetOnInsert(element.Name, element.Value));
                 var upsertUpdate = Builders<TModel>.Update.Combine(onInsertUpdate.Append(updateDefinition));
 
@@ -481,9 +483,9 @@ namespace Etherna.MongODM.Core.Repositories
             CancellationToken cancellationToken = default) =>
             UpsertAsync(
                 filter,
-                incField,
                 Builders<TModel>.Update.Inc(incField, incValue),
                 onInsertModel,
+                [incField],
                 cancellationToken);
 
         public Task<TModel?> UpsertSetFieldAsync<TItem>(
@@ -507,9 +509,9 @@ namespace Etherna.MongODM.Core.Repositories
             CancellationToken cancellationToken = default) =>
             UpsertAsync(
                 filter,
-                setField,
                 Builders<TModel>.Update.Set(setField, setValue),
                 onInsertModel,
+                [setField],
                 cancellationToken);
 
         // Protected virtual methods.
