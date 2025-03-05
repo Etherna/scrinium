@@ -197,10 +197,13 @@ namespace Etherna.MongODM.Core.Repositories
         public async Task DeleteAsync(TKey id, CancellationToken cancellationToken = default)
         {
             var model = await FindOneAsync(id, cancellationToken: cancellationToken).ConfigureAwait(false);
-            await DeleteAsync(model, cancellationToken).ConfigureAwait(false);
+            await DeleteAsync(model, [], cancellationToken).ConfigureAwait(false);
         }
 
-        public virtual async Task DeleteAsync(TModel model, CancellationToken cancellationToken = default)
+        public virtual async Task DeleteAsync(
+            TModel model,
+            FilterDefinition<TModel>[]? additionalFilters = null,
+            CancellationToken cancellationToken = default)
         {
             ArgumentNullException.ThrowIfNull(model, nameof(model));
 
@@ -209,7 +212,7 @@ namespace Etherna.MongODM.Core.Repositories
             await DbContext.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
 
             // Delete model.
-            await DeleteOnDBAsync(model, cancellationToken).ConfigureAwait(false);
+            await DeleteOnDBAsync(model, additionalFilters ?? [], cancellationToken).ConfigureAwait(false);
 
             // Remove from cache.
             if (DbContext.DbCache.LoadedModels.ContainsKey(model.Id!))
@@ -222,7 +225,7 @@ namespace Etherna.MongODM.Core.Repositories
         {
             if (model is not TModel castedModel)
                 throw new MongodmInvalidEntityTypeException("Invalid model type");
-            await DeleteAsync(castedModel, cancellationToken).ConfigureAwait(false);
+            await DeleteAsync(castedModel, [], cancellationToken).ConfigureAwait(false);
         }
 
         public virtual async Task<IAsyncCursor<TProjection>> FindAsync<TProjection>(
@@ -521,13 +524,20 @@ namespace Etherna.MongODM.Core.Repositories
         protected virtual Task CreateOnDBAsync(TModel model, CancellationToken cancellationToken) =>
             AccessToCollectionAsync(collection => collection.InsertOneAsync(model, null, cancellationToken));
 
-        protected virtual Task DeleteOnDBAsync(TModel model, CancellationToken cancellationToken) =>
+        protected virtual Task DeleteOnDBAsync(
+            TModel model,
+            FilterDefinition<TModel>[] additionalFilters,
+            CancellationToken cancellationToken) =>
             AccessToCollectionAsync(collection =>
             {
                 ArgumentNullException.ThrowIfNull(model, nameof(model));
 
+                var idFilter = Builders<TModel>.Filter.Eq(m => m.Id, model.Id);
+
                 return collection.DeleteOneAsync(
-                    Builders<TModel>.Filter.Eq(m => m.Id, model.Id),
+                    additionalFilters.Length == 0 ?
+                        idFilter :
+                        Builders<TModel>.Filter.And(additionalFilters.Prepend(idFilter)),
                     cancellationToken);
             });
 

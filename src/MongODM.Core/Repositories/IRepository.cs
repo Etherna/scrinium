@@ -112,11 +112,12 @@ namespace Etherna.MongODM.Core.Repositories
             CancellationToken cancellationToken = default);
 
         Task DeleteAsync(
-            TModel model,
+            TKey id,
             CancellationToken cancellationToken = default);
 
         Task DeleteAsync(
-            TKey id,
+            TModel model,
+            FilterDefinition<TModel>[]? additionalFilters = null,
             CancellationToken cancellationToken = default);
 
         Task<TResult> QueryElementsAsync<TResult>(
