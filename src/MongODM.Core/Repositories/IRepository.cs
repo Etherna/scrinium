@@ -97,7 +97,7 @@ namespace Etherna.MongODM.Core.Repositories
             FindOptions<TModel, TProjection>? options = null,
             CancellationToken cancellationToken = default);
 
-        Task<TModel> FindOneAndUpdateAsync(
+        Task<TModel?> FindOneAndUpdateAsync(
             FilterDefinition<TModel> filter,
             UpdateDefinition<TModel> update,
             FindOneAndUpdateOptions<TModel> options,
@@ -206,14 +206,14 @@ namespace Etherna.MongODM.Core.Repositories
         /// <param name="filter">The document find filter</param>
         /// <param name="updateDefinition">The field update definition</param>
         /// <param name="onInsertModel">A new model, in case of insert</param>
-        /// <param name="onInsertSkipFields">Model fields to skip insertion</param>
+        /// <param name="updatedFields">Updated model fields list</param>
         /// <param name="cancellationToken">The cancellation token</param>
         /// <returns>The model as result from find before update</returns>
         Task<TModel?> UpsertAsync(
             FilterDefinition<TModel> filter,
             UpdateDefinition<TModel> updateDefinition,
             TModel onInsertModel,
-            FieldDefinition<TModel>[] onInsertSkipFields,
+            FieldDefinition<TModel>[] updatedFields,
             CancellationToken cancellationToken = default);
 
         /// <summary>

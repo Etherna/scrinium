@@ -269,13 +269,14 @@ namespace Etherna.MongODM.Core.Repositories
             CancellationToken cancellationToken = default) =>
             FindOneOnDBAsync(predicate, cancellationToken);
 
-        public Task<TModel> FindOneAndUpdateAsync(
+        public async Task<TModel?> FindOneAndUpdateAsync(
             FilterDefinition<TModel> filter,
             UpdateDefinition<TModel> update,
             FindOneAndUpdateOptions<TModel> options,
             CancellationToken cancellationToken = default) =>
-            AccessToCollectionAsync(collection =>
-                collection.FindOneAndUpdateAsync(filter, update, options, cancellationToken));
+            await AccessToCollectionAsync(async collection =>
+                await collection.FindOneAndUpdateAsync(filter, update, options, cancellationToken)
+                    .ConfigureAwait(false)).ConfigureAwait(false);
 
         public string ModelIdToString(object model)
         {
@@ -425,7 +426,7 @@ namespace Etherna.MongODM.Core.Repositories
             FilterDefinition<TModel> filter,
             UpdateDefinition<TModel> updateDefinition,
             TModel onInsertModel,
-            FieldDefinition<TModel>[] onInsertSkipFields,
+            FieldDefinition<TModel>[] updatedFields,
             CancellationToken cancellationToken = default) =>
             AccessToCollectionAsync(async collection =>
             {
@@ -443,9 +444,10 @@ namespace Etherna.MongODM.Core.Repositories
                 }
 
                 // Update "update" definition with OnInsert instructions.
-                var skipFieldsNames = onInsertSkipFields
+                var skipFieldsNames = updatedFields
                     .Select(f => f.Render(new((IBsonSerializer<TModel>)modelMap.Serializer, DbContext.SerializerRegistry)))
-                    .Select(f => f.FieldName.Split('.').First());
+                    .Select(f => f.FieldName.Split('.').First())
+                    .ToArray();
                 var onInsertUpdate = modelBsonDoc[0].AsBsonDocument.Elements
                     .Where(element => element.Name != modelMap.ActiveSchema.IdMemberMap!.BsonMemberMap.ElementName && //exclude ID
                                       !skipFieldsNames.Contains(element.Name))                                        //and fields to skip
