@@ -46,7 +46,7 @@ namespace Etherna.MongODM.Core
             var loggerMock = new Mock<ILogger<ReferenceableInterceptor<FakeModel, string>>>();
             
             interceptor = new ReferenceableInterceptor<FakeModel, string>(
-                new[] { typeof(IReferenceable) },
+                [typeof(IReferenceable)],
                 dbContextMock.Object,
                 loggerMock.Object);
 
@@ -62,16 +62,13 @@ namespace Etherna.MongODM.Core
             // Setup.
             var initializeInvocationMock = InterceptorMockHelper.GetExternalMethodInvocationMock<FakeModel, IReferenceable>(
                 nameof(IReferenceable.SetAsSummary),
-                new object[]
-                {
-                    new [] { nameof(FakeModel.Id) }
-                });
+                [ new [] { nameof(FakeModel.Id) } ]);
 
             // Assert.
             interceptor.Intercept(getIsSummaryInvocationMock.Object);
             interceptor.Intercept(getLoadedMembersInvocationMock.Object);
-            Assert.False((bool)getIsSummaryInvocationMock.Object.ReturnValue);
-            Assert.Empty((IEnumerable<string>)getLoadedMembersInvocationMock.Object.ReturnValue);
+            Assert.False((bool)getIsSummaryInvocationMock.Object.ReturnValue!);
+            Assert.Empty((IEnumerable<string>)getLoadedMembersInvocationMock.Object.ReturnValue!);
 
             // Action.
             interceptor.Intercept(initializeInvocationMock.Object);
@@ -81,8 +78,8 @@ namespace Etherna.MongODM.Core
             interceptor.Intercept(getLoadedMembersInvocationMock.Object);
             Assert.True((bool)getIsSummaryInvocationMock.Object.ReturnValue);
             Assert.Equal(
-                new[] { nameof(FakeModel.Id) },
-                (IEnumerable<string>)getLoadedMembersInvocationMock.Object.ReturnValue);
+                [nameof(FakeModel.Id)],
+                (IEnumerable<string>)getLoadedMembersInvocationMock.Object.ReturnValue!);
         }
 
         [Theory]
@@ -95,10 +92,7 @@ namespace Etherna.MongODM.Core
             {
                 var initializeInvocationMock = InterceptorMockHelper.GetExternalMethodInvocationMock<FakeModel, IReferenceable>(
                     nameof(IReferenceable.SetAsSummary),
-                    new object[]
-                    {
-                        new[] { nameof(FakeModel.IntegerProp) }
-                    });
+                    [ new[] { nameof(FakeModel.IntegerProp) } ]);
                 interceptor.Intercept(initializeInvocationMock.Object);
             }
 
@@ -115,17 +109,17 @@ namespace Etherna.MongODM.Core
             {
                 interceptor.Intercept(getIsSummaryInvocationMock.Object);
                 interceptor.Intercept(getLoadedMembersInvocationMock.Object);
-                Assert.True((bool)getIsSummaryInvocationMock.Object.ReturnValue);
+                Assert.True((bool)getIsSummaryInvocationMock.Object.ReturnValue!);
                 Assert.Equal(
-                    new[] { nameof(FakeModel.IntegerProp) },
-                    (IEnumerable<string>)getLoadedMembersInvocationMock.Object.ReturnValue);
+                    [nameof(FakeModel.IntegerProp)],
+                    (IEnumerable<string>)getLoadedMembersInvocationMock.Object.ReturnValue!);
             }
             else
             {
                 interceptor.Intercept(getIsSummaryInvocationMock.Object);
                 interceptor.Intercept(getLoadedMembersInvocationMock.Object);
-                Assert.False((bool)getIsSummaryInvocationMock.Object.ReturnValue);
-                Assert.Empty((IEnumerable<string>)getLoadedMembersInvocationMock.Object.ReturnValue);
+                Assert.False((bool)getIsSummaryInvocationMock.Object.ReturnValue!);
+                Assert.Empty((IEnumerable<string>)getLoadedMembersInvocationMock.Object.ReturnValue!);
             }
         }
 
@@ -151,13 +145,13 @@ namespace Etherna.MongODM.Core
 
             var initializeInvocationMock = InterceptorMockHelper.GetExternalMethodInvocationMock<FakeModel, IReferenceable>(
                 nameof(IReferenceable.SetAsSummary),
-                new object[] {
+                [
                     new[]
                     {
                         nameof(FakeModel.Id),
                         nameof(FakeModel.IntegerProp)
                     }
-                });
+                ]);
             interceptor.Intercept(initializeInvocationMock.Object);
 
             var getPropertyInvocationMock = InterceptorMockHelper.GetPropertyGetInvocationMock(m => m.StringProp, model);
@@ -171,7 +165,7 @@ namespace Etherna.MongODM.Core
 
             interceptor.Intercept(getIsSummaryInvocationMock.Object);
             interceptor.Intercept(getLoadedMembersInvocationMock.Object);
-            Assert.False((bool)getIsSummaryInvocationMock.Object.ReturnValue);
+            Assert.False((bool)getIsSummaryInvocationMock.Object.ReturnValue!);
             
             Assert.Equal(modelId, model.Id);
             Assert.Equal(7, model.IntegerProp);
@@ -188,7 +182,7 @@ namespace Etherna.MongODM.Core
             {
                 var initializeInvocationMock = InterceptorMockHelper.GetExternalMethodInvocationMock<FakeModel, IReferenceable>(
                     nameof(IReferenceable.SetAsSummary),
-                    new object[] { Array.Empty<string>() });
+                    [Array.Empty<string>()]);
                 interceptor.Intercept(initializeInvocationMock.Object);
             }
 
@@ -205,16 +199,16 @@ namespace Etherna.MongODM.Core
             {
                 interceptor.Intercept(getIsSummaryInvocationMock.Object);
                 interceptor.Intercept(getLoadedMembersInvocationMock.Object);
-                Assert.True((bool)getIsSummaryInvocationMock.Object.ReturnValue);
+                Assert.True((bool)getIsSummaryInvocationMock.Object.ReturnValue!);
                 Assert.Equal(
-                    new[] { nameof(FakeModel.IntegerProp) },
-                    (IEnumerable<string>)getLoadedMembersInvocationMock.Object.ReturnValue);
+                    [nameof(FakeModel.IntegerProp)],
+                    (IEnumerable<string>)getLoadedMembersInvocationMock.Object.ReturnValue!);
             }
             else
             {
                 interceptor.Intercept(getIsSummaryInvocationMock.Object);
                 interceptor.Intercept(getLoadedMembersInvocationMock.Object);
-                Assert.False((bool)getIsSummaryInvocationMock.Object.ReturnValue);
+                Assert.False((bool)getIsSummaryInvocationMock.Object.ReturnValue!);
             }
         }
     }

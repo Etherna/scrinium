@@ -77,7 +77,9 @@ namespace Etherna.MongODM.Core.ProxyModels
                 {
                     isSummary = true;
 
-                    var summaryLoadedMemberNames = ((IEnumerable<string>)invocation.GetArgumentValue(0)).ToArray();
+#pragma warning disable CS8604 // Possible null reference argument.
+                    var summaryLoadedMemberNames = ((IEnumerable<string>)invocation.GetArgumentValue(0)!).ToArray();
+#pragma warning restore CS8604 // Possible null reference argument.
                     foreach (var memberName in summaryLoadedMemberNames)
                         settedMemberNames[memberName] = true;
                 }
