@@ -247,6 +247,27 @@ namespace Etherna.MongODM.Core.Repositories
             }, false).ConfigureAwait(false);
         }
 
+        public Task<TModel?> FindOneAndAddToSetAsync<TItem>(
+            FilterDefinition<TModel> filter,
+            Expression<Func<TModel, IEnumerable<TItem>>> setField,
+            TItem itemValue,
+            FindOneAndUpdateOptions<TModel> options,
+            CancellationToken cancellationToken = default) =>
+            FindOneAndUpdateAsync(
+                filter,
+                Builders<TModel>.Update.AddToSet(setField, itemValue),
+                options,
+                cancellationToken);
+
+        public async Task<TModel?> FindOneAndUpdateAsync(
+            FilterDefinition<TModel> filter,
+            UpdateDefinition<TModel> update,
+            FindOneAndUpdateOptions<TModel> options,
+            CancellationToken cancellationToken = default) =>
+            await AccessToCollectionAsync(async collection =>
+                await collection.FindOneAndUpdateAsync(filter, update, options, cancellationToken)
+                    .ConfigureAwait(false)).ConfigureAwait(false);
+
         public async Task<object> FindOneAsync(object id, CancellationToken cancellationToken = default) =>
             await FindOneAsync((TKey)id, cancellationToken).ConfigureAwait(false);
 
@@ -268,15 +289,6 @@ namespace Etherna.MongODM.Core.Repositories
             Expression<Func<TModel, bool>> predicate,
             CancellationToken cancellationToken = default) =>
             FindOneOnDBAsync(predicate, cancellationToken);
-
-        public async Task<TModel?> FindOneAndUpdateAsync(
-            FilterDefinition<TModel> filter,
-            UpdateDefinition<TModel> update,
-            FindOneAndUpdateOptions<TModel> options,
-            CancellationToken cancellationToken = default) =>
-            await AccessToCollectionAsync(async collection =>
-                await collection.FindOneAndUpdateAsync(filter, update, options, cancellationToken)
-                    .ConfigureAwait(false)).ConfigureAwait(false);
 
         public string ModelIdToString(object model)
         {
