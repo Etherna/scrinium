@@ -17,18 +17,9 @@ using System;
 
 namespace Etherna.MongODM.Core.Serialization.Modifiers
 {
-    public class SerializerModifierAccessor : ISerializerModifierAccessor
+    public class SerializerModifierAccessor(IExecutionContext executionContext)
+        : ISerializerModifierAccessor
     {
-        // Fields.
-        private readonly IExecutionContext executionContext;
-
-        // Constructors.
-        public SerializerModifierAccessor(
-            IExecutionContext executionContext)
-        {
-            this.executionContext = executionContext;
-        }
-
         // Properties.
         public bool IsReadOnlyReferencedIdEnabled =>
             ReferenceSerializerModifier.IsReadOnlyIdEnabled(executionContext);
