@@ -407,7 +407,14 @@ namespace Etherna.MongODM.Core.Repositories
                 return null;
             }
         }
-        
+
+        public Task<UpdateResult> UpdateMany(
+            Expression<Func<TModel, bool>> filter,
+            UpdateDefinition<TModel> update,
+            UpdateOptions? updateOptions = null,
+            CancellationToken cancellationToken = default) =>
+            UpdateMany(new ExpressionFilterDefinition<TModel>(filter), update, updateOptions, cancellationToken);
+
         public Task<UpdateResult> UpdateMany(
             FilterDefinition<TModel> filter,
             UpdateDefinition<TModel> update,

@@ -171,6 +171,12 @@ namespace Etherna.MongODM.Core.Repositories
             CancellationToken cancellationToken = default);
 
         Task<UpdateResult> UpdateMany(
+            Expression<Func<TModel, bool>> filter,
+            UpdateDefinition<TModel> update,
+            UpdateOptions? updateOptions = null,
+            CancellationToken cancellationToken = default);
+
+        Task<UpdateResult> UpdateMany(
             FilterDefinition<TModel> filter,
             UpdateDefinition<TModel> update,
             UpdateOptions? updateOptions = null,
