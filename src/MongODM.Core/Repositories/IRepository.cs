@@ -170,6 +170,12 @@ namespace Etherna.MongODM.Core.Repositories
             Expression<Func<TModel, bool>> predicate,
             CancellationToken cancellationToken = default);
 
+        Task<UpdateResult> UpdateMany(
+            FilterDefinition<TModel> filter,
+            UpdateDefinition<TModel> update,
+            UpdateOptions? updateOptions = null,
+            CancellationToken cancellationToken = default);
+
         /// <summary>
         /// Find one and modify atomically with an upsert "add to set" operation.
         /// Create a new document if it doesn't exist, add the element to the set if not present, or do nothing if element is already present

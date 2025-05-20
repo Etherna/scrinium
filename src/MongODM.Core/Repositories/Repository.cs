@@ -407,6 +407,14 @@ namespace Etherna.MongODM.Core.Repositories
                 return null;
             }
         }
+        
+        public Task<UpdateResult> UpdateMany(
+            FilterDefinition<TModel> filter,
+            UpdateDefinition<TModel> update,
+            UpdateOptions? updateOptions = null,
+            CancellationToken cancellationToken = default) =>
+            AccessToCollectionAsync(
+                collection => collection.UpdateManyAsync(filter, update, updateOptions, cancellationToken));
 
         public Task<TModel?> UpsertAddToSetAsync<TItem>(
             Expression<Func<TModel, bool>> filter,
