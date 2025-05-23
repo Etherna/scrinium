@@ -170,13 +170,13 @@ namespace Etherna.MongODM.Core.Repositories
             Expression<Func<TModel, bool>> predicate,
             CancellationToken cancellationToken = default);
 
-        Task<UpdateResult> UpdateMany(
+        Task<UpdateResult> UpdateManyAsync(
             Expression<Func<TModel, bool>> filter,
             UpdateDefinition<TModel> update,
             UpdateOptions? updateOptions = null,
             CancellationToken cancellationToken = default);
 
-        Task<UpdateResult> UpdateMany(
+        Task<UpdateResult> UpdateManyAsync(
             FilterDefinition<TModel> filter,
             UpdateDefinition<TModel> update,
             UpdateOptions? updateOptions = null,
