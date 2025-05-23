@@ -247,7 +247,7 @@ namespace Etherna.MongODM.Core.Repositories
             }, false).ConfigureAwait(false);
         }
 
-        public Task<TModel?> FindOneAndAddToSetAsync<TItem>(
+        public Task<TModel> FindOneAndAddToSetAsync<TItem>(
             FilterDefinition<TModel> filter,
             Expression<Func<TModel, IEnumerable<TItem>>> setField,
             TItem itemValue,
@@ -259,7 +259,7 @@ namespace Etherna.MongODM.Core.Repositories
                 options,
                 cancellationToken);
 
-        public async Task<TModel?> FindOneAndUpdateAsync(
+        public async Task<TModel> FindOneAndUpdateAsync(
             FilterDefinition<TModel> filter,
             UpdateDefinition<TModel> update,
             FindOneAndUpdateOptions<TModel> options,

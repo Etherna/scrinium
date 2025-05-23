@@ -97,14 +97,14 @@ namespace Etherna.MongODM.Core.Repositories
             FindOptions<TModel, TProjection>? options = null,
             CancellationToken cancellationToken = default);
 
-        Task<TModel?> FindOneAndAddToSetAsync<TItem>(
+        Task<TModel> FindOneAndAddToSetAsync<TItem>(
             FilterDefinition<TModel> filter,
             Expression<Func<TModel, IEnumerable<TItem>>> setField,
             TItem itemValue,
             FindOneAndUpdateOptions<TModel> options,
             CancellationToken cancellationToken = default);
 
-        Task<TModel?> FindOneAndUpdateAsync(
+        Task<TModel> FindOneAndUpdateAsync(
             FilterDefinition<TModel> filter,
             UpdateDefinition<TModel> update,
             FindOneAndUpdateOptions<TModel> options,
