@@ -37,10 +37,13 @@ namespace Etherna.MongODM.Core.Repositories
         IRepository<TModel, TKey>
         where TModel : class, IEntityModel<TKey>
     {
+        // Consts.
+        private const string IdElementName = "_id";
+        
         // Fields.
         private ILogger logger = default!;
         private readonly RepositoryOptions<TModel> options = options ?? throw new ArgumentNullException(nameof(options));
-        private IMongoCollection<TModel> _collection = default!;
+        private IMongoCollection<TModel> _collection = null!;
 
         // Constructors.
         public Repository(string name)
@@ -457,7 +460,7 @@ namespace Etherna.MongODM.Core.Repositories
             CancellationToken cancellationToken = default) =>
             AccessToCollectionAsync(async collection =>
             {
-                var modelMap = DbContext.MapRegistry.GetModelMap(typeof(TModel));
+                var serializer = DbContext.MapRegistry.GetMappedSerializer(typeof(TModel));
                 
                 // Serialize model.
                 var modelBsonDoc = new BsonDocument();
@@ -466,18 +469,18 @@ namespace Etherna.MongODM.Core.Repositories
                     var context = BsonSerializationContext.CreateRoot(bsonWriter);
                     bsonWriter.WriteStartDocument();
                     bsonWriter.WriteName("model");
-                    modelMap.Serializer.Serialize(context, onInsertModel);
+                    serializer.Serialize(context, onInsertModel);
                     bsonWriter.WriteEndDocument();
                 }
 
                 // Update "update" definition with OnInsert instructions.
                 var skipFieldsNames = updatedFields
-                    .Select(f => f.Render(new((IBsonSerializer<TModel>)modelMap.Serializer, DbContext.SerializerRegistry)))
+                    .Select(f => f.Render(new((IBsonSerializer<TModel>)serializer, DbContext.SerializerRegistry)))
                     .Select(f => f.FieldName.Split('.').First())
                     .ToArray();
                 var onInsertUpdate = modelBsonDoc[0].AsBsonDocument.Elements
-                    .Where(element => element.Name != modelMap.ActiveSchema.IdMemberMap!.BsonMemberMap.ElementName && //exclude ID
-                                      !skipFieldsNames.Contains(element.Name))                                        //and fields to skip
+                    .Where(element => element.Name != IdElementName &&          //exclude ID
+                                      !skipFieldsNames.Contains(element.Name))  //and fields to skip
                     .Select(element => Builders<TModel>.Update.SetOnInsert(element.Name, element.Value));
                 var upsertUpdate = Builders<TModel>.Update.Combine(onInsertUpdate.Append(updateDefinition));
 

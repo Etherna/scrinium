@@ -62,6 +62,8 @@ namespace Etherna.MongODM.Core.Serialization.Mapping
         /// <returns>The model map id bson element</returns>
         BsonElement GetActiveModelMapIdBsonElement(Type modelType);
 
+        IBsonSerializer GetMappedSerializer(Type modelType);
+
         /// <summary>
         /// Get all member maps that points to a specific member definition
         /// </summary>
@@ -77,6 +79,8 @@ namespace Etherna.MongODM.Core.Serialization.Mapping
         /// <param name="modelType">The model type</param>
         /// <returns>The registered model schema</returns>
         IModelMap GetModelMap(Type modelType);
+
+        bool TryGetMappedSerializer(Type modelType, out IBsonSerializer serializer);
 
         /// <summary>
         /// Try to get a registered model map for a given model type
