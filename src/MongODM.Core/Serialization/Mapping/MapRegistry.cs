@@ -18,7 +18,6 @@ using Etherna.MongODM.Core.Extensions;
 using Etherna.MongODM.Core.Utility;
 using Microsoft.Extensions.Logging;
 using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
@@ -111,11 +110,21 @@ namespace Etherna.MongODM.Core.Serialization.Mapping
             return activeModelMapIdBsonElement[modelType];
         }
 
+        public IBsonSerializer GetMappedSerializer(Type modelType)
+        {
+            ArgumentNullException.ThrowIfNull(modelType, nameof(modelType));
+            
+            if (!_maps.TryGetValue(modelType, out var map))
+                throw new KeyNotFoundException(modelType.Name + " map is missing");
+
+            return map.Serializer;
+        }
+
         public IEnumerable<IMemberMap> GetMemberMapsFromMemberInfo(MemberInfo memberInfo)
         {
             Freeze(); //needed for initialization
             return memberMapsByMemberInfo.FirstOrDefault(p => p.Key.IsSameAs(memberInfo)).Value ??
-                (IEnumerable<IMemberMap>)Array.Empty<IMemberMap>();
+                (IEnumerable<IMemberMap>)[];
         }
 
         public IEnumerable<IMemberMap> GetMemberMapsWithSameElementPath(IMemberMap memberMap)
@@ -132,6 +141,7 @@ namespace Etherna.MongODM.Core.Serialization.Mapping
         public IModelMap GetModelMap(Type modelType)
         {
             ArgumentNullException.ThrowIfNull(modelType, nameof(modelType));
+            
             if (!_maps.TryGetValue(modelType, out var map))
                 throw new KeyNotFoundException(modelType.Name + " map is missing");
 
@@ -139,6 +149,20 @@ namespace Etherna.MongODM.Core.Serialization.Mapping
                 throw new InvalidOperationException(modelType.Name + " map is not a model map");
 
             return modelMap;
+        }
+
+        public bool TryGetMappedSerializer(Type modelType, out IBsonSerializer serializer)
+        {
+            ArgumentNullException.ThrowIfNull(modelType, nameof(modelType));
+
+            if (_maps.TryGetValue(modelType, out var map))
+            {
+                serializer = map.Serializer;
+                return true;
+            }
+
+            serializer = null!;
+            return false;
         }
 
         public bool TryGetModelMap(Type modelType, out IModelMap modelMap)
