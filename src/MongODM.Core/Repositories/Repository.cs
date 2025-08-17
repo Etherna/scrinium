@@ -250,27 +250,6 @@ namespace Etherna.MongODM.Core.Repositories
             }, false).ConfigureAwait(false);
         }
 
-        public Task<TModel> FindOneAndAddToSetAsync<TItem>(
-            FilterDefinition<TModel> filter,
-            Expression<Func<TModel, IEnumerable<TItem>>> setField,
-            TItem itemValue,
-            FindOneAndUpdateOptions<TModel> options,
-            CancellationToken cancellationToken = default) =>
-            FindOneAndUpdateAsync(
-                filter,
-                Builders<TModel>.Update.AddToSet(setField, itemValue),
-                options,
-                cancellationToken);
-
-        public async Task<TModel> FindOneAndUpdateAsync(
-            FilterDefinition<TModel> filter,
-            UpdateDefinition<TModel> update,
-            FindOneAndUpdateOptions<TModel> options,
-            CancellationToken cancellationToken = default) =>
-            await AccessToCollectionAsync(async collection =>
-                await collection.FindOneAndUpdateAsync(filter, update, options, cancellationToken)
-                    .ConfigureAwait(false)).ConfigureAwait(false);
-
         public async Task<object> FindOneAsync(object id, CancellationToken cancellationToken = default) =>
             await FindOneAsync((TKey)id, cancellationToken).ConfigureAwait(false);
 
@@ -373,6 +352,39 @@ namespace Etherna.MongODM.Core.Repositories
             bool updateDependentDocuments = true,
             CancellationToken cancellationToken = default) =>
             ReplaceHelperAsync(model, session, updateDependentDocuments, cancellationToken);
+
+        public Task<TModel?> TryFindOneAndAddToSetAsync<TItem>(
+            FilterDefinition<TModel> filter,
+            Expression<Func<TModel, IEnumerable<TItem>>> setField,
+            TItem itemValue,
+            FindOneAndUpdateOptions<TModel> options,
+            CancellationToken cancellationToken = default) =>
+            TryFindOneAndUpdateAsync(
+                filter,
+                Builders<TModel>.Update.AddToSet(setField, itemValue),
+                options,
+                cancellationToken);
+
+        public Task<TModel?> TryFindOneAndSetFieldAsync<TField>(
+            FilterDefinition<TModel> filter,
+            Expression<Func<TModel, TField>> field,
+            TField fieldValue,
+            FindOneAndUpdateOptions<TModel> options,
+            CancellationToken cancellationToken = default) =>
+            TryFindOneAndUpdateAsync(
+                filter,
+                Builders<TModel>.Update.Set(field, fieldValue),
+                options,
+                cancellationToken);
+
+        public async Task<TModel?> TryFindOneAndUpdateAsync(
+            FilterDefinition<TModel> filter,
+            UpdateDefinition<TModel> update,
+            FindOneAndUpdateOptions<TModel> options,
+            CancellationToken cancellationToken = default) =>
+            await AccessToCollectionAsync(async collection =>
+                await collection.FindOneAndUpdateAsync(filter, update, options, cancellationToken)
+                    .ConfigureAwait(false)).ConfigureAwait(false);
 
         public async Task<object?> TryFindOneAsync(object id, CancellationToken cancellationToken = default) =>
             await TryFindOneAsync((TKey)id, cancellationToken).ConfigureAwait(false);

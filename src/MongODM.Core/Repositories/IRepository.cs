@@ -97,19 +97,6 @@ namespace Etherna.MongODM.Core.Repositories
             FindOptions<TModel, TProjection>? options = null,
             CancellationToken cancellationToken = default);
 
-        Task<TModel> FindOneAndAddToSetAsync<TItem>(
-            FilterDefinition<TModel> filter,
-            Expression<Func<TModel, IEnumerable<TItem>>> setField,
-            TItem itemValue,
-            FindOneAndUpdateOptions<TModel> options,
-            CancellationToken cancellationToken = default);
-
-        Task<TModel> FindOneAndUpdateAsync(
-            FilterDefinition<TModel> filter,
-            UpdateDefinition<TModel> update,
-            FindOneAndUpdateOptions<TModel> options,
-            CancellationToken cancellationToken = default);
-
         Task<TModel> FindOneAsync(
             TKey id,
             CancellationToken cancellationToken = default);
@@ -148,6 +135,26 @@ namespace Etherna.MongODM.Core.Repositories
             TModel model,
             IClientSessionHandle session,
             bool updateDependentDocuments = true,
+            CancellationToken cancellationToken = default);
+
+        Task<TModel?> TryFindOneAndAddToSetAsync<TItem>(
+            FilterDefinition<TModel> filter,
+            Expression<Func<TModel, IEnumerable<TItem>>> setField,
+            TItem itemValue,
+            FindOneAndUpdateOptions<TModel> options,
+            CancellationToken cancellationToken = default);
+
+        Task<TModel?> TryFindOneAndSetFieldAsync<TField>(
+            FilterDefinition<TModel> filter,
+            Expression<Func<TModel, TField>> field,
+            TField fieldValue,
+            FindOneAndUpdateOptions<TModel> options,
+            CancellationToken cancellationToken = default);
+
+        Task<TModel?> TryFindOneAndUpdateAsync(
+            FilterDefinition<TModel> filter,
+            UpdateDefinition<TModel> update,
+            FindOneAndUpdateOptions<TModel> options,
             CancellationToken cancellationToken = default);
 
         /// <summary>
