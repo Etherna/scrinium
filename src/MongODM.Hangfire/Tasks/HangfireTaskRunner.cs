@@ -21,18 +21,11 @@ using System.Collections.Generic;
 
 namespace Etherna.MongODM.HF.Tasks
 {
-    public sealed class HangfireTaskRunner : ITaskRunner, ITaskRunnerBuilder
+    public sealed class HangfireTaskRunner(IBackgroundJobClient backgroundJobClient)
+        : ITaskRunner, ITaskRunnerBuilder
     {
         // Fields.
-        private readonly IBackgroundJobClient backgroundJobClient;
-        private MongODMOptions mongODMOptions = default!;
-
-        // Constructors.
-        public HangfireTaskRunner(
-            IBackgroundJobClient backgroundJobClient)
-        {
-            this.backgroundJobClient = backgroundJobClient;
-        }
+        private MongODMOptions mongODMOptions = null!;
 
         // Methods.
         public void RunMigrateDbTask(Type dbContextType, string dbMigrationOpId) =>

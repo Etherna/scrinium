@@ -42,12 +42,15 @@ namespace Etherna.MongODM.Core.Migration
     /// </summary>
     /// <typeparam name="TModel">The model type</typeparam>
     /// <typeparam name="TKey">The model's key type</typeparam>
-    public class DocumentMigration<TModel, TKey> : DocumentMigration
+    public class DocumentMigration<TModel, TKey>(
+        IRepository<TModel, TKey> sourceRepository,
+        Func<TModel, Task> sourceModelProcessorActionAsync)
+        : DocumentMigration
         where TModel : class, IEntityModel<TKey>
     {
         // Fields.
-        private readonly IRepository<TModel, TKey> _sourceRepository;
-        private readonly Func<TModel, Task> sourceModelProcessorActionAsync;
+        private readonly IRepository<TModel, TKey> _sourceRepository =
+            sourceRepository ?? throw new ArgumentNullException(nameof(sourceRepository));
 
         // Constructors.
         public DocumentMigration(IRepository<TModel, TKey> repository)
@@ -82,14 +85,6 @@ namespace Etherna.MongODM.Core.Migration
                         await destinationRepository.CreateAsync(modelConverter(m)).ConfigureAwait(false);
                 })
         { }
-
-        public DocumentMigration(
-            IRepository<TModel, TKey> sourceRepository,
-            Func<TModel, Task> sourceModelProcessorActionAsync)
-        {
-            _sourceRepository = sourceRepository ?? throw new ArgumentNullException(nameof(sourceRepository));
-            this.sourceModelProcessorActionAsync = sourceModelProcessorActionAsync;
-        }
 
         // Properties.
         public override IRepository SourceRepository => _sourceRepository;

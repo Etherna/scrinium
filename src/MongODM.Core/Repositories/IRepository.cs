@@ -30,7 +30,7 @@ namespace Etherna.MongODM.Core.Repositories
         Type ModelType { get; }
         string Name { get; }
 
-        Task BuildIndexesAsync(
+        Task BuildNewIndexesAsync(
             CancellationToken cancellationToken = default);
 
         Task CreateAsync(
@@ -43,6 +43,9 @@ namespace Etherna.MongODM.Core.Repositories
 
         Task DeleteAsync(
             IEntityModel model,
+            CancellationToken cancellationToken = default);
+        
+        Task DeleteOldIndexesAsync(
             CancellationToken cancellationToken = default);
 
         Task<object> FindOneAsync(
@@ -113,6 +116,8 @@ namespace Etherna.MongODM.Core.Repositories
             TModel model,
             FilterDefinition<TModel>[]? additionalFilters = null,
             CancellationToken cancellationToken = default);
+
+        Task<CreateIndexModel<TModel>[]> GetDefinedIndexModelsAsync();
 
         Task<TResult> QueryElementsAsync<TResult>(
             Func<IQueryable<TModel>, Task<TResult>> query,

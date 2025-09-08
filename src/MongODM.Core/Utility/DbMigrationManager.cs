@@ -24,18 +24,13 @@ using System.Threading.Tasks;
 
 namespace Etherna.MongODM.Core.Utility
 {
-    public class DbMigrationManager : IDbMigrationManager
+    public class DbMigrationManager(ITaskRunner taskRunner) : IDbMigrationManager
     {
         // Fields.
-        private IDbContext dbContext = default!;
-        private ILogger logger = default!;
-        private readonly ITaskRunner taskRunner;
+        private IDbContext dbContext = null!;
+        private ILogger logger = null!;
 
-        // Constructor and initialization.
-        public DbMigrationManager(ITaskRunner taskRunner)
-        {
-            this.taskRunner = taskRunner;
-        }
+        // Initializer.
         public void Initialize(IDbContext dbContext, ILogger logger)
         {
             if (IsInitialized)

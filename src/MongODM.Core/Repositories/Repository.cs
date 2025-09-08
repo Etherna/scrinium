@@ -103,73 +103,16 @@ namespace Etherna.MongODM.Core.Repositories
             return result;
         }
 
-        public virtual Task BuildIndexesAsync(CancellationToken cancellationToken = default) =>
-            AccessToCollectionAsync(async collection =>
-            {
-                var newIndexes = new List<(string name, CreateIndexModel<TModel> createIndex)>();
+        public virtual async Task BuildNewIndexesAsync(CancellationToken cancellationToken = default)
+        {
+            var definedIndexes = await GetDefinedIndexModelsAsync().ConfigureAwait(false);
 
-                // Define new indexes.
-                //repository defined
-                newIndexes.AddRange(options.IndexBuilders.Select(pair =>
-                {
-                    var (keys, options) = pair;
-                    if (options.Name == null)
-                    {
-                        try
-                        {
-                            var renderedKeys = keys.Render(new(collection.DocumentSerializer, collection.Settings.SerializerRegistry));
-                            options.Name = $"doc_{string.Join("_", renderedKeys.Names)}";
-                        }
-                        catch (InvalidOperationException)
-                        {
-                            throw new MongodmIndexBuildingException($"Can't build custom index in collection \"{Name}\"");
-                        }
-                    }
-
-                    return (options.Name, new CreateIndexModel<TModel>(keys, options));
-                }));
-
-                //referenced documents
-                var idMemberMaps = DbContext.MapRegistry.TryGetModelMap(typeof(TModel), out IModelMap? modelMap) ?
-                    modelMap!.AllDescendingMemberMaps.Where(mm => mm.IsEntityReferenceMember && mm.IsIdMember) :
-                    Array.Empty<IMemberMap>();
-
-                var idPaths = idMemberMaps
-                    .Select(mm => string.Join(".", mm.MemberMapPath.Select(pathMM => pathMM.BsonMemberMap.ElementName)))
-                    .Distinct();
-
-                newIndexes.AddRange(idPaths.Select(path =>
-                    ($"ref_{path}",
-                     new CreateIndexModel<TModel>(
-                        Builders<TModel>.IndexKeys.Ascending(path),
-                        new CreateIndexOptions<TModel>
-                        {
-                            Name = $"ref_{path}",
-                            Sparse = true
-                        }))));
-
-                // Get current indexes.
-                var currentIndexes = new List<BsonDocument>();
-                using (var indexList = await collection.Indexes.ListAsync(cancellationToken).ConfigureAwait(false))
-                    while (await indexList.MoveNextAsync(cancellationToken).ConfigureAwait(false))
-                        currentIndexes.AddRange(indexList.Current);
-
-                // Remove old indexes.
-                foreach (var oldIndex in from index in currentIndexes
-                                         let indexName = index.GetElement("name").Value.ToString()
-                                         where indexName != "_id_"
-                                         where !newIndexes.Any(newIndex => newIndex.name == indexName)
-                                         select index)
-                {
-                    await collection.Indexes.DropOneAsync(oldIndex.GetElement("name").Value.ToString(), cancellationToken).ConfigureAwait(false);
-                }
-
-                // Build new indexes.
-                if (newIndexes.Count != 0)
-                    await collection.Indexes.CreateManyAsync(newIndexes.Select(i => i.createIndex), cancellationToken).ConfigureAwait(false);
-
-                logger.RepositoryBuiltIndexes(Name, DbContext.Options.DbName);
-            });
+            if (definedIndexes.Length != 0)
+                await AccessToCollectionAsync(collection =>
+                    collection.Indexes.CreateManyAsync(definedIndexes, cancellationToken)).ConfigureAwait(false);
+            
+            logger.RepositoryBuiltIndexes(Name, DbContext.Options.DbName);
+        }
 
         public Task CreateAsync(object model, CancellationToken cancellationToken = default) =>
             CreateAsync((TModel)model, cancellationToken);
@@ -231,6 +174,30 @@ namespace Etherna.MongODM.Core.Repositories
             await DeleteAsync(castedModel, [], cancellationToken).ConfigureAwait(false);
         }
 
+        public async Task DeleteOldIndexesAsync(CancellationToken cancellationToken = default)
+        {
+            var definedIndexes = await GetDefinedIndexModelsAsync().ConfigureAwait(false);
+            
+            await AccessToCollectionAsync(async collection =>
+            {
+                // Get current indexes.
+                var currentIndexes = new List<BsonDocument>();
+                using (var indexList = await collection.Indexes.ListAsync(cancellationToken).ConfigureAwait(false))
+                    while (await indexList.MoveNextAsync(cancellationToken).ConfigureAwait(false))
+                        currentIndexes.AddRange(indexList.Current);
+
+                // Remove old indexes.
+                foreach (var oldIndex in from index in currentIndexes
+                         let indexName = index.GetElement("name").Value.ToString()
+                         where indexName != "_id_"
+                         where definedIndexes.All(newIndex => newIndex.Options.Name != indexName)
+                         select index)
+                    await collection.Indexes
+                        .DropOneAsync(oldIndex.GetElement("name").Value.ToString(), cancellationToken)
+                        .ConfigureAwait(false);
+            }).ConfigureAwait(false);
+        }
+
         public virtual async Task<IAsyncCursor<TProjection>> FindAsync<TProjection>(
             FilterDefinition<TModel> filter,
             FindOptions<TModel, TProjection>? options = null,
@@ -271,6 +238,52 @@ namespace Etherna.MongODM.Core.Repositories
             Expression<Func<TModel, bool>> predicate,
             CancellationToken cancellationToken = default) =>
             FindOneOnDBAsync(predicate, cancellationToken);
+        
+        public virtual Task<CreateIndexModel<TModel>[]> GetDefinedIndexModelsAsync() =>
+            AccessToCollectionAsync(collection =>
+            {
+                var indexes = new List<CreateIndexModel<TModel>>();
+
+                // Custom indexes.
+                indexes.AddRange(options.IndexBuilders.Select(pair =>
+                {
+                    var (keys, options) = pair;
+                    if (options.Name == null)
+                    {
+                        try
+                        {
+                            var renderedKeys = keys.Render(new(collection.DocumentSerializer, collection.Settings.SerializerRegistry));
+                            options.Name = $"doc_{string.Join("_", renderedKeys.Names)}";
+                        }
+                        catch (InvalidOperationException)
+                        {
+                            throw new MongodmIndexBuildingException($"Can't build custom index in collection \"{Name}\"");
+                        }
+                    }
+
+                    return new CreateIndexModel<TModel>(keys, options);
+                }));
+
+                // By referenced documents.
+                var idMemberMaps = DbContext.MapRegistry.TryGetModelMap(typeof(TModel), out var modelMap) ?
+                    modelMap.AllDescendingMemberMaps.Where(mm => mm is { IsEntityReferenceMember: true, IsIdMember: true }) :
+                    [];
+
+                var idPaths = idMemberMaps
+                    .Select(mm => string.Join(".", mm.MemberMapPath.Select(pathMM => pathMM.BsonMemberMap.ElementName)))
+                    .Distinct();
+
+                indexes.AddRange(idPaths.Select(path =>
+                    new CreateIndexModel<TModel>(
+                        Builders<TModel>.IndexKeys.Ascending(path),
+                        new CreateIndexOptions<TModel>
+                        {
+                            Name = $"ref_{path}",
+                            Sparse = true
+                        })));
+
+                return Task.FromResult(indexes.ToArray());
+            });
 
         public string ModelIdToString(object model)
         {
