@@ -34,6 +34,34 @@ namespace Etherna.MongODM.Core.Tasks
             dbMigrationOp.TaskStarted(taskId);
             await dbContext.SaveChangesAsync().ConfigureAwait(false);
 
+            // Remove old indexes.
+            foreach (var repository in dbContext.RepositoryRegistry.Repositories)
+            {
+                dbMigrationOp.AddLog(new DeleteOldIndexesMigrationLog(
+                    repository.Name,
+                    MigrationLogBase.ExecutionState.Executing));
+                await dbContext.SaveChangesAsync().ConfigureAwait(false);
+
+                try
+                {
+                    await repository.DeleteOldIndexesAsync().ConfigureAwait(false);
+
+                    dbMigrationOp.AddLog(new DeleteOldIndexesMigrationLog(
+                        repository.Name,
+                        MigrationLogBase.ExecutionState.Succeded));
+                }
+                catch (Exception)
+                {
+                    completedWithErrors = true;
+
+                    dbMigrationOp.AddLog(new DeleteOldIndexesMigrationLog(
+                        repository.Name,
+                        MigrationLogBase.ExecutionState.Failed));
+                }
+
+                await dbContext.SaveChangesAsync().ConfigureAwait(false);
+            }
+
             // Migrate documents.
             foreach (var docMigration in dbContext.DocumentMigrationList)
             {
@@ -63,19 +91,19 @@ namespace Etherna.MongODM.Core.Tasks
                 await dbContext.SaveChangesAsync().ConfigureAwait(false);
             }
 
-            // Build indexes.
+            // Build new indexes.
             foreach (var repository in dbContext.RepositoryRegistry.Repositories)
             {
-                dbMigrationOp.AddLog(new IndexMigrationLog(
+                dbMigrationOp.AddLog(new BuildNewIndexesMigrationLog(
                     repository.Name,
                     MigrationLogBase.ExecutionState.Executing));
                 await dbContext.SaveChangesAsync().ConfigureAwait(false);
 
                 try
                 {
-                    await repository.BuildIndexesAsync().ConfigureAwait(false);
+                    await repository.BuildNewIndexesAsync().ConfigureAwait(false);
 
-                    dbMigrationOp.AddLog(new IndexMigrationLog(
+                    dbMigrationOp.AddLog(new BuildNewIndexesMigrationLog(
                         repository.Name,
                         MigrationLogBase.ExecutionState.Succeded));
                 }
@@ -83,7 +111,7 @@ namespace Etherna.MongODM.Core.Tasks
                 {
                     completedWithErrors = true;
 
-                    dbMigrationOp.AddLog(new IndexMigrationLog(
+                    dbMigrationOp.AddLog(new BuildNewIndexesMigrationLog(
                         repository.Name,
                         MigrationLogBase.ExecutionState.Failed));
                 }

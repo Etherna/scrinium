@@ -12,8 +12,11 @@
 // You should have received a copy of the GNU Lesser General Public License along with MongODM.
 // If not, see <https://www.gnu.org/licenses/>.
 
+using System;
+
 namespace Etherna.MongODM.Core.Domain.Models.DbMigrationOpAgg
 {
+    [Obsolete("Replaced by build and delete separate logs")]
     public class IndexMigrationLog : MigrationLogBase
     {
         // Constructors.
@@ -27,6 +30,6 @@ namespace Etherna.MongODM.Core.Domain.Models.DbMigrationOpAgg
         protected IndexMigrationLog() { }
 
         // Properties.
-        public virtual string Repository { get; protected set; } = default!;
+        public virtual string Repository { get; protected set; } = null!;
     }
 }
