@@ -230,16 +230,16 @@ namespace Etherna.MongODM.Core
         protected abstract IEnumerable<IModelMapsCollector> ModelMapsCollectors { get; }
 
         // Methods.
-        public Task RunExclusiveAccessAsync(
+        public Task RunWithExclusiveAccessAsync(
             Func<Task> action,
             bool lockOnRead = true) =>
-            RunExclusiveAccessAsync(async () =>
+            RunWithExclusiveAccessAsync(async () =>
             {
                 await action().ConfigureAwait(false);
                 return 0;
             }, lockOnRead);
 
-        public async Task<TResult> RunExclusiveAccessAsync<TResult>(
+        public async Task<TResult> RunWithExclusiveAccessAsync<TResult>(
             Func<Task<TResult>> func,
             bool lockOnRead = true)
         {
@@ -337,7 +337,7 @@ namespace Etherna.MongODM.Core
             if (IsSeeded)
                 return false;
 
-            return await RunExclusiveAccessAsync(async () =>
+            return await RunWithExclusiveAccessAsync(async () =>
             {
                 // Check again if seeded.
                 if (IsSeeded)

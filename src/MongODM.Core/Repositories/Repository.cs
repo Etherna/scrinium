@@ -21,7 +21,6 @@ using Etherna.MongODM.Core.Domain.Models;
 using Etherna.MongODM.Core.Exceptions;
 using Etherna.MongODM.Core.Extensions;
 using Etherna.MongODM.Core.ProxyModels;
-using Etherna.MongODM.Core.Serialization.Mapping;
 using Etherna.MongODM.Core.Utility;
 using Microsoft.Extensions.Logging;
 using System;
@@ -624,7 +623,7 @@ namespace Etherna.MongODM.Core.Repositories
                 using var cursor = await collection.FindAsync(predicate, cancellationToken: cancellationToken).ConfigureAwait(false);
                 var model = await cursor.FirstOrDefaultAsync(cancellationToken).ConfigureAwait(false);
 
-                if (model == default(TModel))
+                if (model == null)
                     throw new MongodmEntityNotFoundException("Can't find element");
 
                 logger.RepositoryFoundDocument(Name, DbContext.Options.DbName, model.Id!.ToString()!);

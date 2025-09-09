@@ -105,7 +105,7 @@ namespace Etherna.MongODM.Core
                 .Returns(() => modelMapMock.Object);
         }
 
-        // Tests.
+        // Data.
         public static IEnumerable<object[]> DeserializationTests
         {
             get
@@ -140,6 +140,7 @@ namespace Etherna.MongODM.Core
             }
         }
 
+        // Tests.
         [Theory, MemberData(nameof(DeserializationTests))]
         public void Deserialize(DeserializationTestElement test)
         {

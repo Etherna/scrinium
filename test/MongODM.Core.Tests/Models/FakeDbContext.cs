@@ -1,4 +1,4 @@
-﻿// Copyright 2020-present Etherna SA
+// Copyright 2020-present Etherna SA
 // This file is part of MongODM.
 // 
 // MongODM is free software: you can redistribute it and/or modify it under the terms of the
@@ -12,16 +12,19 @@
 // You should have received a copy of the GNU Lesser General Public License along with MongODM.
 // If not, see <https://www.gnu.org/licenses/>.
 
-using Etherna.MongoDB.Driver;
-using System;
+using Etherna.MongODM.Core.Repositories;
+using Etherna.MongODM.Core.Serialization;
 using System.Collections.Generic;
 
-namespace Etherna.MongODM.Core.Repositories
+namespace Etherna.MongODM.Core.Models
 {
-    public class RepositoryOptions<TModel>(string name)
+    public class FakeDbContext : DbContext
     {
         // Properties.
-        public IEnumerable<(IndexKeysDefinition<TModel> keys, CreateIndexOptions<TModel> options)> IndexBuilders { get; set; } = [];
-        public string Name { get; } = name ?? throw new ArgumentNullException(nameof(name));
+        //repositories
+        public IRepository<FakeModel, string> FakeModels { get; } = new Repository<FakeModel, string>("fakeModels");
+        
+        // Protected properties.
+        protected override IEnumerable<IModelMapsCollector> ModelMapsCollectors => [];
     }
 }

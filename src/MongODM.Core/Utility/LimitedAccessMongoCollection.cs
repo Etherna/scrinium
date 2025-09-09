@@ -1016,17 +1016,17 @@ namespace Etherna.MongODM.Core.Utility
         {
             if (dbContext.IsExclusiveReadEnabled &&
                 !ExclusiveAccessHandler.IsExclusiveAccessAllowed(dbContext.ExecutionContext))
-                throw new InvalidOperationException("Read access is not allowed");
+                throw new UnauthorizedAccessException("Read access is not allowed");
         }
 
         private void VerifyWritePermission()
         {
             if (isReadOnly)
-                throw new InvalidOperationException("Collection is read only");
+                throw new UnauthorizedAccessException("Collection is read only");
             
             if (dbContext.IsExclusiveWriteEnabled &&
                 !ExclusiveAccessHandler.IsExclusiveAccessAllowed(dbContext.ExecutionContext))
-                throw new InvalidOperationException("Write access is not allowed");
+                throw new UnauthorizedAccessException("Write access is not allowed");
         }
     }
 }

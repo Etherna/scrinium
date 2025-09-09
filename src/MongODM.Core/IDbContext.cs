@@ -117,11 +117,11 @@ namespace Etherna.MongODM.Core
         IExecutionContext ExecutionContext { get; }
 
         // Methods.
-        Task RunExclusiveAccessAsync(
+        Task RunWithExclusiveAccessAsync(
             Func<Task> action,
             bool lockOnRead = true);
 
-        Task<TResult> RunExclusiveAccessAsync<TResult>(
+        Task<TResult> RunWithExclusiveAccessAsync<TResult>(
             Func<Task<TResult>> func,
             bool lockOnRead = true);
         

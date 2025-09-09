@@ -29,7 +29,7 @@ namespace Etherna.MongODM.Core.Tasks
             var dbContext = (TDbContext)serviceProvider.GetService(typeof(TDbContext))!;
             
             // Run with exclusive access.
-            await dbContext.RunExclusiveAccessAsync(async () =>
+            await dbContext.RunWithExclusiveAccessAsync(async () =>
             {
                 var dbMigrationOp = (DbMigrationOperation)await dbContext.DbOperations.FindOneAsync(dbMigrationOpId).ConfigureAwait(false);
                 var completedWithErrors = false;
