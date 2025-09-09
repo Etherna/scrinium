@@ -12,7 +12,6 @@
 // You should have received a copy of the GNU Lesser General Public License along with MongODM.
 // If not, see <https://www.gnu.org/licenses/>.
 
-using Etherna.MongoDB.Driver;
 using Etherna.MongODM.Core.Domain.Models;
 using Etherna.MongODM.Core.Extensions;
 using Etherna.MongODM.Core.ProxyModels;
@@ -23,19 +22,13 @@ using System.Linq;
 
 namespace Etherna.MongODM.Core.Utility
 {
-    public class DbMaintainer : IDbMaintainer
+    public class DbMaintainer(ITaskRunner taskRunner) : IDbMaintainer
     {
         // Fields.
-        private IDbContext dbContext = default!;
-        private ILogger logger = default!;
-        private readonly ITaskRunner taskRunner;
+        private IDbContext dbContext = null!;
+        private ILogger logger = null!;
 
-        // Constructors and initialization.
-        public DbMaintainer(ITaskRunner taskRunner)
-        {
-            this.taskRunner = taskRunner;
-        }
-
+        // Initializer.
         public void Initialize(IDbContext dbContext, ILogger logger)
         {
             if (IsInitialized)
@@ -120,7 +113,8 @@ namespace Etherna.MongODM.Core.Utility
                 dbContext.GetType(),
                 referenceRepository.Name,
                 ((IEntityModel<TKey>)updatedModel).Id!,
-                allIdMemberMaps.Select(mm => mm.Id));
+                allIdMemberMaps.Select(mm => mm.Id),
+                ExclusiveAccessHandler.IsExclusiveAccessAllowed(dbContext.ExecutionContext));
         }
     }
 }

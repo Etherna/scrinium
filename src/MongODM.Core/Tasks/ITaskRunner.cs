@@ -24,6 +24,7 @@ namespace Etherna.MongODM.Core.Tasks
             Type dbContextType,
             string referenceRepositoryName,
             object modelId,
-            IEnumerable<string> idMemberMapIdentifiers);
+            IEnumerable<string> idMemberMapIdentifiers,
+            bool withExclusiveAccessAllowance);
     }
 }

@@ -20,35 +20,28 @@ using System.Threading.Tasks;
 
 namespace Etherna.MongODM.HF.Tasks
 {
-    internal sealed class UpdateDocDependenciesTaskFacade
+    internal sealed class UpdateDocDependenciesTaskFacade(IUpdateDocDependenciesTask task)
     {
-        // Fields.
-        private readonly IUpdateDocDependenciesTask task;
-
-        // Constructors.
-        public UpdateDocDependenciesTaskFacade(IUpdateDocDependenciesTask task)
-        {
-            this.task = task;
-        }
-
         // Methods.
         public Task RunAsync(
             Type dbContextType,
             string referenceRepositoryName,
             object modelId,
-            IEnumerable<string> idMemberMapIdentifiers)
+            IEnumerable<string> idMemberMapIdentifiers,
+            bool withExclusiveAccessAllowance)
         {
             var method = typeof(UpdateDocDependenciesTask).GetMethod(
                 nameof(UpdateDocDependenciesTask.RunAsync), BindingFlags.Public | BindingFlags.Instance)!
                 .MakeGenericMethod(
                     dbContextType);
 
-            return (Task)method.Invoke(task, new object[]
-            {
+            return (Task)method.Invoke(task,
+            [
                 referenceRepositoryName,
                 modelId,
-                idMemberMapIdentifiers
-            })!;
+                idMemberMapIdentifiers,
+                withExclusiveAccessAllowance
+            ])!;
         }
     }
 }

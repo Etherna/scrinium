@@ -28,6 +28,7 @@ using Microsoft.Extensions.Logging;
 using MoreLinq;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Reflection;
 using System.Threading.Tasks;
@@ -40,10 +41,12 @@ namespace Etherna.MongODM.Core.Tasks
         : IUpdateDocDependenciesTask
     {
         // Methods.
+        [SuppressMessage("Reliability", "CA2000:Dispose objects before losing scope")]
         public async Task RunAsync<TDbContext>(
             string referencedRepositoryName,
             object referencedModelId,
-            IEnumerable<string> idMemberMapIdentifiers)
+            IEnumerable<string> idMemberMapIdentifiers,
+            bool withExclusiveAccessAllowance)
             where TDbContext : class, IDbContext
         {
             ArgumentNullException.ThrowIfNull(idMemberMapIdentifiers, nameof(idMemberMapIdentifiers));
@@ -51,10 +54,16 @@ namespace Etherna.MongODM.Core.Tasks
 
             logger.UpdateDocDependenciesTaskStarted(typeof(TDbContext), referencedRepositoryName, referencedModelId.ToString()!, idMemberMapIdentifiers);
 
-            // Get data.
+            // Get dbcontext.
             var dbContext = (TDbContext)serviceProvider.GetService(typeof(TDbContext))!;
             using var dbExecutionContext = new DbExecutionContextHandler(dbContext); //run into a db execution context
 
+            // Run with exclusive access allowance, if required.
+            ExclusiveAccessHandler? exclusiveAccessHandler = null;
+            if (withExclusiveAccessAllowance)
+                exclusiveAccessHandler = new ExclusiveAccessHandler(dbContext.ExecutionContext);
+
+            // Get data.
             var referencedRepository = dbContext.RepositoryRegistry.Repositories.First(r => r.Name == referencedRepositoryName);
             var referencedModel = await referencedRepository.FindOneAsync(referencedModelId).ConfigureAwait(false);
             var referencedModelType = dbContext.ProxyGenerator.PurgeProxyType(referencedModel.GetType());
@@ -174,6 +183,9 @@ namespace Etherna.MongODM.Core.Tasks
             }
 
             logger.UpdateDocDependenciesTaskEnded(typeof(TDbContext), referencedRepositoryName, referencedModelId.ToString()!);
+            
+            // Dispose exclusiveAccessHandler, if initialized.
+            exclusiveAccessHandler?.Dispose();
         }
 
         // Helpers.

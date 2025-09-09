@@ -22,7 +22,8 @@ namespace Etherna.MongODM.Core.Tasks
         Task RunAsync<TDbContext>(
             string referencedRepositoryName,
             object referencedModelId,
-            IEnumerable<string> idMemberMapIdentifiers)
+            IEnumerable<string> idMemberMapIdentifiers,
+            bool withExclusiveAccessAllowance)
             where TDbContext : class, IDbContext;
     }
 }
