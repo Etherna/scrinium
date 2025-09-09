@@ -27,105 +27,110 @@ namespace Etherna.MongODM.Core.Tasks
             where TDbContext : class, IDbContext
         {
             var dbContext = (TDbContext)serviceProvider.GetService(typeof(TDbContext))!;
-            var dbMigrationOp = (DbMigrationOperation)await dbContext.DbOperations.FindOneAsync(dbMigrationOpId).ConfigureAwait(false);
-            var completedWithErrors = false;
-
-            // Start migrate operation.
-            dbMigrationOp.TaskStarted(taskId);
-            await dbContext.SaveChangesAsync().ConfigureAwait(false);
-
-            // Remove old indexes.
-            foreach (var repository in dbContext.RepositoryRegistry.Repositories)
+            
+            // Run with exclusive access.
+            await dbContext.RunWithExclusiveAccessAsync(async () =>
             {
-                dbMigrationOp.AddLog(new DeleteOldIndexesMigrationLog(
-                    repository.Name,
-                    MigrationLogBase.ExecutionState.Executing));
+                var dbMigrationOp = (DbMigrationOperation)await dbContext.DbOperations.FindOneAsync(dbMigrationOpId).ConfigureAwait(false);
+                var completedWithErrors = false;
+
+                // Start migrate operation.
+                dbMigrationOp.TaskStarted(taskId);
                 await dbContext.SaveChangesAsync().ConfigureAwait(false);
 
-                try
+                // Remove old indexes.
+                foreach (var repository in dbContext.RepositoryRegistry.Repositories)
                 {
-                    await repository.DeleteOldIndexesAsync().ConfigureAwait(false);
-
                     dbMigrationOp.AddLog(new DeleteOldIndexesMigrationLog(
                         repository.Name,
-                        MigrationLogBase.ExecutionState.Succeded));
-                }
-                catch (Exception)
-                {
-                    completedWithErrors = true;
+                        MigrationLogBase.ExecutionState.Executing));
+                    await dbContext.SaveChangesAsync().ConfigureAwait(false);
 
-                    dbMigrationOp.AddLog(new DeleteOldIndexesMigrationLog(
-                        repository.Name,
-                        MigrationLogBase.ExecutionState.Failed));
-                }
-
-                await dbContext.SaveChangesAsync().ConfigureAwait(false);
-            }
-
-            // Migrate documents.
-            foreach (var docMigration in dbContext.DocumentMigrationList)
-            {
-                //running document migration
-                var result = await docMigration.MigrateAsync(500,
-                    async procDocs =>
+                    try
                     {
-                        dbMigrationOp.AddLog(new DocumentMigrationLog(
-                            docMigration.SourceRepository.Name,
-                            MigrationLogBase.ExecutionState.Executing,
-                            procDocs));
+                        await repository.DeleteOldIndexesAsync().ConfigureAwait(false);
 
-                        await dbContext.SaveChangesAsync().ConfigureAwait(false);
-                    }).ConfigureAwait(false);
+                        dbMigrationOp.AddLog(new DeleteOldIndexesMigrationLog(
+                            repository.Name,
+                            MigrationLogBase.ExecutionState.Succeded));
+                    }
+                    catch (Exception)
+                    {
+                        completedWithErrors = true;
 
-                if (!result.Succeded)
-                    completedWithErrors = true;
+                        dbMigrationOp.AddLog(new DeleteOldIndexesMigrationLog(
+                            repository.Name,
+                            MigrationLogBase.ExecutionState.Failed));
+                    }
 
-                //ended document migration log
-                dbMigrationOp.AddLog(new DocumentMigrationLog(
-                    docMigration.SourceRepository.Name,
-                    result.Succeded ?
-                        MigrationLogBase.ExecutionState.Succeded :
-                        MigrationLogBase.ExecutionState.Failed,
-                    result.MigratedDocuments));
-
-                await dbContext.SaveChangesAsync().ConfigureAwait(false);
-            }
-
-            // Build new indexes.
-            foreach (var repository in dbContext.RepositoryRegistry.Repositories)
-            {
-                dbMigrationOp.AddLog(new BuildNewIndexesMigrationLog(
-                    repository.Name,
-                    MigrationLogBase.ExecutionState.Executing));
-                await dbContext.SaveChangesAsync().ConfigureAwait(false);
-
-                try
-                {
-                    await repository.BuildNewIndexesAsync().ConfigureAwait(false);
-
-                    dbMigrationOp.AddLog(new BuildNewIndexesMigrationLog(
-                        repository.Name,
-                        MigrationLogBase.ExecutionState.Succeded));
-                }
-                catch (Exception)
-                {
-                    completedWithErrors = true;
-
-                    dbMigrationOp.AddLog(new BuildNewIndexesMigrationLog(
-                        repository.Name,
-                        MigrationLogBase.ExecutionState.Failed));
+                    await dbContext.SaveChangesAsync().ConfigureAwait(false);
                 }
 
+                // Migrate documents.
+                foreach (var docMigration in dbContext.DocumentMigrationList)
+                {
+                    //running document migration
+                    var result = await docMigration.MigrateAsync(500,
+                        async procDocs =>
+                        {
+                            dbMigrationOp.AddLog(new DocumentMigrationLog(
+                                docMigration.SourceRepository.Name,
+                                MigrationLogBase.ExecutionState.Executing,
+                                procDocs));
+
+                            await dbContext.SaveChangesAsync().ConfigureAwait(false);
+                        }).ConfigureAwait(false);
+
+                    if (!result.Succeded)
+                        completedWithErrors = true;
+
+                    //ended document migration log
+                    dbMigrationOp.AddLog(new DocumentMigrationLog(
+                        docMigration.SourceRepository.Name,
+                        result.Succeded
+                            ? MigrationLogBase.ExecutionState.Succeded
+                            : MigrationLogBase.ExecutionState.Failed,
+                        result.MigratedDocuments));
+
+                    await dbContext.SaveChangesAsync().ConfigureAwait(false);
+                }
+
+                // Build new indexes.
+                foreach (var repository in dbContext.RepositoryRegistry.Repositories)
+                {
+                    dbMigrationOp.AddLog(new BuildNewIndexesMigrationLog(
+                        repository.Name,
+                        MigrationLogBase.ExecutionState.Executing));
+                    await dbContext.SaveChangesAsync().ConfigureAwait(false);
+
+                    try
+                    {
+                        await repository.BuildNewIndexesAsync().ConfigureAwait(false);
+
+                        dbMigrationOp.AddLog(new BuildNewIndexesMigrationLog(
+                            repository.Name,
+                            MigrationLogBase.ExecutionState.Succeded));
+                    }
+                    catch (Exception)
+                    {
+                        completedWithErrors = true;
+
+                        dbMigrationOp.AddLog(new BuildNewIndexesMigrationLog(
+                            repository.Name,
+                            MigrationLogBase.ExecutionState.Failed));
+                    }
+
+                    await dbContext.SaveChangesAsync().ConfigureAwait(false);
+                }
+
+                // Complete task.
+                if (!completedWithErrors)
+                    dbMigrationOp.TaskCompleted();
+                else
+                    dbMigrationOp.TaskFailed();
+
                 await dbContext.SaveChangesAsync().ConfigureAwait(false);
-            }
-
-            // Complete task.
-            if (!completedWithErrors)
-                dbMigrationOp.TaskCompleted();
-            else
-                dbMigrationOp.TaskFailed();
-
-            await dbContext.SaveChangesAsync().ConfigureAwait(false);
+            }).ConfigureAwait(false);
         }
     }
 }

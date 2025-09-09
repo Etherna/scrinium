@@ -21,7 +21,6 @@ using Etherna.MongODM.Core.Domain.Models;
 using Etherna.MongODM.Core.Exceptions;
 using Etherna.MongODM.Core.Extensions;
 using Etherna.MongODM.Core.ProxyModels;
-using Etherna.MongODM.Core.Serialization.Mapping;
 using Etherna.MongODM.Core.Utility;
 using Microsoft.Extensions.Logging;
 using System;
@@ -41,7 +40,7 @@ namespace Etherna.MongODM.Core.Repositories
         private const string IdElementName = "_id";
         
         // Fields.
-        private ILogger logger = default!;
+        private ILogger logger = null!;
         private readonly RepositoryOptions<TModel> options = options ?? throw new ArgumentNullException(nameof(options));
         private IMongoCollection<TModel> _collection = null!;
 
@@ -64,7 +63,7 @@ namespace Etherna.MongODM.Core.Repositories
         }
 
         // Properties.
-        public IDbContext DbContext { get; private set; } = default!;
+        public IDbContext DbContext { get; private set; } = null!;
         public Type KeyType => typeof(TKey);
         public Type ModelType => typeof(TModel);
         public bool IsInitialized { get; private set; }
@@ -87,7 +86,7 @@ namespace Etherna.MongODM.Core.Repositories
             ArgumentNullException.ThrowIfNull(func, nameof(func));
 
             // Initialize collection cache.
-            _collection ??= DbContext.Database.GetCollection<TModel>(options.Name);
+            _collection ??= DbContext.GetMongoCollection<TModel>(options.Name);
 
             // Invoke func into optional implicit execution context.
             DbExecutionContextHandler? dbExecContextHandler = null;
@@ -624,7 +623,7 @@ namespace Etherna.MongODM.Core.Repositories
                 using var cursor = await collection.FindAsync(predicate, cancellationToken: cancellationToken).ConfigureAwait(false);
                 var model = await cursor.FirstOrDefaultAsync(cancellationToken).ConfigureAwait(false);
 
-                if (model == default(TModel))
+                if (model == null)
                     throw new MongodmEntityNotFoundException("Can't find element");
 
                 logger.RepositoryFoundDocument(Name, DbContext.Options.DbName, model.Id!.ToString()!);

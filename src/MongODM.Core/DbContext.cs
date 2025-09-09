@@ -43,14 +43,17 @@ namespace Etherna.MongODM.Core
         : IDbContext, IDbContextBuilder, IDisposable
     {
         // Fields.
+        private volatile bool _isExclusiveReadEnabled;
+        private volatile bool _isExclusiveWriteEnabled;
         private bool? _isSeeded;
-        private BsonSerializerRegistry _serializerRegistry = default!;
-        private IEnumerable<IDbContext> childDbContexts = default!;
+        private BsonSerializerRegistry _serializerRegistry = null!;
+        private IEnumerable<IDbContext> childDbContexts = null!;
+        private IMongoDatabase database = null!;
         private bool disposed;
+        private readonly SemaphoreSlim exclusiveAccessSemaphore = new(1, 1); //support async/await
         private bool isInitialized;
         private readonly ReaderWriterLockSlim isSeededLock = new(); //support read/write locks
         private readonly ILogger logger = logger ?? NullLogger.Instance;
-        private readonly SemaphoreSlim seedingSemaphore = new(1, 1); //support async/await
 
         // Initializer.
         public void Initialize(
@@ -111,7 +114,7 @@ namespace Etherna.MongODM.Core
 
             // Initialize MongoDB database.
             Client = mongoClient;
-            Database = Client.GetDatabase(options.DbName, new MongoDatabaseSettings
+            database = Client.GetDatabase(options.DbName, new MongoDatabaseSettings
             {
                 SerializerRegistry = _serializerRegistry
             });
@@ -136,8 +139,8 @@ namespace Etherna.MongODM.Core
             // Dispose managed resources.
             if (disposing)
             {
+                exclusiveAccessSemaphore.Dispose();
                 isSeededLock.Dispose();
-                seedingSemaphore.Dispose();
             }
 
             disposed = true;
@@ -148,15 +151,24 @@ namespace Etherna.MongODM.Core
             DbCache.LoadedModels.Values
                 .Where(model => model is IAuditable { IsChanged: true })
                 .ToList();
-        public IMongoClient Client { get; private set; } = default!;
-        public IMongoDatabase Database { get; private set; } = default!;
-        public IDbCache DbCache { get; private set; } = default!;
-        public IDbMaintainer DbMaintainer { get; private set; } = default!;
-        public IDbMigrationManager DbMigrationManager { get; private set; } = default!;
-        public IRepository<OperationBase, string> DbOperations { get; private set; } = default!;
-        public IDiscriminatorRegistry DiscriminatorRegistry { get; private set; } = default!;
-        public virtual IEnumerable<DocumentMigration> DocumentMigrationList { get; } = Array.Empty<DocumentMigration>();
-        public IExecutionContext ExecutionContext { get; private set; } = default!;
+        public IMongoClient Client { get; private set; } = null!;
+        public IDbCache DbCache { get; private set; } = null!;
+        public IDbMaintainer DbMaintainer { get; private set; } = null!;
+        public IDbMigrationManager DbMigrationManager { get; private set; } = null!;
+        public IRepository<OperationBase, string> DbOperations { get; private set; } = null!;
+        public IDiscriminatorRegistry DiscriminatorRegistry { get; private set; } = null!;
+        public virtual IEnumerable<DocumentMigration> DocumentMigrationList { get; } = [];
+        public bool IsExclusiveReadEnabled
+        {
+            get => _isExclusiveReadEnabled;
+            private set => _isExclusiveReadEnabled = value;
+        }
+        public bool IsExclusiveWriteEnabled 
+        {
+            get => _isExclusiveWriteEnabled;
+            private set => _isExclusiveWriteEnabled = value;
+        }
+        public IExecutionContext ExecutionContext { get; private set; } = null!;
         public string Identifier => Options.Identifier ?? GetType().Name;
         public bool IsSeeded
         {
@@ -207,17 +219,63 @@ namespace Etherna.MongODM.Core
                 }
             }
         }
-        public IMapRegistry MapRegistry { get; private set; } = default!;
-        public IDbContextOptions Options { get; private set; } = default!;
-        public IProxyGenerator ProxyGenerator { get; private set; } = default!;
-        public IRepositoryRegistry RepositoryRegistry { get; private set; } = default!;
+        public IMapRegistry MapRegistry { get; private set; } = null!;
+        public IDbContextOptions Options { get; private set; } = null!;
+        public IProxyGenerator ProxyGenerator { get; private set; } = null!;
+        public IRepositoryRegistry RepositoryRegistry { get; private set; } = null!;
         public IBsonSerializerRegistry SerializerRegistry => _serializerRegistry;
-        public ISerializerModifierAccessor SerializerModifierAccessor { get; private set; } = default!;
+        public ISerializerModifierAccessor SerializerModifierAccessor { get; private set; } = null!;
 
         // Protected properties.
         protected abstract IEnumerable<IModelMapsCollector> ModelMapsCollectors { get; }
 
         // Methods.
+        public Task RunWithExclusiveAccessAsync(
+            Func<Task> action,
+            bool lockOnRead = true) =>
+            RunWithExclusiveAccessAsync(async () =>
+            {
+                await action().ConfigureAwait(false);
+                return 0;
+            }, lockOnRead);
+
+        public async Task<TResult> RunWithExclusiveAccessAsync<TResult>(
+            Func<Task<TResult>> func,
+            bool lockOnRead = true)
+        {
+            ArgumentNullException.ThrowIfNull(func, nameof(func));
+            
+            await exclusiveAccessSemaphore.WaitAsync().ConfigureAwait(false);
+            try
+            {
+                IsExclusiveReadEnabled = lockOnRead;
+                IsExclusiveWriteEnabled = true;
+
+                TResult result;
+                using (var _ = new ExclusiveAccessHandler(ExecutionContext))
+                {
+                    result = await func().ConfigureAwait(false);
+                }
+                
+                IsExclusiveWriteEnabled = false;
+                IsExclusiveReadEnabled = false;
+
+                return result;
+            }
+            finally
+            {
+                exclusiveAccessSemaphore.Release();
+            }
+        }
+
+        public IMongoCollection<TDocument> GetMongoCollection<TDocument>(
+            string name,
+            MongoCollectionSettings? settings = null)
+        {
+            var mongoCollection = database.GetCollection<TDocument>(name, settings);
+            return new LimitedAccessMongoCollection<TDocument>(this, mongoCollection, false);
+        }
+
         public virtual async Task SaveChangesAsync(CancellationToken cancellationToken = default)
         {
             /*
@@ -279,8 +337,7 @@ namespace Etherna.MongODM.Core
             if (IsSeeded)
                 return false;
 
-            await seedingSemaphore.WaitAsync().ConfigureAwait(false);
-            try
+            return await RunWithExclusiveAccessAsync(async () =>
             {
                 // Check again if seeded.
                 if (IsSeeded)
@@ -300,11 +357,7 @@ namespace Etherna.MongODM.Core
                 logger.DbContextSeeded(Options.DbName);
 
                 return true;
-            }
-            finally
-            {
-                seedingSemaphore.Release();
-            }
+            }).ConfigureAwait(false);
         }
 
         public Task<IClientSessionHandle> StartSessionAsync(CancellationToken cancellationToken = default) =>
