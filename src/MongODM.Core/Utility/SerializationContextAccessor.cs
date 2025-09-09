@@ -17,17 +17,9 @@ using Etherna.MongoDB.Bson.Serialization;
 
 namespace Etherna.MongODM.Core.Utility
 {
-    public class SerializationContextAccessor : ISerializationContextAccessor
+    public class SerializationContextAccessor(IExecutionContext executionContext)
+        : ISerializationContextAccessor
     {
-        // Fields.
-        private readonly IExecutionContext executionContext;
-
-        // Constructor.
-        public SerializationContextAccessor(IExecutionContext executionContext)
-        {
-            this.executionContext = executionContext;
-        }
-
         // Method.
         public IBsonSerializerRegistry? TryGetCurrentBsonSerializerRegistry()
         {

@@ -23,6 +23,7 @@ using Etherna.MongODM.Core.Repositories;
 using Etherna.MongODM.Core.Serialization.Mapping;
 using Etherna.MongODM.Core.Serialization.Modifiers;
 using Etherna.MongODM.Core.Utility;
+using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
@@ -39,11 +40,6 @@ namespace Etherna.MongODM.Core
         /// Current MongoDB client.
         /// </summary>
         IMongoClient Client { get; }
-        
-        /// <summary>
-        /// Current MongoDB database.
-        /// </summary>
-        IMongoDatabase Database { get; }
         
         /// <summary>
         /// Database cache container.
@@ -121,6 +117,16 @@ namespace Etherna.MongODM.Core
         IExecutionContext ExecutionContext { get; }
 
         // Methods.
+        Task RunExclusiveAccessAsync(
+            Func<Task> action,
+            bool lockOnRead = true);
+
+        Task<TResult> RunExclusiveAccessAsync<TResult>(
+            Func<Task<TResult>> func,
+            bool lockOnRead = true);
+        
+        IMongoCollection<TDocument> GetMongoCollection<TDocument>(string name, MongoCollectionSettings? settings = null);
+        
         /// <summary>
         /// Save current model changes on db.
         /// </summary>

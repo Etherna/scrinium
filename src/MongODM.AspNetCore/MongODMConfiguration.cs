@@ -25,20 +25,13 @@ using System.Threading;
 
 namespace Etherna.MongODM.AspNetCore
 {
-    public class MongODMConfiguration : IMongODMConfiguration, IDisposable
+    public class MongODMConfiguration(IServiceCollection services)
+        : IMongODMConfiguration, IDisposable
     {
         // Fields.
         private readonly ReaderWriterLockSlim configLock = new(LockRecursionPolicy.SupportsRecursion);
         private readonly List<Type> dbContextTypes = new();
         private bool disposed;
-        private readonly IServiceCollection services;
-
-        // Constructor.
-        public MongODMConfiguration(
-            IServiceCollection services)
-        {
-            this.services = services;
-        }
 
         // Dispose.
         public void Dispose()

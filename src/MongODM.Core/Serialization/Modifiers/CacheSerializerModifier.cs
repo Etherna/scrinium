@@ -27,7 +27,7 @@ namespace Etherna.MongODM.Core.Serialization.Modifiers
         private const string ModifierKey = "CacheSerializerModifier";
 
         // Fields.
-        private readonly ICollection<CacheSerializerModifier> requestes;
+        private readonly ICollection<CacheSerializerModifier> requests;
 
         // Constructors and dispose.
         public CacheSerializerModifier(IExecutionContext context)
@@ -39,16 +39,16 @@ namespace Etherna.MongODM.Core.Serialization.Modifiers
             if (!context.Items.ContainsKey(ModifierKey))
                 context.Items.Add(ModifierKey, new List<CacheSerializerModifier>());
 
-            requestes = (ICollection<CacheSerializerModifier>)context.Items[ModifierKey]!;
+            requests = (ICollection<CacheSerializerModifier>)context.Items[ModifierKey]!;
 
-            lock (((ICollection)requestes).SyncRoot)
-                requestes.Add(this);
+            lock (((ICollection)requests).SyncRoot)
+                requests.Add(this);
         }
 
         public void Dispose()
         {
-            lock (((ICollection)requestes).SyncRoot)
-                requestes.Remove(this);
+            lock (((ICollection)requests).SyncRoot)
+                requests.Remove(this);
         }
 
         // Properties.
@@ -60,12 +60,12 @@ namespace Etherna.MongODM.Core.Serialization.Modifiers
             if (context.Items is null)
                 throw new ExecutionContextNotFoundException();
 
-            if (!context.Items.ContainsKey(ModifierKey))
+            if (!context.Items.TryGetValue(ModifierKey, out var requestsObj))
                 return false;
-            var requestes = (ICollection<CacheSerializerModifier>)context.Items[ModifierKey]!;
+            var requests = (ICollection<CacheSerializerModifier>)requestsObj!;
 
-            lock (((ICollection)requestes).SyncRoot)
-                return requestes.Any(r => r.NoCache);
+            lock (((ICollection)requests).SyncRoot)
+                return requests.Any(r => r.NoCache);
         }
     }
 }

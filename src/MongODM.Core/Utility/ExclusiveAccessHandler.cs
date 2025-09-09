@@ -1,4 +1,4 @@
-﻿// Copyright 2020-present Etherna SA
+// Copyright 2020-present Etherna SA
 // This file is part of MongODM.
 // 
 // MongODM is free software: you can redistribute it and/or modify it under the terms of the
@@ -17,29 +17,28 @@ using Etherna.ExecContext.Exceptions;
 using System;
 using System.Collections;
 using System.Collections.Generic;
-using System.Linq;
 
-namespace Etherna.MongODM.Core.Serialization.Modifiers
+namespace Etherna.MongODM.Core.Utility
 {
-    internal sealed class ReferenceSerializerModifier : IDisposable
+    internal sealed class ExclusiveAccessHandler : IDisposable
     {
         // Consts.
-        private const string ModifierKey = "ReferenceSerializerModifier";
+        private const string HandlerKey = "ExclusiveAccessHandler";
 
         // Fields.
-        private readonly ICollection<ReferenceSerializerModifier> requests;
+        private readonly ICollection<ExclusiveAccessHandler> requests;
 
         // Constructors and dispose.
-        public ReferenceSerializerModifier(IExecutionContext context)
+        public ExclusiveAccessHandler(IExecutionContext context)
         {
             ArgumentNullException.ThrowIfNull(context, nameof(context));
             if (context.Items is null)
                 throw new ExecutionContextNotFoundException();
 
-            if (!context.Items.ContainsKey(ModifierKey))
-                context.Items.Add(ModifierKey, new List<ReferenceSerializerModifier>());
+            if (!context.Items.ContainsKey(HandlerKey))
+                context.Items.Add(HandlerKey, new List<ExclusiveAccessHandler>());
 
-            requests = (ICollection<ReferenceSerializerModifier>)context.Items[ModifierKey]!;
+            requests = (ICollection<ExclusiveAccessHandler>)context.Items[HandlerKey]!;
 
             lock (((ICollection)requests).SyncRoot)
                 requests.Add(this);
@@ -51,22 +50,18 @@ namespace Etherna.MongODM.Core.Serialization.Modifiers
                 requests.Remove(this);
         }
 
-        // Properties.
-        public bool ReadOnlyId { get; set; }
-
         // Static methods.
-        public static bool IsReadOnlyIdEnabled(IExecutionContext context)
+        public static bool IsExclusiveAccessAllowed(IExecutionContext context)
         {
-            ArgumentNullException.ThrowIfNull(context, nameof(context));
             if (context.Items is null)
                 throw new ExecutionContextNotFoundException();
 
-            if (!context.Items.TryGetValue(ModifierKey, out var requestsObj))
+            if (!context.Items.TryGetValue(HandlerKey, out var requestsObj))
                 return false;
-            var requests = (ICollection<ReferenceSerializerModifier>)requestsObj!;
+            var requests = (ICollection<ExclusiveAccessHandler>)requestsObj!;
 
             lock (((ICollection)requests).SyncRoot)
-                return requests.Any(r => r.ReadOnlyId);
+                return requests.Count != 0;
         }
     }
 }

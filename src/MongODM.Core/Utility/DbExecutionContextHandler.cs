@@ -28,7 +28,7 @@ namespace Etherna.MongODM.Core.Utility
 
         // Fields.
         private readonly IAsyncLocalContextHandler? asyncLocalContextHandler;
-        private readonly ICollection<DbExecutionContextHandler> requestes;
+        private readonly ICollection<DbExecutionContextHandler> requests;
 
         // Constructors and dispose.
         public DbExecutionContextHandler(
@@ -44,16 +44,16 @@ namespace Etherna.MongODM.Core.Utility
             if (!executionContext.Items!.ContainsKey(HandlerKey))
                 executionContext.Items.Add(HandlerKey, new List<DbExecutionContextHandler>());
 
-            requestes = (ICollection<DbExecutionContextHandler>)executionContext.Items[HandlerKey]!;
+            requests = (ICollection<DbExecutionContextHandler>)executionContext.Items[HandlerKey]!;
 
-            lock (((ICollection)requestes).SyncRoot)
-                requestes.Add(this);
+            lock (((ICollection)requests).SyncRoot)
+                requests.Add(this);
         }
 
         public void Dispose()
         {
-            lock (((ICollection)requestes).SyncRoot)
-                requestes.Remove(this);
+            lock (((ICollection)requests).SyncRoot)
+                requests.Remove(this);
 
             asyncLocalContextHandler?.Dispose();
         }
@@ -62,19 +62,18 @@ namespace Etherna.MongODM.Core.Utility
         public IDbContext DbContext { get; }
 
         // Static methods.
-        public static IDbContext? TryGetCurrentDbContext(IExecutionContext executionContext)
+        public static IDbContext? TryGetCurrentDbContext(IExecutionContext context)
         {
-            ArgumentNullException.ThrowIfNull(executionContext, nameof(executionContext));
+            ArgumentNullException.ThrowIfNull(context, nameof(context));
 
-            if (executionContext.Items is null ||
-                !executionContext.Items.ContainsKey(HandlerKey))
+            if (context.Items is null ||
+                !context.Items.TryGetValue(HandlerKey, out var requestsObj))
                 return null;
-
-            var requestes = (ICollection<DbExecutionContextHandler>)executionContext.Items[HandlerKey]!;
+            var requests = (ICollection<DbExecutionContextHandler>)requestsObj!;
 
             //get the last with a stack system, for recursing calls between different dbContexts
-            lock (((ICollection)requestes).SyncRoot)
-                return requestes.Reverse().FirstOrDefault()?.DbContext;
+            lock (((ICollection)requests).SyncRoot)
+                return requests.Reverse().FirstOrDefault()?.DbContext;
         }
     }
 }

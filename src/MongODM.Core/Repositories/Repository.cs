@@ -41,7 +41,7 @@ namespace Etherna.MongODM.Core.Repositories
         private const string IdElementName = "_id";
         
         // Fields.
-        private ILogger logger = default!;
+        private ILogger logger = null!;
         private readonly RepositoryOptions<TModel> options = options ?? throw new ArgumentNullException(nameof(options));
         private IMongoCollection<TModel> _collection = null!;
 
@@ -64,7 +64,7 @@ namespace Etherna.MongODM.Core.Repositories
         }
 
         // Properties.
-        public IDbContext DbContext { get; private set; } = default!;
+        public IDbContext DbContext { get; private set; } = null!;
         public Type KeyType => typeof(TKey);
         public Type ModelType => typeof(TModel);
         public bool IsInitialized { get; private set; }
@@ -87,7 +87,7 @@ namespace Etherna.MongODM.Core.Repositories
             ArgumentNullException.ThrowIfNull(func, nameof(func));
 
             // Initialize collection cache.
-            _collection ??= DbContext.Database.GetCollection<TModel>(options.Name);
+            _collection ??= DbContext.GetMongoCollection<TModel>(options.Name);
 
             // Invoke func into optional implicit execution context.
             DbExecutionContextHandler? dbExecContextHandler = null;
