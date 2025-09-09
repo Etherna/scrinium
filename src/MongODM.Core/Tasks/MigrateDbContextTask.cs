@@ -130,7 +130,7 @@ namespace Etherna.MongODM.Core.Tasks
                     dbMigrationOp.TaskFailed();
 
                 await dbContext.SaveChangesAsync().ConfigureAwait(false);
-            });
+            }).ConfigureAwait(false);
         }
     }
 }
