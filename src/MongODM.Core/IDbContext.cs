@@ -42,6 +42,11 @@ namespace Etherna.MongODM.Core
         IMongoClient Client { get; }
         
         /// <summary>
+        /// Current MongoDB database.
+        /// </summary>
+        IMongoDatabase Database { get; }
+        
+        /// <summary>
         /// Database cache container.
         /// </summary>
         IDbCache DbCache { get; }
@@ -117,6 +122,8 @@ namespace Etherna.MongODM.Core
         IExecutionContext ExecutionContext { get; }
 
         // Methods.
+        IMongoCollection<TDocument> GetMongoCollection<TDocument>(string name, MongoCollectionSettings? settings = null);
+        
         Task RunWithExclusiveAccessAsync(
             Func<Task> action,
             bool lockOnRead = true);
@@ -124,8 +131,6 @@ namespace Etherna.MongODM.Core
         Task<TResult> RunWithExclusiveAccessAsync<TResult>(
             Func<Task<TResult>> func,
             bool lockOnRead = true);
-        
-        IMongoCollection<TDocument> GetMongoCollection<TDocument>(string name, MongoCollectionSettings? settings = null);
         
         /// <summary>
         /// Save current model changes on db.
