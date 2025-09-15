@@ -57,11 +57,6 @@ namespace Etherna.MongODM.Core
         IDbMaintainer DbMaintainer { get; }
 
         /// <summary>
-        /// Manage migrations over database context
-        /// </summary>
-        IDbMigrationManager DbMigrationManager { get; }
-
-        /// <summary>
         /// Internal collection for keep db operations execution log
         /// </summary>
         IRepository<OperationBase, string> DbOperations { get; }
@@ -143,6 +138,8 @@ namespace Etherna.MongODM.Core
         /// </summary>
         /// <returns>True if seed has been executed. False otherwise</returns>
         Task<bool> SeedIfNeededAsync();
+        
+        Task StartMigrationAsync();
 
         /// <summary>
         /// Start a new database transaction session.

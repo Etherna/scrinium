@@ -14,6 +14,7 @@
 
 using Etherna.MongODM.Core;
 using Etherna.MongODM.Core.Options;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
@@ -24,6 +25,7 @@ using System.Threading.Tasks;
 
 namespace Etherna.MongODM.AspNetCore.UI.Areas.MongODM.Pages
 {
+    [IgnoreAntiforgeryToken]
     public class IndexModel : PageModel
     {
         // Fields.
@@ -42,7 +44,7 @@ namespace Etherna.MongODM.AspNetCore.UI.Areas.MongODM.Pages
         }
 
         // Properties.
-        public IEnumerable<IDbContext> DbContexts { get; private set; } = default!;
+        public IEnumerable<IDbContext> DbContexts { get; private set; } = null!;
 
         // Methods.
         public void OnGet()
@@ -58,7 +60,7 @@ namespace Etherna.MongODM.AspNetCore.UI.Areas.MongODM.Pages
             var dbcontext = DbContexts.First(dbc => dbc.Identifier == identifier);
 
             // Migrate.
-            await dbcontext.DbMigrationManager.StartDbContextMigrationAsync().ConfigureAwait(false);
+            await dbcontext.StartMigrationAsync().ConfigureAwait(false);
         }
 
         // Helpers.
