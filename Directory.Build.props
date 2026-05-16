@@ -1,0 +1,6 @@
+<Project>
+  <PropertyGroup>
+    <!-- Audit only direct dependencies, not transitive ones -->
+    <NuGetAuditMode>direct</NuGetAuditMode>
+  </PropertyGroup>
+</Project>
