@@ -31,7 +31,7 @@ namespace Etherna.MongODM.Core.Utility
         // Constructors and dispose.
         public ExclusiveAccessHandler(IExecutionContext context)
         {
-            ArgumentNullException.ThrowIfNull(context, nameof(context));
+            ArgumentNullException.ThrowIfNull(context);
             if (context.Items is null)
                 throw new ExecutionContextNotFoundException();
 

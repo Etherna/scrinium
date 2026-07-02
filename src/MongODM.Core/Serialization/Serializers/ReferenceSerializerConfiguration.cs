@@ -74,7 +74,7 @@ namespace Etherna.MongODM.Core.Serialization.Serializers
 
         public BsonElement GetActiveModelMapIdBsonElement(Type modelType)
         {
-            ArgumentNullException.ThrowIfNull(modelType, nameof(modelType));
+            ArgumentNullException.ThrowIfNull(modelType);
 
             Freeze(); //needed for initialization
 
@@ -87,7 +87,7 @@ namespace Etherna.MongODM.Core.Serialization.Serializers
 
         public IBsonSerializer GetSerializer(Type modelType, string? modelMapSchemaId)
         {
-            ArgumentNullException.ThrowIfNull(modelType, nameof(modelType));
+            ArgumentNullException.ThrowIfNull(modelType);
             if (!_modelMaps.TryGetValue(modelType, out var modelMap))
                 throw new InvalidOperationException("Can't identify registered schema for type " + modelType.Name);
 

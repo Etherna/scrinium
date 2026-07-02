@@ -24,7 +24,7 @@ namespace Etherna.MongODM.Core.Serialization.Serializers
         // Methods.
         public override string Deserialize(BsonDeserializationContext context, BsonDeserializationArgs args)
         {
-            ArgumentNullException.ThrowIfNull(context, nameof(context));
+            ArgumentNullException.ThrowIfNull(context);
 
             var bsonReader = context.Reader;
             var bsonType = bsonReader.GetCurrentBsonType();
@@ -46,7 +46,7 @@ namespace Etherna.MongODM.Core.Serialization.Serializers
 
         public override void Serialize(BsonSerializationContext context, BsonSerializationArgs args, string value)
         {
-            ArgumentNullException.ThrowIfNull(context, nameof(context));
+            ArgumentNullException.ThrowIfNull(context);
 
             if (value == null)
             {

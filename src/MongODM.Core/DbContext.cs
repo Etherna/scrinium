@@ -64,8 +64,8 @@ namespace Etherna.MongODM.Core
         {
             if (isInitialized)
                 throw new InvalidOperationException("DbContext already initialized");
-            ArgumentNullException.ThrowIfNull(dependencies, nameof(dependencies));
-            ArgumentNullException.ThrowIfNull(options, nameof(options));
+            ArgumentNullException.ThrowIfNull(dependencies);
+            ArgumentNullException.ThrowIfNull(options);
 
             // Set dependencies.
             this.childDbContexts = childDbContexts;
@@ -251,7 +251,7 @@ namespace Etherna.MongODM.Core
             Func<Task<TResult>> func,
             bool lockOnRead = true)
         {
-            ArgumentNullException.ThrowIfNull(func, nameof(func));
+            ArgumentNullException.ThrowIfNull(func);
             
             await exclusiveAccessSemaphore.WaitAsync().ConfigureAwait(false);
             try

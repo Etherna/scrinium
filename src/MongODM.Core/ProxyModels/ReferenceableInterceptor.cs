@@ -43,7 +43,7 @@ namespace Etherna.MongODM.Core.ProxyModels
             ILogger<ReferenceableInterceptor<TModel, TKey>> logger)
             : base(additionalInterfaces)
         {
-            ArgumentNullException.ThrowIfNull(dbContext, nameof(dbContext));
+            ArgumentNullException.ThrowIfNull(dbContext);
 
             repository = dbContext.RepositoryRegistry.GetRepositoryByHandledModelType(typeof(TModel));
             this.logger = logger;
@@ -52,7 +52,7 @@ namespace Etherna.MongODM.Core.ProxyModels
         // Protected methods.
         protected override bool InterceptInterface(IInvocation invocation)
         {
-            ArgumentNullException.ThrowIfNull(invocation, nameof(invocation));
+            ArgumentNullException.ThrowIfNull(invocation);
 
             // Intercept ISummarizable invocations
             if (invocation.Method.DeclaringType == typeof(IReferenceable))
@@ -95,7 +95,7 @@ namespace Etherna.MongODM.Core.ProxyModels
 
         protected override void InterceptModel(IInvocation invocation)
         {
-            ArgumentNullException.ThrowIfNull(invocation, nameof(invocation));
+            ArgumentNullException.ThrowIfNull(invocation);
 
             // Filter gets.
             if (invocation.Method.Name.StartsWith("get_", StringComparison.InvariantCulture) && isSummary)

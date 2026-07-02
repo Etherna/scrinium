@@ -141,7 +141,7 @@ namespace Etherna.MongODM.AspNetCore
 
         public void Freeze(IMongODMOptionsBuilder mongODMOptionsBuilder)
         {
-            ArgumentNullException.ThrowIfNull(mongODMOptionsBuilder, nameof(mongODMOptionsBuilder));
+            ArgumentNullException.ThrowIfNull(mongODMOptionsBuilder);
 
             configLock.EnterReadLock();
             try

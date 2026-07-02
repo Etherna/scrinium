@@ -28,7 +28,7 @@ namespace Etherna.MongODM.Core
 
         public static MemberInfo FindProperty(LambdaExpression lambdaExpression)
         {
-            ArgumentNullException.ThrowIfNull(lambdaExpression, nameof(lambdaExpression));
+            ArgumentNullException.ThrowIfNull(lambdaExpression);
 
             Expression expressionToCheck = lambdaExpression;
 
@@ -69,8 +69,8 @@ namespace Etherna.MongODM.Core
 
         public static PropertyInfo FindPropertyImplementation(PropertyInfo interfacePropertyInfo, Type actualType)
         {
-            ArgumentNullException.ThrowIfNull(interfacePropertyInfo, nameof(interfacePropertyInfo));
-            ArgumentNullException.ThrowIfNull(actualType, nameof(actualType));
+            ArgumentNullException.ThrowIfNull(interfacePropertyInfo);
+            ArgumentNullException.ThrowIfNull(actualType);
 
             var interfaceType = interfacePropertyInfo.DeclaringType!;
 
@@ -103,7 +103,7 @@ namespace Etherna.MongODM.Core
             Expression<Func<TModel, TMember>> memberLambda,
             Type? actualType = null)
         {
-            ArgumentNullException.ThrowIfNull(memberLambda, nameof(memberLambda));
+            ArgumentNullException.ThrowIfNull(memberLambda);
 
             var body = memberLambda.Body;
             MemberExpression memberExpression;
@@ -168,7 +168,7 @@ namespace Etherna.MongODM.Core
         /// <returns>The list of properties</returns>
         public static IEnumerable<PropertyInfo> GetWritableInstanceProperties(Type objectType)
         {
-            ArgumentNullException.ThrowIfNull(objectType, nameof(objectType));
+            ArgumentNullException.ThrowIfNull(objectType);
 
             propertyRegistryLock.EnterReadLock();
             try

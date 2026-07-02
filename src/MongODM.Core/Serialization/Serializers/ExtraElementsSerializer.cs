@@ -38,7 +38,7 @@ namespace Etherna.MongODM.Core.Serialization.Serializers
         // Methods.
         public override void Serialize(BsonSerializationContext context, BsonSerializationArgs args, object value)
         {
-            ArgumentNullException.ThrowIfNull(context, nameof(context));
+            ArgumentNullException.ThrowIfNull(context);
 
             if (value is IDictionary<string, object> dictionary)
             {

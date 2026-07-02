@@ -86,7 +86,7 @@ namespace Etherna.MongODM.Core.Conventions
         // Methods.
         public Type GetActualType(IBsonReader bsonReader, Type nominalType)
         {
-            ArgumentNullException.ThrowIfNull(bsonReader, nameof(bsonReader));
+            ArgumentNullException.ThrowIfNull(bsonReader);
 
             //the BsonReader is sitting at the value whose actual type needs to be found
             var bsonType = bsonReader.GetCurrentBsonType();

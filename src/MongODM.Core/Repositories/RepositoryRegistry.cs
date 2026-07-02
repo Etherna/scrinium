@@ -31,7 +31,7 @@ namespace Etherna.MongODM.Core.Repositories
         // Initializer.
         public void Initialize(IDbContext dbContext, ILogger logger)
         {
-            ArgumentNullException.ThrowIfNull(dbContext, nameof(dbContext));
+            ArgumentNullException.ThrowIfNull(dbContext);
             this.logger = logger ?? throw new ArgumentNullException(nameof(logger));
 
             if (IsInitialized)
@@ -79,7 +79,7 @@ namespace Etherna.MongODM.Core.Repositories
 
         public IRepository GetRepositoryByHandledModelType(Type modelType)
         {
-            ArgumentNullException.ThrowIfNull(modelType, nameof(modelType));
+            ArgumentNullException.ThrowIfNull(modelType);
             
             while (!_repositoriesByModelType.ContainsKey(modelType))
             {

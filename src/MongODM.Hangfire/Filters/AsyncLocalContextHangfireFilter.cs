@@ -34,7 +34,7 @@ namespace Etherna.MongODM.HF.Filters
         // Properties.
         public void OnPerforming(PerformingContext context)
         {
-            ArgumentNullException.ThrowIfNull(context, nameof(context));
+            ArgumentNullException.ThrowIfNull(context);
 
             lock (contextHandlers)
             {
@@ -44,7 +44,7 @@ namespace Etherna.MongODM.HF.Filters
 
         public void OnPerformed(PerformedContext context)
         {
-            ArgumentNullException.ThrowIfNull(context, nameof(context));
+            ArgumentNullException.ThrowIfNull(context);
 
             lock (contextHandlers)
             {

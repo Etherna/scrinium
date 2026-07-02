@@ -56,7 +56,7 @@ namespace Etherna.MongODM.Core.Utility
 
         public async Task<DbMigrationOperation> GetMigrationAsync(string migrateOperationId)
         {
-            ArgumentNullException.ThrowIfNull(migrateOperationId, nameof(migrateOperationId));
+            ArgumentNullException.ThrowIfNull(migrateOperationId);
 
             var migrateOp = await dbContext.DbOperations.QueryElementsAsync(elements =>
                 elements.OfType<DbMigrationOperation>()

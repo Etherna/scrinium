@@ -50,7 +50,7 @@ namespace Etherna.MongODM.Core.Serialization.Serializers
         // Public methods.
         public override void Serialize(BsonSerializationContext context, BsonSerializationArgs args, IDictionary<TKey, TValue> value)
         {
-            ArgumentNullException.ThrowIfNull(value, nameof(value));
+            ArgumentNullException.ThrowIfNull(value);
 
             // Force to exclude enumerable actual type from serialization.
             args = new BsonSerializationArgs(value.GetType(), true, args.SerializeIdFirst);

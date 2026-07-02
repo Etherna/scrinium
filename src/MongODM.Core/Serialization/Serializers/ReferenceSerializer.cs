@@ -52,7 +52,7 @@ namespace Etherna.MongODM.Core.Serialization.Serializers
             IDbContext dbContext,
             Action<ReferenceSerializerConfiguration> configure)
         {
-            ArgumentNullException.ThrowIfNull(configure, nameof(configure));
+            ArgumentNullException.ThrowIfNull(configure);
 
             this.dbContext = dbContext ?? throw new ArgumentNullException(nameof(dbContext));
 
@@ -105,7 +105,7 @@ namespace Etherna.MongODM.Core.Serialization.Serializers
         // Methods.
         public override TModelBase Deserialize(BsonDeserializationContext context, BsonDeserializationArgs args)
         {
-            ArgumentNullException.ThrowIfNull(context, nameof(context));
+            ArgumentNullException.ThrowIfNull(context);
 
             // Check bson type.
             var bsonType = context.Reader.GetCurrentBsonType();
@@ -221,7 +221,7 @@ namespace Etherna.MongODM.Core.Serialization.Serializers
 
         public bool GetDocumentId(object document, out object id, out Type idNominalType, out IIdGenerator idGenerator)
         {
-            ArgumentNullException.ThrowIfNull(document, nameof(document));
+            ArgumentNullException.ThrowIfNull(document);
 
             var serializer = Configuration.ModelMaps[document.GetType()].ActiveSchema.Serializer;
 
@@ -236,7 +236,7 @@ namespace Etherna.MongODM.Core.Serialization.Serializers
 
         public override void Serialize(BsonSerializationContext context, BsonSerializationArgs args, TModelBase value)
         {
-            ArgumentNullException.ThrowIfNull(context, nameof(context));
+            ArgumentNullException.ThrowIfNull(context);
 
             // Check value type.
             if (value == null)
@@ -273,7 +273,7 @@ namespace Etherna.MongODM.Core.Serialization.Serializers
 
         public void SetDocumentId(object document, object id)
         {
-            ArgumentNullException.ThrowIfNull(document, nameof(document));
+            ArgumentNullException.ThrowIfNull(document);
 
             var serializer = Configuration.ModelMaps[document.GetType()].ActiveSchema.Serializer;
 

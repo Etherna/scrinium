@@ -56,7 +56,7 @@ namespace Etherna.MongODM.Core.Domain.Models
         [PropertyAlterer(nameof(Logs))]
         public virtual void AddLog(MigrationLogBase log)
         {
-            ArgumentNullException.ThrowIfNull(log, nameof(log));
+            ArgumentNullException.ThrowIfNull(log);
 
             _logs.Add(log);
         }
@@ -96,7 +96,7 @@ namespace Etherna.MongODM.Core.Domain.Models
         [PropertyAlterer(nameof(TaskId))]
         public virtual void TaskStarted(string taskId)
         {
-            ArgumentNullException.ThrowIfNull(taskId, nameof(taskId));
+            ArgumentNullException.ThrowIfNull(taskId);
 
             if (CurrentStatus != Status.New)
                 throw new InvalidOperationException();

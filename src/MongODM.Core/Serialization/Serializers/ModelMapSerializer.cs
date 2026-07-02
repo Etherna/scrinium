@@ -48,7 +48,7 @@ namespace Etherna.MongODM.Core.Serialization.Serializers
         // Methods.
         public override TModel Deserialize(BsonDeserializationContext context, BsonDeserializationArgs args)
         {
-            ArgumentNullException.ThrowIfNull(context, nameof(context));
+            ArgumentNullException.ThrowIfNull(context);
 
             // Check if null.
             if (context.Reader.CurrentBsonType == BsonType.Null)
@@ -149,7 +149,7 @@ namespace Etherna.MongODM.Core.Serialization.Serializers
 
         public override void Serialize(BsonSerializationContext context, BsonSerializationArgs args, TModel value)
         {
-            ArgumentNullException.ThrowIfNull(context, nameof(context));
+            ArgumentNullException.ThrowIfNull(context);
 
             // Serialize null object.
             if (value == null)

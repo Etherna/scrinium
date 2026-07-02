@@ -40,7 +40,7 @@ namespace Etherna.MongODM.Core.FilterDefinition
             IMemberMap memberMap,
             TItem value)
         {
-            ArgumentNullException.ThrowIfNull(memberMap, nameof(memberMap));
+            ArgumentNullException.ThrowIfNull(memberMap);
             
             if (memberMap.ElementPathHasUndefinedDocumentElement)
                 throw new ArgumentException("Can't create filter with member map path having undefined document elements");

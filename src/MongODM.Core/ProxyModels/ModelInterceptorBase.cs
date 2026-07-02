@@ -30,7 +30,7 @@ namespace Etherna.MongODM.Core.ProxyModels
 
         public void Intercept(IInvocation invocation)
         {
-            ArgumentNullException.ThrowIfNull(invocation, nameof(invocation));
+            ArgumentNullException.ThrowIfNull(invocation);
 
             if (additionalInterfaces.Contains(invocation.Method.DeclaringType))
             {
@@ -68,7 +68,7 @@ namespace Etherna.MongODM.Core.ProxyModels
         /// <param name="invocation">Current invocation</param>
         protected virtual void InterceptModel(IInvocation invocation)
         {
-            ArgumentNullException.ThrowIfNull(invocation, nameof(invocation));
+            ArgumentNullException.ThrowIfNull(invocation);
 
             invocation.Proceed();
         }
