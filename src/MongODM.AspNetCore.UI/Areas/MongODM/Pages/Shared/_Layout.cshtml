@@ -1,38 +1,32 @@
-﻿<!DOCTYPE html>
+﻿@inject Etherna.MongODM.AspNetCore.UI.DashboardOptions dashboardOptions
+<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>@ViewData["Title"] - MongODM Dashboard</title>
-    <link rel="stylesheet" href="~/_content/MongODM.AspNetCore.UI/lib/bootstrap/dist/css/bootstrap.min.css" />
-    <link rel="stylesheet" href="~/_content/MongODM.AspNetCore.UI/css/mongodmDash.css" />
+    <link rel="stylesheet" href="~/_content/MongODM.AspNetCore.UI/css/mongodmDash.css" asp-append-version="true" />
 </head>
 <body>
-    <header>
-        <nav class="navbar navbar-expand-sm navbar-toggleable-sm navbar-light bg-white border-bottom box-shadow mb-3">
-            <div class="container">
-                <a class="navbar-brand" asp-area="" asp-page="/Index">MongODM Dashboard</a>
-                <button class="navbar-toggler" type="button" data-toggle="collapse" data-target=".navbar-collapse" aria-controls="navbarSupportedContent"
-                        aria-expanded="false" aria-label="Toggle navigation">
-                    <span class="navbar-toggler-icon"></span>
-                </button>
-            </div>
-        </nav>
+    <header class="site-header">
+        <div class="container header-row">
+            <a class="brand" asp-area="MongODM" asp-page="/Index">MongODM <span>Dashboard</span></a>
+            @if (!string.IsNullOrEmpty(dashboardOptions.AppPath))
+            {
+                <a class="back-link" href="@dashboardOptions.AppPath">Back to site</a>
+            }
+        </div>
     </header>
-    <div class="container">
-        <main role="main" class="pb-3">
-            @RenderBody()
-        </main>
-    </div>
+    <main role="main" class="container">
+        @RenderBody()
+    </main>
 
-    <footer class="border-top footer text-muted">
+    <footer class="site-footer">
         <div class="container">
-            &copy; 2020 - Etherna
+            &copy; Etherna SA
         </div>
     </footer>
 
-    <script src="~/_content/MongODM.AspNetCore.UI/lib/jquery/dist/jquery.min.js"></script>
-    <script src="~/_content/MongODM.AspNetCore.UI/lib/bootstrap/dist/js/bootstrap.bundle.min.js"></script>
     <script src="~/_content/MongODM.AspNetCore.UI/js/mongodmDash.js" asp-append-version="true"></script>
 
     @RenderSection("Scripts", required: false)

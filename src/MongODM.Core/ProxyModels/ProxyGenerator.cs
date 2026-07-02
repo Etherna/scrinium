@@ -75,8 +75,8 @@ namespace Etherna.MongODM.Core.ProxyModels
             IDbContext dbContext,
             params object[] constructorArguments)
         {
-            ArgumentNullException.ThrowIfNull(dbContext, nameof(dbContext));
-            ArgumentNullException.ThrowIfNull(type, nameof(type));
+            ArgumentNullException.ThrowIfNull(dbContext);
+            ArgumentNullException.ThrowIfNull(type);
 
             // If creation of proxy models are disabled, create a simple model instance.
             if (DisableCreationWithProxyTypes)
@@ -185,7 +185,7 @@ namespace Etherna.MongODM.Core.ProxyModels
 
         public Type PurgeProxyType(Type type)
         {
-            ArgumentNullException.ThrowIfNull(type, nameof(type));
+            ArgumentNullException.ThrowIfNull(type);
 
             return IsProxyType(type) ?
                 type.BaseType! :

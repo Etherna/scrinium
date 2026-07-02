@@ -26,7 +26,7 @@ namespace Etherna.MongODM.Core.Serialization.Providers
         // Methods.
         public override IBsonSerializer? GetSerializer(Type type, IBsonSerializerRegistry serializerRegistry)
         {
-            ArgumentNullException.ThrowIfNull(type, nameof(type));
+            ArgumentNullException.ThrowIfNull(type);
 
             var typeInfo = type.GetTypeInfo();
             if (typeInfo is { IsGenericType: true, ContainsGenericParameters: true })

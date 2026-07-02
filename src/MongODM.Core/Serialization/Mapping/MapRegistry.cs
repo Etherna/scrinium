@@ -60,7 +60,7 @@ namespace Etherna.MongODM.Core.Serialization.Mapping
             IBsonSerializer<TModel> customSerializer) =>
             ExecuteConfigAction(() =>
             {
-                ArgumentNullException.ThrowIfNull(customSerializer, nameof(customSerializer));
+                ArgumentNullException.ThrowIfNull(customSerializer);
 
                 // Register and return map configuration.
                 var customSerializerMap = new CustomSerializerMap<TModel>(customSerializer);
@@ -99,7 +99,7 @@ namespace Etherna.MongODM.Core.Serialization.Mapping
 
         public BsonElement GetActiveModelMapIdBsonElement(Type modelType)
         {
-            ArgumentNullException.ThrowIfNull(modelType, nameof(modelType));
+            ArgumentNullException.ThrowIfNull(modelType);
 
             Freeze(); //needed for initialization
 
@@ -112,7 +112,7 @@ namespace Etherna.MongODM.Core.Serialization.Mapping
 
         public IBsonSerializer GetMappedSerializer(Type modelType)
         {
-            ArgumentNullException.ThrowIfNull(modelType, nameof(modelType));
+            ArgumentNullException.ThrowIfNull(modelType);
             
             if (!_maps.TryGetValue(modelType, out var map))
                 throw new KeyNotFoundException(modelType.Name + " map is missing");
@@ -129,7 +129,7 @@ namespace Etherna.MongODM.Core.Serialization.Mapping
 
         public IEnumerable<IMemberMap> GetMemberMapsWithSameElementPath(IMemberMap memberMap)
         {
-            ArgumentNullException.ThrowIfNull(memberMap, nameof(memberMap));
+            ArgumentNullException.ThrowIfNull(memberMap);
             
             Freeze(); //needed for initialization
             return memberMapsByElementPath.TryGetValue(memberMap.MemberMapPath.First().ModelMapSchema.ModelMap, out var elementPathDictionary) &&
@@ -140,7 +140,7 @@ namespace Etherna.MongODM.Core.Serialization.Mapping
 
         public IModelMap GetModelMap(Type modelType)
         {
-            ArgumentNullException.ThrowIfNull(modelType, nameof(modelType));
+            ArgumentNullException.ThrowIfNull(modelType);
             
             if (!_maps.TryGetValue(modelType, out var map))
                 throw new KeyNotFoundException(modelType.Name + " map is missing");
@@ -153,7 +153,7 @@ namespace Etherna.MongODM.Core.Serialization.Mapping
 
         public bool TryGetMappedSerializer(Type modelType, out IBsonSerializer serializer)
         {
-            ArgumentNullException.ThrowIfNull(modelType, nameof(modelType));
+            ArgumentNullException.ThrowIfNull(modelType);
 
             if (_maps.TryGetValue(modelType, out var map))
             {
@@ -167,7 +167,7 @@ namespace Etherna.MongODM.Core.Serialization.Mapping
 
         public bool TryGetModelMap(Type modelType, out IModelMap modelMap)
         {
-            ArgumentNullException.ThrowIfNull(modelType, nameof(modelType));
+            ArgumentNullException.ThrowIfNull(modelType);
 
             if (_maps.TryGetValue(modelType, out var map) &&
                 map is IModelMap foundModelMap)

@@ -31,9 +31,12 @@ namespace Etherna.MongODM.AspNetCore.UI
             this IServiceCollection services,
             DashboardOptions? dashboardOptions = null)
         {
-            ArgumentNullException.ThrowIfNull(services, nameof(services));
+            ArgumentNullException.ThrowIfNull(services);
 
             dashboardOptions ??= new DashboardOptions();
+
+            // Register options for consumption from dashboard pages.
+            services.AddSingleton(dashboardOptions);
 
             services.Configure<RazorPagesOptions>(options =>
             {

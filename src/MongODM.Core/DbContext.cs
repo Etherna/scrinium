@@ -48,7 +48,6 @@ namespace Etherna.MongODM.Core
         private bool? _isSeeded;
         private BsonSerializerRegistry _serializerRegistry = null!;
         private IEnumerable<IDbContext> childDbContexts = null!;
-        private IDbMigrationManager dbMigrationManager = null!;
         private bool disposed;
         private readonly SemaphoreSlim exclusiveAccessSemaphore = new(1, 1); //support async/await
         private bool isInitialized;
@@ -64,14 +63,14 @@ namespace Etherna.MongODM.Core
         {
             if (isInitialized)
                 throw new InvalidOperationException("DbContext already initialized");
-            ArgumentNullException.ThrowIfNull(dependencies, nameof(dependencies));
-            ArgumentNullException.ThrowIfNull(options, nameof(options));
+            ArgumentNullException.ThrowIfNull(dependencies);
+            ArgumentNullException.ThrowIfNull(options);
 
             // Set dependencies.
             this.childDbContexts = childDbContexts;
             DbCache = dependencies.DbCache;
             DbMaintainer = dependencies.DbMaintainer;
-            dbMigrationManager = dependencies.DbMigrationManager;
+            DbMigrationManager = dependencies.DbMigrationManager;
             DbOperations = new Repository<OperationBase, string>(options.DbOperationsCollectionName);
             DiscriminatorRegistry = dependencies.DiscriminatorRegistry;
             ExecutionContext = dependencies.ExecutionContext;
@@ -88,7 +87,7 @@ namespace Etherna.MongODM.Core
             // Initialize internal dependencies.
             DbCache.Initialize(this, logger);
             DbMaintainer.Initialize(this, logger);
-            dbMigrationManager.Initialize(this, logger);
+            DbMigrationManager.Initialize(this, logger);
             DiscriminatorRegistry.Initialize(this, logger);
             MapRegistry.Initialize(this, logger);
             RepositoryRegistry.Initialize(this, logger);
@@ -155,6 +154,7 @@ namespace Etherna.MongODM.Core
         public IMongoDatabase Database { get; private set; } = null!;
         public IDbCache DbCache { get; private set; } = null!;
         public IDbMaintainer DbMaintainer { get; private set; } = null!;
+        public IDbMigrationManager DbMigrationManager { get; private set; } = null!;
         public IRepository<OperationBase, string> DbOperations { get; private set; } = null!;
         public IDiscriminatorRegistry DiscriminatorRegistry { get; private set; } = null!;
         public virtual IEnumerable<DocumentMigration> DocumentMigrationList { get; } = [];
@@ -251,7 +251,7 @@ namespace Etherna.MongODM.Core
             Func<Task<TResult>> func,
             bool lockOnRead = true)
         {
-            ArgumentNullException.ThrowIfNull(func, nameof(func));
+            ArgumentNullException.ThrowIfNull(func);
             
             await exclusiveAccessSemaphore.WaitAsync().ConfigureAwait(false);
             try
@@ -355,11 +355,11 @@ namespace Etherna.MongODM.Core
             }).ConfigureAwait(false);
         }
 
-        public Task StartMigrationAsync() =>
-            dbMigrationManager.StartDbContextMigrationAsync();
-
         public Task<IClientSessionHandle> StartSessionAsync(CancellationToken cancellationToken = default) =>
             Client.StartSessionAsync(cancellationToken: cancellationToken);
+
+        public Task<DbMigrationOperation?> TryStartMigrationAsync() =>
+            DbMigrationManager.TryStartDbContextMigrationAsync();
 
         // Protected methods.
         protected virtual Task SeedAsync() =>

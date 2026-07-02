@@ -23,14 +23,14 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 
-namespace Etherna.MongODM
+namespace Etherna.MongODM.AspNetCore.Extensions
 {
     public static class ApplicationBuilderExtensions
     {
         public static IApplicationBuilder SeedDbContexts(
             this IApplicationBuilder builder)
         {
-            ArgumentNullException.ThrowIfNull(builder, nameof(builder));
+            ArgumentNullException.ThrowIfNull(builder);
 
             var serviceProvider = builder.ApplicationServices;
             var mongODMOptions = serviceProvider.GetRequiredService<IOptions<MongODMOptions>>();

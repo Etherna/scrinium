@@ -1,20 +1,35 @@
 ﻿@page
 @model Etherna.MongODM.AspNetCore.UI.Areas.MongODM.Pages.IndexModel
 @{
-    ViewData["Title"] = "MongODM Dashboard";
+    ViewData["Title"] = "Db contexts";
 }
 
-<div class="row">
-    <div class="col-md-6">
-        @foreach (var context in Model.DbContexts)
-        {
-        <form method="post" class="form-horizontal">
-            <h2>@context.Identifier</h2>
+<div id="connection-banner" class="connection-banner" hidden>
+    Connection to the server lost. Retrying&hellip;
+</div>
 
-            <p>
-                <button type="submit" class="btn btn-primary" name="identifier" value="@context.Identifier" title="Start migration">Start migration</button>
-            </p>
-        </form>
-        }
-    </div>
+<div class="dbcontexts">
+    @foreach (var context in Model.DbContexts)
+    {
+        <section class="dbcontext-card" data-identifier="@context.Identifier">
+            <header class="dbcontext-card-header">
+                <h2>@context.Identifier</h2>
+                <span class="status-badge" data-role="status">&hellip;</span>
+                <button type="button" class="btn-start" data-role="start" disabled>Start migration</button>
+            </header>
+
+            <p class="action-feedback" data-role="feedback" hidden></p>
+
+            <div class="migration-live" data-role="live" hidden>
+                <h3><span class="spinner"></span> Migration in progress</h3>
+                <p class="migration-live-meta" data-role="live-meta"></p>
+                <ol class="log-list" data-role="logs"></ol>
+            </div>
+
+            <div class="migration-history">
+                <h3>Latest migrations</h3>
+                <div data-role="history"><p class="muted">Loading&hellip;</p></div>
+            </div>
+        </section>
+    }
 </div>

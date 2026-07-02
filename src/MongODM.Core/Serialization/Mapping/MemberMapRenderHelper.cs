@@ -29,7 +29,7 @@ namespace Etherna.MongODM.Core.Serialization.Mapping
             Func<ArrayElementRepresentation, string> undefinedArrayIndexSymbolSelector,
             Func<DocumentElementRepresentation, string> undefinedDocumentElementSymbolSelector)
         {
-            ArgumentNullException.ThrowIfNull(memberMapsPath, nameof(memberMapsPath));
+            ArgumentNullException.ThrowIfNull(memberMapsPath);
             
             var sb = new StringBuilder();
 
@@ -55,9 +55,9 @@ namespace Etherna.MongODM.Core.Serialization.Mapping
             Func<ArrayElementRepresentation, string> undefinedArrayIndexSymbolSelector,
             Func<DocumentElementRepresentation, string> undefinedDocumentElementSymbolSelector)
         {
-            ArgumentNullException.ThrowIfNull(elementsPath, nameof(elementsPath));
-            ArgumentNullException.ThrowIfNull(undefinedArrayIndexSymbolSelector, nameof(undefinedArrayIndexSymbolSelector));
-            ArgumentNullException.ThrowIfNull(undefinedDocumentElementSymbolSelector, nameof(undefinedDocumentElementSymbolSelector));
+            ArgumentNullException.ThrowIfNull(elementsPath);
+            ArgumentNullException.ThrowIfNull(undefinedArrayIndexSymbolSelector);
+            ArgumentNullException.ThrowIfNull(undefinedDocumentElementSymbolSelector);
             
             var sb = new StringBuilder();
 

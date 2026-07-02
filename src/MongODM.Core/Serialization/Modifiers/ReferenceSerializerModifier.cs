@@ -32,7 +32,7 @@ namespace Etherna.MongODM.Core.Serialization.Modifiers
         // Constructors and dispose.
         public ReferenceSerializerModifier(IExecutionContext context)
         {
-            ArgumentNullException.ThrowIfNull(context, nameof(context));
+            ArgumentNullException.ThrowIfNull(context);
             if (context.Items is null)
                 throw new ExecutionContextNotFoundException();
 
@@ -57,7 +57,7 @@ namespace Etherna.MongODM.Core.Serialization.Modifiers
         // Static methods.
         public static bool IsReadOnlyIdEnabled(IExecutionContext context)
         {
-            ArgumentNullException.ThrowIfNull(context, nameof(context));
+            ArgumentNullException.ThrowIfNull(context);
             if (context.Items is null)
                 throw new ExecutionContextNotFoundException();
 

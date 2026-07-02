@@ -49,8 +49,8 @@ namespace Etherna.MongODM.Core.Tasks
             bool withExclusiveAccessAllowance)
             where TDbContext : class, IDbContext
         {
-            ArgumentNullException.ThrowIfNull(idMemberMapIdentifiers, nameof(idMemberMapIdentifiers));
-            ArgumentNullException.ThrowIfNull(referencedModelId, nameof(referencedModelId));
+            ArgumentNullException.ThrowIfNull(idMemberMapIdentifiers);
+            ArgumentNullException.ThrowIfNull(referencedModelId);
 
             logger.UpdateDocDependenciesTaskStarted(typeof(TDbContext), referencedRepositoryName, referencedModelId.ToString()!, idMemberMapIdentifiers);
 

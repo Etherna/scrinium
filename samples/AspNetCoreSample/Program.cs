@@ -12,6 +12,7 @@
 // You should have received a copy of the GNU Lesser General Public License along with MongODM.
 // If not, see <https://www.gnu.org/licenses/>.
 
+using Etherna.MongODM.AspNetCore.Extensions;
 using Etherna.MongODM.AspNetCore.UI;
 using Etherna.MongODM.AspNetCoreSample.Persistence;
 using Hangfire;

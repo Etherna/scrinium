@@ -25,7 +25,7 @@ namespace Etherna.MongODM.Core.Extensions
     {
         public static bool IsEntity(this BsonClassMap classMap)
         {
-            ArgumentNullException.ThrowIfNull(classMap, nameof(classMap));
+            ArgumentNullException.ThrowIfNull(classMap);
 
             return classMap.IdMemberMap != null;
         }
@@ -41,7 +41,7 @@ namespace Etherna.MongODM.Core.Extensions
             Expression<Func<TModel, TMember>> memberLambda,
             IBsonSerializer<TMember> serializer)
         {
-            ArgumentNullException.ThrowIfNull(classMap, nameof(classMap));
+            ArgumentNullException.ThrowIfNull(classMap);
 
             var member = classMap.GetMemberMap(memberLambda);
             member ??= classMap.MapMember(memberLambda);
@@ -55,7 +55,7 @@ namespace Etherna.MongODM.Core.Extensions
         where TMember : class, TSerializer
         where TSerializer : class, IEntityModel<TKey>
         {
-            ArgumentNullException.ThrowIfNull(serializer, nameof(serializer));
+            ArgumentNullException.ThrowIfNull(serializer);
 
             if (typeof(TMember) == typeof(TSerializer))
                 return classMap.SetMemberSerializer(memberLambda, (IBsonSerializer<TMember>)serializer);
@@ -66,7 +66,7 @@ namespace Etherna.MongODM.Core.Extensions
         public static IBsonSerializer ToSerializer(
             this BsonClassMap classMap)
         {
-            ArgumentNullException.ThrowIfNull(classMap, nameof(classMap));
+            ArgumentNullException.ThrowIfNull(classMap);
             
             var classMapSerializerDefinition = typeof(BsonClassMapSerializer<>);
             var classMapSerializerType = classMapSerializerDefinition.MakeGenericType(classMap.ClassType);

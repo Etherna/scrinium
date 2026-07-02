@@ -19,22 +19,15 @@ using System.Collections.Generic;
 
 namespace Etherna.MongODM.HF.Filters
 {
-    public class AsyncLocalContextHangfireFilter : IServerFilter
+    public class AsyncLocalContextHangfireFilter(IAsyncLocalContext asyncLocalContext) : IServerFilter
     {
         // Fields.
         private readonly Dictionary<string, IAsyncLocalContextHandler> contextHandlers = new();
-        private readonly IAsyncLocalContext asyncLocalContext;
-
-        // Constructors.
-        public AsyncLocalContextHangfireFilter(IAsyncLocalContext asyncLocalContext)
-        {
-            this.asyncLocalContext = asyncLocalContext;
-        }
 
         // Properties.
         public void OnPerforming(PerformingContext context)
         {
-            ArgumentNullException.ThrowIfNull(context, nameof(context));
+            ArgumentNullException.ThrowIfNull(context);
 
             lock (contextHandlers)
             {
@@ -44,7 +37,7 @@ namespace Etherna.MongODM.HF.Filters
 
         public void OnPerformed(PerformedContext context)
         {
-            ArgumentNullException.ThrowIfNull(context, nameof(context));
+            ArgumentNullException.ThrowIfNull(context);
 
             lock (contextHandlers)
             {

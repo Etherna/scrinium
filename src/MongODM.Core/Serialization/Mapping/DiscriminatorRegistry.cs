@@ -76,8 +76,8 @@ namespace Etherna.MongODM.Core.Serialization.Mapping
         public void AddDiscriminator(Type type, BsonValue discriminator)
         {
             // Checks.
-            ArgumentNullException.ThrowIfNull(type, nameof(type));
-            ArgumentNullException.ThrowIfNull(discriminator, nameof(discriminator));
+            ArgumentNullException.ThrowIfNull(type);
+            ArgumentNullException.ThrowIfNull(discriminator);
 
             var typeInfo = type.GetTypeInfo();
             if (typeInfo.IsInterface)
@@ -108,8 +108,8 @@ namespace Etherna.MongODM.Core.Serialization.Mapping
 
         public void AddDiscriminatorConvention(Type type, IDiscriminatorConvention convention)
         {
-            ArgumentNullException.ThrowIfNull(type, nameof(type));
-            ArgumentNullException.ThrowIfNull(convention, nameof(convention));
+            ArgumentNullException.ThrowIfNull(type);
+            ArgumentNullException.ThrowIfNull(convention);
 
             configLock.EnterWriteLock();
             try

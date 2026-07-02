@@ -32,7 +32,7 @@ namespace Etherna.MongODM.Core.Serialization.Modifiers
         // Constructors and dispose.
         public CacheSerializerModifier(IExecutionContext context)
         {
-            ArgumentNullException.ThrowIfNull(context, nameof(context));
+            ArgumentNullException.ThrowIfNull(context);
             if (context.Items is null)
                 throw new ExecutionContextNotFoundException();
 

@@ -83,7 +83,7 @@ namespace Etherna.MongODM.Core.Repositories
             Func<IMongoCollection<TModel>, Task<TResult>> func,
             bool handleImplicitDbExecutionContext = true)
         {
-            ArgumentNullException.ThrowIfNull(func, nameof(func));
+            ArgumentNullException.ThrowIfNull(func);
 
             // Initialize collection cache.
             _collection ??= DbContext.GetMongoCollection<TModel>(options.Name);
@@ -130,7 +130,7 @@ namespace Etherna.MongODM.Core.Repositories
 
         public virtual async Task CreateAsync(TModel model, CancellationToken cancellationToken = default)
         {
-            ArgumentNullException.ThrowIfNull(model, nameof(model));
+            ArgumentNullException.ThrowIfNull(model);
 
             await CreateOnDBAsync(model, cancellationToken).ConfigureAwait(false);
 
@@ -150,7 +150,7 @@ namespace Etherna.MongODM.Core.Repositories
             FilterDefinition<TModel>[]? additionalFilters = null,
             CancellationToken cancellationToken = default)
         {
-            ArgumentNullException.ThrowIfNull(model, nameof(model));
+            ArgumentNullException.ThrowIfNull(model);
 
             // Unlink dependent models.
             model.DisposeForDelete();
@@ -286,7 +286,7 @@ namespace Etherna.MongODM.Core.Repositories
 
         public string ModelIdToString(object model)
         {
-            ArgumentNullException.ThrowIfNull(model, nameof(model));
+            ArgumentNullException.ThrowIfNull(model);
             if (model is not TModel typedModel)
                 throw new ArgumentException($"Model is not of {model.GetType().Name} type", nameof(model));
             if (typedModel.Id is null)
@@ -300,7 +300,7 @@ namespace Etherna.MongODM.Core.Repositories
             AggregateOptions? aggregateOptions = null) =>
             AccessToCollectionAsync(collection =>
             {
-                ArgumentNullException.ThrowIfNull(query, nameof(query));
+                ArgumentNullException.ThrowIfNull(query);
 
                 var result = query(collection.AsQueryable(aggregateOptions));
 
@@ -423,7 +423,7 @@ namespace Etherna.MongODM.Core.Repositories
 
         public async Task<TModel?> TryFindOneAsync(Expression<Func<TModel, bool>> predicate, CancellationToken cancellationToken = default)
         {
-            ArgumentNullException.ThrowIfNull(predicate, nameof(predicate));
+            ArgumentNullException.ThrowIfNull(predicate);
 
             try
             {
@@ -586,7 +586,7 @@ namespace Etherna.MongODM.Core.Repositories
             CancellationToken cancellationToken) =>
             AccessToCollectionAsync(collection =>
             {
-                ArgumentNullException.ThrowIfNull(model, nameof(model));
+                ArgumentNullException.ThrowIfNull(model);
 
                 var idFilter = Builders<TModel>.Filter.Eq(m => m.Id, model.Id);
 
@@ -618,7 +618,7 @@ namespace Etherna.MongODM.Core.Repositories
             CancellationToken cancellationToken = default) =>
             AccessToCollectionAsync(async collection =>
             {
-                ArgumentNullException.ThrowIfNull(predicate, nameof(predicate));
+                ArgumentNullException.ThrowIfNull(predicate);
 
                 using var cursor = await collection.FindAsync(predicate, cancellationToken: cancellationToken).ConfigureAwait(false);
                 var model = await cursor.FirstOrDefaultAsync(cancellationToken).ConfigureAwait(false);
@@ -638,7 +638,7 @@ namespace Etherna.MongODM.Core.Repositories
             CancellationToken cancellationToken) =>
             AccessToCollectionAsync(async collection =>
             {
-                ArgumentNullException.ThrowIfNull(model, nameof(model));
+                ArgumentNullException.ThrowIfNull(model);
 
                 // Replace on db.
                 if (session == null)

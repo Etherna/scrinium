@@ -41,7 +41,7 @@ namespace Etherna.MongODM.Core.Serialization.Mapping
             Type modelType)
             : base(modelType)
         {
-            ArgumentNullException.ThrowIfNull(modelType, nameof(modelType));
+            ArgumentNullException.ThrowIfNull(modelType);
             
             DbContext = dbContext ?? throw new ArgumentNullException(nameof(dbContext));
 
@@ -135,7 +135,7 @@ namespace Etherna.MongODM.Core.Serialization.Mapping
         protected void AddFallbackCustomSerializerHelper(IBsonSerializer fallbackSerializer) =>
             ExecuteConfigAction(() =>
             {
-                ArgumentNullException.ThrowIfNull(fallbackSerializer, nameof(fallbackSerializer));
+                ArgumentNullException.ThrowIfNull(fallbackSerializer);
                 if (FallbackSerializer is not null)
                     throw new InvalidOperationException("Fallback serializer already setted");
 
@@ -145,7 +145,7 @@ namespace Etherna.MongODM.Core.Serialization.Mapping
         protected void AddFallbackModelMapSchemaHelper(IModelMapSchema fallbackSchema) =>
             ExecuteConfigAction(() =>
             {
-                ArgumentNullException.ThrowIfNull(fallbackSchema, nameof(fallbackSchema));
+                ArgumentNullException.ThrowIfNull(fallbackSchema);
                 if (FallbackSchema is not null)
                     throw new InvalidOperationException("Fallback model map schema already setted");
 
@@ -155,7 +155,7 @@ namespace Etherna.MongODM.Core.Serialization.Mapping
         protected void AddSecondarySchemaHelper(IModelMapSchema schema) =>
             ExecuteConfigAction(() =>
             {
-                ArgumentNullException.ThrowIfNull(schema, nameof(schema));
+                ArgumentNullException.ThrowIfNull(schema);
 
                 // Try to use proxy model generator.
                 schema.TryUseProxyGenerator(DbContext);
