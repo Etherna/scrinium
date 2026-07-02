@@ -1,71 +1,324 @@
-﻿/* Please see documentation at https://docs.microsoft.com/aspnet/core/client-side/bundling-and-minification
-for details on configuring this project to bundle and minify static web assets. */
-
-a.navbar-brand {
-  white-space: normal;
-  text-align: center;
-  word-break: break-all;
+﻿:root {
+  --accent: #1b6ec2;
+  --accent-dark: #1861ac;
+  --bg: #f4f6f8;
+  --card-bg: #ffffff;
+  --text: #1f2937;
+  --text-muted: #6b7280;
+  --border: #e5e7eb;
+  --success: #15803d;
+  --success-bg: #dcfce7;
+  --warning: #b45309;
+  --warning-bg: #fef3c7;
+  --danger: #b91c1c;
+  --danger-bg: #fee2e2;
+  --neutral: #4b5563;
+  --neutral-bg: #f3f4f6;
 }
 
-/* Provide sufficient contrast against white background */
-a {
-  color: #0366d6;
+* {
+  box-sizing: border-box;
 }
 
-.btn-primary {
-  color: #fff;
-  background-color: #1b6ec2;
-  border-color: #1861ac;
+[hidden] {
+  display: none !important;
 }
 
-.nav-pills .nav-link.active, .nav-pills .show > .nav-link {
-  color: #fff;
-  background-color: #1b6ec2;
-  border-color: #1861ac;
-}
-
-/* Sticky footer styles
--------------------------------------------------- */
 html {
-  font-size: 14px;
-}
-@media (min-width: 768px) {
-  html {
-    font-size: 16px;
-  }
-}
-
-.border-top {
-  border-top: 1px solid #e5e5e5;
-}
-.border-bottom {
-  border-bottom: 1px solid #e5e5e5;
-}
-
-.box-shadow {
-  box-shadow: 0 .25rem .75rem rgba(0, 0, 0, .05);
-}
-
-button.accept-policy {
-  font-size: 1rem;
-  line-height: inherit;
-}
-
-/* Sticky footer styles
--------------------------------------------------- */
-html {
-  position: relative;
-  min-height: 100%;
+  font-size: 16px;
 }
 
 body {
-  /* Margin bottom by footer height */
-  margin-bottom: 60px;
+  margin: 0;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  background-color: var(--bg);
+  color: var(--text);
 }
-.footer {
-  position: absolute;
-  bottom: 0;
+
+.container {
   width: 100%;
+  max-width: 60rem;
+  margin: 0 auto;
+  padding: 0 1rem;
+}
+
+main.container {
+  flex: 1;
+  padding-top: 1.5rem;
+  padding-bottom: 2rem;
+}
+
+/* Header and footer
+-------------------------------------------------- */
+.site-header {
+  background-color: #111827;
+  padding: 0.75rem 0;
+}
+
+.header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.brand {
+  color: #f9fafb;
+  font-size: 1.15rem;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.brand span {
+  color: #9ca3af;
+  font-weight: 400;
+}
+
+.back-link {
+  color: #9ca3af;
+  font-size: 0.9rem;
+  text-decoration: none;
   white-space: nowrap;
-  line-height: 60px; /* Vertically center the text there */
+}
+
+.back-link::before {
+  content: "\2190\00a0";
+}
+
+.back-link:hover {
+  color: #f9fafb;
+}
+
+.site-footer {
+  border-top: 1px solid var(--border);
+  padding: 0.75rem 0;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+
+/* Connection banner
+-------------------------------------------------- */
+.connection-banner {
+  background-color: var(--danger-bg);
+  color: var(--danger);
+  border: 1px solid var(--danger);
+  border-radius: 0.5rem;
+  padding: 0.5rem 1rem;
+  margin-bottom: 1rem;
+}
+
+/* DbContext cards
+-------------------------------------------------- */
+.dbcontexts {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.dbcontext-card {
+  background-color: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 0.75rem;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+  padding: 1.25rem 1.5rem;
+}
+
+.dbcontext-card-header {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.dbcontext-card-header h2 {
+  margin: 0;
+  font-size: 1.25rem;
+  flex: 1;
+}
+
+.dbcontext-card h3 {
+  font-size: 0.95rem;
+  margin: 0 0 0.5rem;
+}
+
+.muted {
+  color: var(--text-muted);
+}
+
+/* Status badge
+-------------------------------------------------- */
+.status-badge {
+  display: inline-block;
+  padding: 0.2rem 0.7rem;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  background-color: var(--neutral-bg);
+  color: var(--neutral);
+}
+
+.status-badge.idle {
+  background-color: var(--success-bg);
+  color: var(--success);
+}
+
+.status-badge.running {
+  background-color: var(--warning-bg);
+  color: var(--warning);
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+.status-badge.locked {
+  background-color: var(--danger-bg);
+  color: var(--danger);
+}
+
+@keyframes pulse {
+  50% {
+    opacity: 0.55;
+  }
+}
+
+/* Buttons and feedback
+-------------------------------------------------- */
+.btn-start {
+  background-color: var(--accent);
+  border: 1px solid var(--accent-dark);
+  border-radius: 0.5rem;
+  color: #fff;
+  cursor: pointer;
+  font-size: 0.9rem;
+  padding: 0.45rem 1rem;
+}
+
+.btn-start:hover:not(:disabled) {
+  background-color: var(--accent-dark);
+}
+
+.btn-start:disabled {
+  background-color: var(--neutral-bg);
+  border-color: var(--border);
+  color: var(--text-muted);
+  cursor: not-allowed;
+}
+
+.action-feedback {
+  background-color: var(--warning-bg);
+  border-radius: 0.5rem;
+  color: var(--warning);
+  margin: 0.75rem 0 0;
+  padding: 0.5rem 0.75rem;
+}
+
+/* Live migration log
+-------------------------------------------------- */
+.migration-live {
+  border: 1px solid var(--warning);
+  border-radius: 0.5rem;
+  background-color: #fffbeb;
+  margin-top: 1rem;
+  padding: 0.75rem 1rem;
+}
+
+.migration-live-meta {
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  margin: 0 0 0.5rem;
+}
+
+.spinner {
+  display: inline-block;
+  width: 0.8rem;
+  height: 0.8rem;
+  border: 2px solid var(--warning);
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  vertical-align: baseline;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.log-list {
+  list-style: none;
+  margin: 0;
+  padding: 0.5rem;
+  max-height: 20rem;
+  overflow-y: auto;
+  background-color: #111827;
+  border-radius: 0.4rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.8rem;
+}
+
+.log-entry {
+  display: flex;
+  gap: 0.6rem;
+  align-items: baseline;
+  padding: 0.15rem 0.25rem;
+  color: #e5e7eb;
+}
+
+.log-entry time {
+  color: #9ca3af;
+  white-space: nowrap;
+}
+
+.log-state {
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.log-entry.executing .log-state {
+  color: #fbbf24;
+}
+
+.log-entry.succeded .log-state {
+  color: #4ade80;
+}
+
+.log-entry.failed .log-state {
+  color: #f87171;
+}
+
+.log-entry.skipped .log-state {
+  color: #9ca3af;
+}
+
+/* Migrations history
+-------------------------------------------------- */
+.migration-history {
+  margin-top: 1.25rem;
+}
+
+.history-entry {
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.history-entry summary {
+  cursor: pointer;
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+  flex-wrap: wrap;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.9rem;
+}
+
+.history-entry .log-list {
+  margin: 0 0.75rem 0.75rem;
+}
+
+.history-dates {
+  color: var(--text-muted);
+  font-size: 0.85rem;
 }

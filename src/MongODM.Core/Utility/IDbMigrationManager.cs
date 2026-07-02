@@ -27,8 +27,9 @@ namespace Etherna.MongODM.Core.Utility
         Task<DbMigrationOperation> GetMigrationAsync(string migrateOperationId);
 
         /// <summary>
-        /// Start a db context migration process.
+        /// Try to start a db context migration process, if no other migration is queued or running.
         /// </summary>
-        Task StartDbContextMigrationAsync();
+        /// <returns>The new migration operation, or null if another one is already in progress</returns>
+        Task<DbMigrationOperation?> TryStartDbContextMigrationAsync();
     }
 }

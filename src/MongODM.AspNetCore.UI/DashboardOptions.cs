@@ -19,15 +19,12 @@ namespace Etherna.MongODM.AspNetCore.UI
 {
     public class DashboardOptions
     {
-        // Constructor.
-        public DashboardOptions()
-        {
-            AuthFilters = new[] { new LocalRequestsOnlyAuthFilter() };
-            BasePath = "MongODM";
-        }
-
         // Properties.
-        public IEnumerable<IDashboardAuthFilter> AuthFilters { get; set; }
-        public string BasePath { get; set; }
+        /// <summary>
+        /// Path or URL of the back link to the main application. Set null to hide the link.
+        /// </summary>
+        public string? AppPath { get; set; } = "/";
+        public IEnumerable<IDashboardAuthFilter> AuthFilters { get; set; } = [new LocalRequestsOnlyAuthFilter()];
+        public string BasePath { get; set; } = "MongODM";
     }
 }

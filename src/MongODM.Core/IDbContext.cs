@@ -57,6 +57,11 @@ namespace Etherna.MongODM.Core
         IDbMaintainer DbMaintainer { get; }
 
         /// <summary>
+        /// Database operator interested into migrations execution.
+        /// </summary>
+        IDbMigrationManager DbMigrationManager { get; }
+
+        /// <summary>
         /// Internal collection for keep db operations execution log
         /// </summary>
         IRepository<OperationBase, string> DbOperations { get; }
@@ -75,6 +80,16 @@ namespace Etherna.MongODM.Core
         /// DbContext unique identifier.
         /// </summary>
         string Identifier { get; }
+
+        /// <summary>
+        /// True if an exclusive access operation is running, locking read access for other contexts.
+        /// </summary>
+        bool IsExclusiveReadEnabled { get; }
+
+        /// <summary>
+        /// True if an exclusive access operation is running, locking write access for other contexts.
+        /// </summary>
+        bool IsExclusiveWriteEnabled { get; }
 
         /// <summary>
         /// True if it has been seeded.
@@ -139,13 +154,17 @@ namespace Etherna.MongODM.Core
         /// <returns>True if seed has been executed. False otherwise</returns>
         Task<bool> SeedIfNeededAsync();
         
-        Task StartMigrationAsync();
-
         /// <summary>
         /// Start a new database transaction session.
         /// </summary>
         /// <param name="cancellationToken">Cancellation token</param>
         /// <returns>The session handler</returns>
         Task<IClientSessionHandle> StartSessionAsync(CancellationToken cancellationToken = default);
+
+        /// <summary>
+        /// Try to start a db context migration process, if no other migration is queued or running.
+        /// </summary>
+        /// <returns>The new migration operation, or null if another one is already in progress</returns>
+        Task<DbMigrationOperation?> TryStartMigrationAsync();
     }
 }
