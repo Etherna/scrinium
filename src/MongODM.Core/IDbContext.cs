@@ -149,7 +149,7 @@ namespace Etherna.MongODM.Core
         Task SaveChangesAsync(CancellationToken cancellationToken = default);
 
         /// <summary>
-        /// Seed database context if still not seeded
+        /// Seed database context if still not seeded, applying a db migration before the seed
         /// </summary>
         /// <returns>True if seed has been executed. False otherwise</returns>
         Task<bool> SeedIfNeededAsync();
