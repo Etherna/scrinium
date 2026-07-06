@@ -20,6 +20,15 @@ namespace Etherna.MongODM.Core.Utility
 {
     public interface IDbMigrationManager : IDbContextInitializable
     {
+        /// <summary>
+        /// Execute a db context migration process: delete old indexes, migrate documents, and build new indexes.
+        /// The caller must already hold an exclusive access on the db context.
+        /// </summary>
+        /// <param name="dbMigrationOpId">Id of the migration operation to execute</param>
+        /// <param name="taskId">Optional id of the background task running the migration</param>
+        /// <param name="throwOnErrors">If true, throw an exception when the migration completes with errors</param>
+        Task ExecuteDbContextMigrationAsync(string dbMigrationOpId, string? taskId = null, bool throwOnErrors = false);
+
         Task<DbMigrationOperation?> IsMigrationRunningAsync();
 
         Task<List<DbMigrationOperation>> GetLastMigrationsAsync(int page, int take);

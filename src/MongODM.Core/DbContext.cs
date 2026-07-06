@@ -338,6 +338,12 @@ namespace Etherna.MongODM.Core
                 if (IsSeeded)
                     return false;
 
+                // Apply db migration, blocking seed in case of errors.
+                // This creates indexes by default on each new database.
+                var dbMigrationOp = new DbMigrationOperation(this);
+                await DbOperations.CreateAsync(dbMigrationOp).ConfigureAwait(false);
+                await DbMigrationManager.ExecuteDbContextMigrationAsync(dbMigrationOp.Id, throwOnErrors: true).ConfigureAwait(false);
+
                 // Seed.
                 try { await SeedAsync().ConfigureAwait(false); }
                 catch (Exception e) { throw new MongodmDbSeedingException($"Error seeding {GetType().Name} dbContext", e); }

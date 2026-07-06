@@ -32,7 +32,7 @@ namespace Etherna.MongODM.Core.Domain.Models
         }
 
         // Fields.
-        private List<MigrationLogBase> _logs = new();
+        private List<MigrationLogBase> _logs = [];
 
         // Constructors.
         public DbMigrationOperation(IDbContext dbContext)
@@ -48,7 +48,7 @@ namespace Etherna.MongODM.Core.Domain.Models
         public virtual IEnumerable<MigrationLogBase> Logs
         {
             get => _logs;
-            protected set => _logs = new List<MigrationLogBase>(value ?? Array.Empty<MigrationLogBase>());
+            protected set => _logs = [..value ?? []];
         }
         public virtual string? TaskId { get; protected set; }
 
@@ -64,8 +64,7 @@ namespace Etherna.MongODM.Core.Domain.Models
         [PropertyAlterer(nameof(CurrentStatus))]
         public virtual void TaskCancelled()
         {
-            if (CurrentStatus == Status.Completed ||
-                CurrentStatus == Status.Failed)
+            if (CurrentStatus is Status.Completed or Status.Failed)
                 throw new InvalidOperationException();
 
             CurrentStatus = Status.Cancelled;
@@ -85,8 +84,7 @@ namespace Etherna.MongODM.Core.Domain.Models
         [PropertyAlterer(nameof(CurrentStatus))]
         public virtual void TaskFailed()
         {
-            if (CurrentStatus == Status.Completed ||
-                CurrentStatus == Status.Cancelled)
+            if (CurrentStatus is Status.Completed or Status.Cancelled)
                 throw new InvalidOperationException();
 
             CurrentStatus = Status.Failed;
@@ -94,10 +92,8 @@ namespace Etherna.MongODM.Core.Domain.Models
 
         [PropertyAlterer(nameof(CurrentStatus))]
         [PropertyAlterer(nameof(TaskId))]
-        public virtual void TaskStarted(string taskId)
+        public virtual void TaskStarted(string? taskId = null)
         {
-            ArgumentNullException.ThrowIfNull(taskId);
-
             if (CurrentStatus != Status.New)
                 throw new InvalidOperationException();
 

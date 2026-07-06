@@ -14,6 +14,8 @@
 
 using Etherna.MongoDB.Driver.Linq;
 using Etherna.MongODM.Core.Domain.Models;
+using Etherna.MongODM.Core.Domain.Models.DbMigrationOpAgg;
+using Etherna.MongODM.Core.Exceptions;
 using Etherna.MongODM.Core.Extensions;
 using Etherna.MongODM.Core.Tasks;
 using Microsoft.Extensions.Logging;
@@ -48,6 +50,118 @@ namespace Etherna.MongODM.Core.Utility
         public bool IsInitialized { get; private set; }
 
         // Methods.
+        public async Task ExecuteDbContextMigrationAsync(string dbMigrationOpId, string? taskId = null, bool throwOnErrors = false)
+        {
+            ArgumentNullException.ThrowIfNull(dbMigrationOpId);
+
+            var dbMigrationOp = (DbMigrationOperation)await dbContext.DbOperations.FindOneAsync(dbMigrationOpId).ConfigureAwait(false);
+            List<Exception> errors = [];
+
+            // Start migrate operation.
+            dbMigrationOp.TaskStarted(taskId);
+            await dbContext.SaveChangesAsync().ConfigureAwait(false);
+
+            // Remove old indexes.
+            foreach (var repository in dbContext.RepositoryRegistry.Repositories)
+            {
+                dbMigrationOp.AddLog(new DeleteOldIndexesMigrationLog(
+                    repository.Name,
+                    MigrationLogBase.ExecutionState.Executing));
+                await dbContext.SaveChangesAsync().ConfigureAwait(false);
+
+                try
+                {
+                    await repository.DeleteOldIndexesAsync().ConfigureAwait(false);
+
+                    dbMigrationOp.AddLog(new DeleteOldIndexesMigrationLog(
+                        repository.Name,
+                        MigrationLogBase.ExecutionState.Succeded));
+                }
+                catch (Exception e)
+                {
+                    errors.Add(e);
+
+                    dbMigrationOp.AddLog(new DeleteOldIndexesMigrationLog(
+                        repository.Name,
+                        MigrationLogBase.ExecutionState.Failed));
+                }
+
+                await dbContext.SaveChangesAsync().ConfigureAwait(false);
+            }
+
+            // Migrate documents.
+            foreach (var docMigration in dbContext.DocumentMigrationList)
+            {
+                //running document migration
+                var result = await docMigration.MigrateAsync(500,
+                    async procDocs =>
+                    {
+                        dbMigrationOp.AddLog(new DocumentMigrationLog(
+                            docMigration.SourceRepository.Name,
+                            MigrationLogBase.ExecutionState.Executing,
+                            procDocs));
+
+                        await dbContext.SaveChangesAsync().ConfigureAwait(false);
+                    }).ConfigureAwait(false);
+
+                if (!result.Succeded)
+                    errors.Add(new MongodmDbMigrationException(
+                        $"Documents migration failed on \"{docMigration.SourceRepository.Name}\" repository"));
+
+                //ended document migration log
+                dbMigrationOp.AddLog(new DocumentMigrationLog(
+                    docMigration.SourceRepository.Name,
+                    result.Succeded
+                        ? MigrationLogBase.ExecutionState.Succeded
+                        : MigrationLogBase.ExecutionState.Failed,
+                    result.MigratedDocuments));
+
+                await dbContext.SaveChangesAsync().ConfigureAwait(false);
+            }
+
+            // Build new indexes.
+            foreach (var repository in dbContext.RepositoryRegistry.Repositories)
+            {
+                dbMigrationOp.AddLog(new BuildNewIndexesMigrationLog(
+                    repository.Name,
+                    MigrationLogBase.ExecutionState.Executing));
+                await dbContext.SaveChangesAsync().ConfigureAwait(false);
+
+                try
+                {
+                    await repository.BuildNewIndexesAsync().ConfigureAwait(false);
+
+                    dbMigrationOp.AddLog(new BuildNewIndexesMigrationLog(
+                        repository.Name,
+                        MigrationLogBase.ExecutionState.Succeded));
+                }
+                catch (Exception e)
+                {
+                    errors.Add(e);
+
+                    dbMigrationOp.AddLog(new BuildNewIndexesMigrationLog(
+                        repository.Name,
+                        MigrationLogBase.ExecutionState.Failed));
+                }
+
+                await dbContext.SaveChangesAsync().ConfigureAwait(false);
+            }
+
+            // Complete operation.
+            if (errors.Count == 0)
+                dbMigrationOp.TaskCompleted();
+            else
+                dbMigrationOp.TaskFailed();
+
+            await dbContext.SaveChangesAsync().ConfigureAwait(false);
+
+            // Report errors if required.
+            if (errors.Count > 0 && throwOnErrors)
+                throw new MongodmDbMigrationException(
+                    $"Error migrating {dbContext.Identifier} dbContext",
+                    new AggregateException(errors));
+        }
+
         /*
          * Migration state reads run with exclusive access allowance,
          * so they keep working also while a migration is locking the db context.

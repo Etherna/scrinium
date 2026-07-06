@@ -13,22 +13,21 @@
 // If not, see <https://www.gnu.org/licenses/>.
 
 using System;
-using System.Threading.Tasks;
 
-namespace Etherna.MongODM.Core.Tasks
+namespace Etherna.MongODM.Core.Exceptions
 {
-    public class MigrateDbContextTask(IServiceProvider serviceProvider)
-        : IMigrateDbContextTask
+    public class MongodmDbMigrationException : Exception
     {
-        // Methods.
-        public async Task RunAsync<TDbContext>(string dbMigrationOpId, string taskId)
-            where TDbContext : class, IDbContext
+        public MongodmDbMigrationException()
         {
-            var dbContext = (TDbContext)serviceProvider.GetService(typeof(TDbContext))!;
+        }
 
-            // Run with exclusive access.
-            await dbContext.RunWithExclusiveAccessAsync(() =>
-                dbContext.DbMigrationManager.ExecuteDbContextMigrationAsync(dbMigrationOpId, taskId)).ConfigureAwait(false);
+        public MongodmDbMigrationException(string message) : base(message)
+        {
+        }
+
+        public MongodmDbMigrationException(string message, Exception innerException) : base(message, innerException)
+        {
         }
     }
 }
