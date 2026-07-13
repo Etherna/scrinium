@@ -12,14 +12,15 @@
 // You should have received a copy of the GNU Lesser General Public License along with MongODM.
 // If not, see <https://www.gnu.org/licenses/>.
 
-using Etherna.ExecContext;
-using Etherna.ExecContext.AspNetCore;
 using Etherna.MongoDB.Bson;
 using Etherna.MongoDB.Bson.Serialization;
 using Etherna.MongoDB.Bson.Serialization.Conventions;
 using Etherna.MongODM.AspNetCore;
+using Etherna.MongODM.AspNetCore.ExecContext;
 using Etherna.MongODM.Core;
 using Etherna.MongODM.Core.Conventions;
+using Etherna.MongODM.Core.ExecContext;
+using Etherna.MongODM.Core.ExecContext.AsyncLocal;
 using Etherna.MongODM.Core.Options;
 using Etherna.MongODM.Core.ProxyModels;
 using Etherna.MongODM.Core.Repositories;
@@ -27,6 +28,7 @@ using Etherna.MongODM.Core.Serialization.Mapping;
 using Etherna.MongODM.Core.Serialization.Modifiers;
 using Etherna.MongODM.Core.Tasks;
 using Etherna.MongODM.Core.Utility;
+using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using System;
@@ -35,6 +37,21 @@ namespace Etherna.MongODM
 {
     public static class ServiceCollectionExtensions
     {
+        public static IServiceCollection AddExecutionContext(
+            this IServiceCollection services)
+        {
+            services.TryAddSingleton<IHttpContextAccessor, HttpContextAccessor>();
+
+            services.TryAddSingleton<IExecutionContext>(serviceProvider =>
+               new ExecutionContextSelector( //default
+               [
+                   new HttpContextExecutionContext(serviceProvider.GetRequiredService<IHttpContextAccessor>()),
+                   AsyncLocalContext.Instance
+               ]));
+
+            return services;
+        }
+
         public static IMongODMConfiguration AddMongODM<TTaskRunner>(
             this IServiceCollection services,
             Action<MongODMOptions>? configureOptions = null)
