@@ -1,14 +1,14 @@
-﻿// Copyright 2020-present Etherna SA
+// Copyright 2020-present Etherna SA
 // This file is part of MongODM.
-// 
+//
 // MongODM is free software: you can redistribute it and/or modify it under the terms of the
 // GNU Lesser General Public License as published by the Free Software Foundation,
 // either version 3 of the License, or (at your option) any later version.
-// 
+//
 // MongODM is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
 // without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 // See the GNU Lesser General Public License for more details.
-// 
+//
 // You should have received a copy of the GNU Lesser General Public License along with MongODM.
 // If not, see <https://www.gnu.org/licenses/>.
 
@@ -18,35 +18,32 @@ using System.Collections.Generic;
 namespace Etherna.MongODM.Core.Utility
 {
     /// <summary>
-    /// Interface for <see cref="DbCache"/> implementation.
+    /// Interface for <see cref="LoadedModelsTracker"/> implementation.
     /// </summary>
-    public interface IDbCache : IDbContextInitializable
+    public interface ILoadedModelsTracker : IDbContextInitializable
     {
         // Properties.
         /// <summary>
-        /// List of current cached models, indexed by Id.
+        /// List of models loaded in the current execution scope.
         /// </summary>
-        IReadOnlyDictionary<object, IEntityModel> LoadedModels { get; } // (id -> model)
+        IReadOnlyCollection<IEntityModel> LoadedModels { get; }
 
         // Methods.
         /// <summary>
-        /// Add a new model in cache.
+        /// Clear all tracked models from the current execution scope.
         /// </summary>
-        /// <typeparam name="TModel">The model type</typeparam>
-        /// <param name="id">The model Id</param>
+        void ClearTracked();
+
+        /// <summary>
+        /// Start to track a loaded model.
+        /// </summary>
         /// <param name="model">The model</param>
-        void AddModel<TModel>(object id, TModel model)
-            where TModel : class, IEntityModel;
+        void TrackModel(IEntityModel model);
 
         /// <summary>
-        /// Clear current cache archive.
+        /// Stop to track a model.
         /// </summary>
-        void ClearCache();
-
-        /// <summary>
-        /// Remove a model from cache.
-        /// </summary>
-        /// <param name="id">The model Id</param>
-        void RemoveModel(object id);
+        /// <param name="model">The model</param>
+        void UntrackModel(IEntityModel model);
     }
 }

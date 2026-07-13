@@ -114,11 +114,11 @@ namespace Etherna.MongODM
              * the same dbContext different components could have different instances of the same component.
              */
             services.TryAddTransient<IBsonSerializerRegistry, BsonSerializerRegistry>();
-            services.TryAddTransient<IDbCache, DbCache>();
             services.TryAddTransient<IDbDependencies, DbDependencies>();
             services.TryAddTransient<IDbMaintainer, DbMaintainer>();
             services.TryAddTransient<IDbMigrationManager, DbMigrationManager>();
             services.TryAddTransient<IDiscriminatorRegistry, DiscriminatorRegistry>();
+            services.TryAddTransient<ILoadedModelsTracker, LoadedModelsTracker>();
             services.TryAddTransient<IMapRegistry, MapRegistry>();
             services.TryAddTransient<IRepositoryRegistry, RepositoryRegistry>();
             services.TryAddSingleton<ISerializerModifierAccessor, SerializerModifierAccessor>();

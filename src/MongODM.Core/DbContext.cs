@@ -68,12 +68,12 @@ namespace Etherna.MongODM.Core
 
             // Set dependencies.
             this.childDbContexts = childDbContexts;
-            DbCache = dependencies.DbCache;
             DbMaintainer = dependencies.DbMaintainer;
             DbMigrationManager = dependencies.DbMigrationManager;
             DbOperations = new Repository<OperationBase, string>(options.DbOperationsCollectionName);
             DiscriminatorRegistry = dependencies.DiscriminatorRegistry;
             ExecutionContext = dependencies.ExecutionContext;
+            LoadedModelsTracker = dependencies.LoadedModelsTracker;
             MapRegistry = dependencies.MapRegistry;
             Options = options;
             ProxyGenerator = dependencies.ProxyGenerator;
@@ -85,10 +85,10 @@ namespace Etherna.MongODM.Core
             using var dbExecutionContext = new DbExecutionContextHandler(this);
 
             // Initialize internal dependencies.
-            DbCache.Initialize(this, logger);
             DbMaintainer.Initialize(this, logger);
             DbMigrationManager.Initialize(this, logger);
             DiscriminatorRegistry.Initialize(this, logger);
+            LoadedModelsTracker.Initialize(this, logger);
             MapRegistry.Initialize(this, logger);
             RepositoryRegistry.Initialize(this, logger);
             InitializeSerializerRegistry();
@@ -147,12 +147,11 @@ namespace Etherna.MongODM.Core
 
         // Public properties.
         public IReadOnlyCollection<IEntityModel> ChangedModelsList =>
-            DbCache.LoadedModels.Values
+            LoadedModelsTracker.LoadedModels
                 .Where(model => model is IAuditable { IsChanged: true })
                 .ToList();
         public IMongoClient Client { get; private set; } = null!;
         public IMongoDatabase Database { get; private set; } = null!;
-        public IDbCache DbCache { get; private set; } = null!;
         public IDbMaintainer DbMaintainer { get; private set; } = null!;
         public IDbMigrationManager DbMigrationManager { get; private set; } = null!;
         public IRepository<OperationBase, string> DbOperations { get; private set; } = null!;
@@ -219,6 +218,7 @@ namespace Etherna.MongODM.Core
                 }
             }
         }
+        public ILoadedModelsTracker LoadedModelsTracker { get; private set; } = null!;
         public IMapRegistry MapRegistry { get; private set; } = null!;
         public IDbContextOptions Options { get; private set; } = null!;
         public IProxyGenerator ProxyGenerator { get; private set; } = null!;

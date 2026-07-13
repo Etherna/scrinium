@@ -115,27 +115,16 @@ namespace Etherna.MongODM.Core.Serialization.Serializers
                 model = task.Result;
             }
 
-            // Add model to cache (if proxy).
+            // Track model (if proxy).
             /* Proxy models enable different features. Anyway, if the model as not been created as a proxy
              * (for example for tests scope) these additional operations are not possible or required.
-             * In this case, don't add any not-proxy models in cache.
+             * In this case, don't track any not-proxy models.
              */
             if (!dbContext.SerializerModifierAccessor.IsNoCacheEnabled &&
                 dbContext.ProxyGenerator.IsProxyType(model!.GetType()) &&
                 GetDocumentId(model, out var id, out _, out _) && id != null)
             {
-                if (dbContext.DbCache.LoadedModels.ContainsKey(id))
-                {
-                    var fullModel = model;
-                    model = (TModel)dbContext.DbCache.LoadedModels[id];
-
-                    if (((IReferenceable)model!).IsSummary)
-                        ((IReferenceable)model).MergeFullModel(fullModel);
-                }
-                else
-                {
-                    dbContext.DbCache.AddModel(id, (IEntityModel)model);
-                }
+                dbContext.LoadedModelsTracker.TrackModel((IEntityModel)model);
             }
 
             // Enable auditing.

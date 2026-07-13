@@ -47,11 +47,6 @@ namespace Etherna.MongODM.Core
         IMongoDatabase Database { get; }
         
         /// <summary>
-        /// Database cache container.
-        /// </summary>
-        IDbCache DbCache { get; }
-
-        /// <summary>
         /// Database operator interested into maintenance tasks.
         /// </summary>
         IDbMaintainer DbMaintainer { get; }
@@ -95,6 +90,11 @@ namespace Etherna.MongODM.Core
         /// True if it has been seeded.
         /// </summary>
         bool IsSeeded { get; }
+
+        /// <summary>
+        /// Tracker of models loaded in the current execution scope.
+        /// </summary>
+        ILoadedModelsTracker LoadedModelsTracker { get; }
 
         /// <summary>
         /// Registry for model serialization and maps information.

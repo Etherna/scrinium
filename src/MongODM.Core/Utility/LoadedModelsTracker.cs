@@ -1,14 +1,14 @@
-﻿// Copyright 2020-present Etherna SA
+// Copyright 2020-present Etherna SA
 // This file is part of MongODM.
-// 
+//
 // MongODM is free software: you can redistribute it and/or modify it under the terms of the
 // GNU Lesser General Public License as published by the Free Software Foundation,
 // either version 3 of the License, or (at your option) any later version.
-// 
+//
 // MongODM is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
 // without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 // See the GNU Lesser General Public License for more details.
-// 
+//
 // You should have received a copy of the GNU Lesser General Public License along with MongODM.
 // If not, see <https://www.gnu.org/licenses/>.
 
@@ -22,15 +22,15 @@ using System.Text;
 
 namespace Etherna.MongODM.Core.Utility
 {
-    public class DbCache : IDbCache
+    public class LoadedModelsTracker : ILoadedModelsTracker
     {
         // Consts.
-        private const string CacheKeyPrefix = "DBCache-";
+        private const string TrackerKeyPrefix = "LoadedModelsTracker-";
 
         // Fields.
-        private string cacheKey = default!;
         private IExecutionContext executionContext = default!;
         private ILogger logger = default!;
+        private string trackerKey = default!;
 
         // Constructors.
         public void Initialize(IDbContext dbContext, ILogger logger)
@@ -39,20 +39,20 @@ namespace Etherna.MongODM.Core.Utility
             if (IsInitialized)
                 throw new InvalidOperationException("Instance already initialized");
 
-            var cacheKeyBuilder = new StringBuilder(CacheKeyPrefix);
-            cacheKeyBuilder.Append(dbContext.Identifier);
-            cacheKey = cacheKeyBuilder.ToString();
+            var trackerKeyBuilder = new StringBuilder(TrackerKeyPrefix);
+            trackerKeyBuilder.Append(dbContext.Identifier);
+            trackerKey = trackerKeyBuilder.ToString();
             executionContext = dbContext.ExecutionContext;
             this.logger = logger ?? throw new ArgumentNullException(nameof(logger));
 
             IsInitialized = true;
 
-            this.logger.DbCacheInitialized(dbContext.Options.DbName);
+            this.logger.LoadedModelsTrackerInitialized(dbContext.Options.DbName);
         }
 
         // Properties.
         public bool IsInitialized { get; private set; }
-        public IReadOnlyDictionary<object, IEntityModel> LoadedModels
+        public IReadOnlyCollection<IEntityModel> LoadedModels
         {
             get
             {
@@ -60,51 +60,50 @@ namespace Etherna.MongODM.Core.Utility
                     throw new InvalidOperationException("Execution context can't have null Items here");
 
                 lock (executionContext.Items)
-                    return GetScopedCache();
+                    return GetScopedModels().ToArray();
             }
         }
 
         // Methods.
-        public void ClearCache()
+        public void ClearTracked()
         {
             if (executionContext.Items is null)
                 throw new InvalidOperationException("Execution context can't have null Items here");
 
             lock (executionContext.Items)
-                GetScopedCache().Clear();
+                GetScopedModels().Clear();
         }
 
-        public void AddModel<TModel>(object id, TModel model)
-            where TModel : class, IEntityModel
+        public void TrackModel(IEntityModel model)
         {
-            ArgumentNullException.ThrowIfNull(id);
             ArgumentNullException.ThrowIfNull(model);
             if (executionContext.Items is null)
                 throw new InvalidOperationException("Execution context can't have null Items here");
 
             lock (executionContext.Items)
-                GetScopedCache().Add(id, model);
+                GetScopedModels().Add(model);
         }
 
-        public void RemoveModel(object id)
+        public void UntrackModel(IEntityModel model)
         {
+            ArgumentNullException.ThrowIfNull(model);
             if (executionContext.Items is null)
                 throw new InvalidOperationException("Execution context can't have null Items here");
 
             lock (executionContext.Items)
-                GetScopedCache().Remove(id);
+                GetScopedModels().Remove(model);
         }
 
         // Helpers.
-        private Dictionary<object, IEntityModel> GetScopedCache()
+        private List<IEntityModel> GetScopedModels()
         {
             if (executionContext.Items is null)
                 throw new InvalidOperationException("Execution context can't have null Items here");
 
-            if (!executionContext.Items.ContainsKey(cacheKey))
-                executionContext.Items.Add(cacheKey, new Dictionary<object, IEntityModel>());
+            if (!executionContext.Items.ContainsKey(trackerKey))
+                executionContext.Items.Add(trackerKey, new List<IEntityModel>());
 
-            return (Dictionary<object, IEntityModel>)executionContext.Items[cacheKey]!;
+            return (List<IEntityModel>)executionContext.Items[trackerKey]!;
         }
     }
 }

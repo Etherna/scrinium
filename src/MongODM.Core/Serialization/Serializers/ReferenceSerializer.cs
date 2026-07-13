@@ -18,7 +18,6 @@ using Etherna.MongoDB.Bson.Serialization;
 using Etherna.MongoDB.Bson.Serialization.Conventions;
 using Etherna.MongoDB.Bson.Serialization.Serializers;
 using Etherna.MongODM.Core.Domain.Models;
-using Etherna.MongODM.Core.Extensions;
 using Etherna.MongODM.Core.ProxyModels;
 using Etherna.MongODM.Core.Serialization.Mapping;
 using System;
@@ -162,58 +161,23 @@ namespace Etherna.MongODM.Core.Serialization.Serializers
                 if (id == null) //ignore refered instances without id
                     return null!;
 
-                // Check if model as been loaded in cache.
-                if (dbContext.DbCache.LoadedModels.ContainsKey(id) &&
-                    !dbContext.SerializerModifierAccessor.IsNoCacheEnabled)
+                // Set model as summarizable.
+                if (dbContext.SerializerModifierAccessor.IsReadOnlyReferencedIdEnabled)
                 {
-                    var cachedModel = (TModelBase)dbContext.DbCache.LoadedModels[id];
-
-                    if (((IReferenceable)cachedModel).IsSummary)
-                    {
-                        // Execute merging between summary models.
-                        var sourceMembers = ((IReferenceable)model).SettedMemberNames
-                            .Except(((IReferenceable)cachedModel).SettedMemberNames)
-                            .Select(memberName => cachedModel.GetType().GetMember(memberName).Single())
-                            .ToArray();
-
-                        //temporary disable auditing
-                        ((IAuditable)cachedModel).DisableAuditing();
-
-                        foreach (var member in sourceMembers)
-                        {
-                            var value = ReflectionHelper.GetValue(model, member);
-                            ReflectionHelper.SetValue(cachedModel, member, value);
-                        }
-
-                        //reenable auditing
-                        ((IAuditable)cachedModel).EnableAuditing();
-
-                        ((IReferenceable)cachedModel).SetAsSummary(sourceMembers.Select(m => m.Name));
-                    }
-
-                    // Return the cached model.
-                    model = cachedModel;
+                    ((IReferenceable)model).ClearSettedMembers();
+                    ((IReferenceable)model).SetAsSummary([nameof(model.Id)]);
                 }
                 else
                 {
-                    // Set model as summarizable.
-                    if (dbContext.SerializerModifierAccessor.IsReadOnlyReferencedIdEnabled)
-                    {
-                        ((IReferenceable)model).ClearSettedMembers();
-                        ((IReferenceable)model).SetAsSummary(new[] { nameof(model.Id) });
-                    }
-                    else
-                    {
-                        ((IReferenceable)model).SetAsSummary(((IReferenceable)model).SettedMemberNames);
-                    }
-
-                    // Enable auditing.
-                    ((IAuditable)model).EnableAuditing();
-
-                    // Add in cache.
-                    if (!dbContext.SerializerModifierAccessor.IsNoCacheEnabled)
-                        dbContext.DbCache.AddModel(model.Id!, model);
+                    ((IReferenceable)model).SetAsSummary(((IReferenceable)model).SettedMemberNames);
                 }
+
+                // Enable auditing.
+                ((IAuditable)model).EnableAuditing();
+
+                // Track model.
+                if (!dbContext.SerializerModifierAccessor.IsNoCacheEnabled)
+                    dbContext.LoadedModelsTracker.TrackModel(model);
             }
 
             return model!;

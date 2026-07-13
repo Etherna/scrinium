@@ -71,9 +71,9 @@ namespace Etherna.MongODM.Core
         }
 
         // Fields.
-        private readonly Mock<IDbCache> dbCacheMock = new();
         private readonly Mock<IDbContext> dbContextMock = new();
         private readonly Mock<IDiscriminatorRegistry> discriminatorRegistryMock = new();
+        private readonly Mock<ILoadedModelsTracker> loadedModelsTrackerMock = new();
         private readonly Mock<IModelMap> modelMapMock = new();
         private readonly ModelMapVersionOptions modelMapVersionOptions = new();
         private readonly Mock<IMapRegistry> mapRegistryMock = new();
@@ -85,11 +85,8 @@ namespace Etherna.MongODM.Core
             discriminatorRegistryMock.Setup(r => r.LookupDiscriminatorConvention(It.IsAny<Type>()))
                 .Returns(() => new HierarchicalProxyTolerantDiscriminatorConvention(dbContextMock.Object, "_t"));
 
-            dbCacheMock.Setup(c => c.LoadedModels.ContainsKey(It.IsAny<object>()))
-                .Returns(() => false);
-
-            dbContextMock.Setup(c => c.DbCache)
-                .Returns(() => dbCacheMock.Object);
+            dbContextMock.Setup(c => c.LoadedModelsTracker)
+                .Returns(() => loadedModelsTrackerMock.Object);
             dbContextMock.Setup(c => c.DiscriminatorRegistry)
                 .Returns(() => discriminatorRegistryMock.Object);
             dbContextMock.Setup(c => c.ProxyGenerator.IsProxyType(It.IsAny<Type>()))

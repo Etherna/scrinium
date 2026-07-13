@@ -30,11 +30,11 @@ namespace Etherna.MongODM.AspNetCore
     {
         public DbDependencies(
             IBsonSerializerRegistry bsonSerializerRegistry,
-            IDbCache dbCache,
             IDbMaintainer dbMaintainer,
             IDbMigrationManager dbContextMigrationManager,
             IDiscriminatorRegistry discriminatorRegistry,
             IExecutionContext executionContext,
+            ILoadedModelsTracker loadedModelsTracker,
             IMapRegistry mapRegistry,
             IOptions<MongODMOptions> mongODMOptions,
             IProxyGenerator proxyGenerator,
@@ -43,11 +43,11 @@ namespace Etherna.MongODM.AspNetCore
         {
             ArgumentNullException.ThrowIfNull(mongODMOptions);
             BsonSerializerRegistry = bsonSerializerRegistry;
-            DbCache = dbCache;
             DbMaintainer = dbMaintainer;
             DbMigrationManager = dbContextMigrationManager;
             DiscriminatorRegistry = discriminatorRegistry;
             ExecutionContext = executionContext;
+            LoadedModelsTracker = loadedModelsTracker;
             MapRegistry = mapRegistry;
             MongODMOptions = mongODMOptions.Value;
             ProxyGenerator = proxyGenerator;
@@ -56,11 +56,11 @@ namespace Etherna.MongODM.AspNetCore
         }
 
         public IBsonSerializerRegistry BsonSerializerRegistry { get; }
-        public IDbCache DbCache { get; }
         public IDbMaintainer DbMaintainer { get; }
         public IDbMigrationManager DbMigrationManager { get; }
         public IDiscriminatorRegistry DiscriminatorRegistry { get; }
         public IExecutionContext ExecutionContext { get; }
+        public ILoadedModelsTracker LoadedModelsTracker { get; }
         public IMapRegistry MapRegistry { get; }
         public MongODMOptions MongODMOptions { get; }
         public IProxyGenerator ProxyGenerator { get; }

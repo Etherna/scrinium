@@ -159,9 +159,8 @@ namespace Etherna.MongODM.Core.Repositories
             // Delete model.
             await DeleteOnDBAsync(model, additionalFilters ?? [], cancellationToken).ConfigureAwait(false);
 
-            // Remove from cache.
-            if (DbContext.DbCache.LoadedModels.ContainsKey(model.Id!))
-                DbContext.DbCache.RemoveModel(model.Id!);
+            // Stop tracking.
+            DbContext.LoadedModelsTracker.UntrackModel(model);
 
             logger.RepositoryDeletedDocument(Name, DbContext.Options.DbName, model.Id!.ToString()!);
         }
@@ -219,19 +218,10 @@ namespace Etherna.MongODM.Core.Repositories
         public async Task<object> FindOneAsync(object id, CancellationToken cancellationToken = default) =>
             await FindOneAsync((TKey)id, cancellationToken).ConfigureAwait(false);
 
-        public virtual async Task<TModel> FindOneAsync(
+        public virtual Task<TModel> FindOneAsync(
             TKey id,
-            CancellationToken cancellationToken = default)
-        {
-            if (DbContext.DbCache.LoadedModels.ContainsKey(id!))
-            {
-                var cachedModel = DbContext.DbCache.LoadedModels[id!] as TModel;
-                if (cachedModel is IReferenceable { IsSummary: false })
-                    return cachedModel!;
-            }
-
-            return await FindOneOnDBAsync(id, cancellationToken).ConfigureAwait(false);
-        }
+            CancellationToken cancellationToken = default) =>
+            FindOneOnDBAsync(id, cancellationToken);
 
         public Task<TModel> FindOneAsync(
             Expression<Func<TModel, bool>> predicate,
@@ -514,9 +504,9 @@ namespace Etherna.MongODM.Core.Repositories
                     IsUpsert = true
                 }, cancellationToken).ConfigureAwait(false);
                 
-                // Remove old document from cache, if present.
+                // Stop tracking old document, if present.
                 if (oldDocument is not null)
-                    DbContext.DbCache.RemoveModel(oldDocument.Id!);
+                    DbContext.LoadedModelsTracker.UntrackModel(oldDocument);
 
                 return oldDocument;
             });

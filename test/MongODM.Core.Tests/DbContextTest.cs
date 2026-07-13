@@ -1,4 +1,4 @@
-// Copyright 2020-present Etherna SA
+﻿// Copyright 2020-present Etherna SA
 // This file is part of MongODM.
 // 
 // MongODM is free software: you can redistribute it and/or modify it under the terms of the
@@ -36,21 +36,19 @@ namespace Etherna.MongODM.Core
         private readonly FakeDbContext dbContext;
 
         private readonly Mock<IMongoCollection<FakeModel>> collectionMock = new();
-        private readonly Mock<IDbCache> dbCacheMock = new();
         private readonly Mock<IDbDependencies> dependenciesMock = new();
+        private readonly Mock<ILoadedModelsTracker> loadedModelsTrackerMock = new();
         private readonly Mock<IMongoClient> mongoClientMock = new();
         private readonly Mock<IMongoDatabase> mongoDatabaseMock = new();
         
         // Constructor.
         public DbContextTest()
         {
-            dbCacheMock.Setup(c => c.LoadedModels)
-                .Returns(new Dictionary<object, IEntityModel>());
+            loadedModelsTrackerMock.Setup(t => t.LoadedModels)
+                .Returns([]);
             
             dependenciesMock.Setup(d => d.BsonSerializerRegistry)
                 .Returns(new BsonSerializerRegistry());
-            dependenciesMock.Setup(d => d.DbCache)
-                .Returns(dbCacheMock.Object);
             dependenciesMock.Setup(d => d.DbMaintainer)
                 .Returns(new Mock<IDbMaintainer>().Object);
             dependenciesMock.Setup(d => d.DbMigrationManager)
@@ -59,6 +57,8 @@ namespace Etherna.MongODM.Core
                 .Returns(new Mock<IDiscriminatorRegistry>().Object);
             dependenciesMock.Setup(d => d.ExecutionContext)
                 .Returns(AsyncLocalContext.Instance);
+            dependenciesMock.Setup(d => d.LoadedModelsTracker)
+                .Returns(loadedModelsTrackerMock.Object);
             dependenciesMock.Setup(d => d.MapRegistry)
                 .Returns(new Mock<IMapRegistry>().Object);
             dependenciesMock.Setup(d => d.RepositoryRegistry)
