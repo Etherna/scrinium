@@ -43,12 +43,12 @@ namespace Etherna.MongODM.Core.Serialization.Serializers
         private IDiscriminatorConvention _discriminatorConvention = default!;
 
         private readonly ReaderWriterLockSlim configLockAdapters = new(LockRecursionPolicy.SupportsRecursion);
-        private readonly IDbContext dbContext;
+        private readonly IDbContextEngine dbContext;
         private bool disposed;
 
         // Constructor.
         public ReferenceSerializer(
-            IDbContext dbContext,
+            IDbContextEngine dbContext,
             Action<ReferenceSerializerConfiguration> configure)
         {
             ArgumentNullException.ThrowIfNull(configure);

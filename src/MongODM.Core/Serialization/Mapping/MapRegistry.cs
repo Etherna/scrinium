@@ -32,7 +32,7 @@ namespace Etherna.MongODM.Core.Serialization.Mapping
         private readonly Dictionary<string, IMemberMap> _memberMapsById = new();
 
         private readonly Dictionary<Type, BsonElement> activeModelMapIdBsonElement = new();
-        private IDbContext dbContext = null!;
+        private IDbContextEngine dbContext = null!;
         private ILogger logger = null!;
         private readonly Dictionary<IModelMap, Dictionary<string, List<IMemberMap>>> memberMapsByElementPath = new(); //model map -> element path -> member map[]
         private readonly Dictionary<MemberInfo, List<IMemberMap>> memberMapsByMemberInfo = new();
@@ -253,7 +253,7 @@ namespace Etherna.MongODM.Core.Serialization.Mapping
 
             var modelMap = (ModelMap)Activator.CreateInstance(
                 modelMapType,
-                dbContext)!;          //IDbContext dbContext
+                dbContext)!;          //IDbContextEngine dbContext
 
             //class map
             var classMapDefinition = typeof(BsonClassMap<>);

@@ -39,7 +39,7 @@ namespace Etherna.MongODM.Core.ProxyModels
         // Constructors.
         public ReferenceableInterceptor(
             IEnumerable<Type> additionalInterfaces,
-            IDbContext dbContext,
+            IDbContextEngine dbContext,
             ILogger<ReferenceableInterceptor<TModel, TKey>> logger)
             : base(additionalInterfaces)
         {

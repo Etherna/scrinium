@@ -23,29 +23,22 @@ using System.Threading;
 
 namespace Etherna.MongODM.Core.ProxyModels
 {
-    public class ProxyGenerator : IProxyGenerator, IDisposable
+    public class ProxyGenerator(
+        ILoggerFactory loggerFactory,
+        Castle.DynamicProxy.IProxyGenerator proxyGeneratorCore)
+        : IProxyGenerator, IDisposable
     {
         // Fields.
         private bool disposed;
-        private readonly ILoggerFactory loggerFactory;
-        private readonly Castle.DynamicProxy.IProxyGenerator proxyGeneratorCore;
 
         private readonly Dictionary<Type,
-            (Type[] AdditionalInterfaces, Func<IDbContext, IInterceptor[]> InterceptorInstancerSelector)> modelConfigurationDictionary = new();
+            (Type[] AdditionalInterfaces, Func<IDbContextEngine, IInterceptor[]> InterceptorInstancerSelector)> modelConfigurationDictionary = new();
         private readonly ReaderWriterLockSlim modelConfigurationDictionaryLock = new(LockRecursionPolicy.SupportsRecursion);
 
         private readonly Dictionary<Type, Type> proxyTypeDictionary = new();
         private readonly ReaderWriterLockSlim proxyTypeDictionaryLock = new(LockRecursionPolicy.SupportsRecursion);
 
-        // Constructor and dispose.
-        public ProxyGenerator(
-            ILoggerFactory loggerFactory,
-            Castle.DynamicProxy.IProxyGenerator proxyGeneratorCore)
-        {
-            this.loggerFactory = loggerFactory;
-            this.proxyGeneratorCore = proxyGeneratorCore;
-        }
-        
+        // Dispose.
         public void Dispose()
         {
             Dispose(true);
@@ -72,7 +65,7 @@ namespace Etherna.MongODM.Core.ProxyModels
         // Methods.
         public object CreateInstance(
             Type type,
-            IDbContext dbContext,
+            IDbContextEngine dbContext,
             params object[] constructorArguments)
         {
             ArgumentNullException.ThrowIfNull(dbContext);
@@ -90,7 +83,7 @@ namespace Etherna.MongODM.Core.ProxyModels
             }
 
             // Get configuration.
-            (Type[] AdditionalInterfaces, Func<IDbContext, IInterceptor[]> InterceptorInstancerSelector) configuration = (null!, null!);
+            (Type[] AdditionalInterfaces, Func<IDbContextEngine, IInterceptor[]> InterceptorInstancerSelector) configuration = (null!, null!);
             modelConfigurationDictionaryLock.EnterReadLock();
             bool configurationFound = false;
             try
@@ -167,7 +160,7 @@ namespace Etherna.MongODM.Core.ProxyModels
             return proxyModel;
         }
 
-        public TModel CreateInstance<TModel>(IDbContext dbContext, params object[] constructorArguments) =>
+        public TModel CreateInstance<TModel>(IDbContextEngine dbContext, params object[] constructorArguments) =>
             (TModel)CreateInstance(typeof(TModel), dbContext, constructorArguments);
 
         public bool IsProxyType(Type type)
@@ -193,11 +186,11 @@ namespace Etherna.MongODM.Core.ProxyModels
         }
 
         // Protected virtual methods.
-        protected virtual IEnumerable<Type> GetCustomAdditionalInterfaces(Type modelType) =>
-            Array.Empty<Type>();
+        protected virtual IEnumerable<Type> GetCustomAdditionalInterfaces(Type modelType) => [];
 
-        protected virtual IEnumerable<Func<IDbContext, IInterceptor>> GetCustomInterceptorInstancer(Type modelType, IEnumerable<Type> additionalInterfaces) =>
-            Array.Empty<Func<IDbContext, IInterceptor>>();
+        protected virtual IEnumerable<Func<IDbContextEngine, IInterceptor>> GetCustomInterceptorInstancer(
+            Type modelType,
+            IEnumerable<Type> additionalInterfaces) => [];
 
         // Helpers.
         private Type[] GetAdditionalInterfaces(Type modelType)
@@ -217,11 +210,11 @@ namespace Etherna.MongODM.Core.ProxyModels
             return interfaces.ToArray();
         }
 
-        private Func<IDbContext, IInterceptor[]> GetInterceptorInstancer(
+        private Func<IDbContextEngine, IInterceptor[]> GetInterceptorInstancer(
             Type modelType,
             IEnumerable<Type> additionalInterfaces)
         {
-            var interceptorInstancers = new List<Func<IDbContext, IInterceptor>>();
+            var interceptorInstancers = new List<Func<IDbContextEngine, IInterceptor>>();
 
             // Add custom interceptor instancers.
             interceptorInstancers.AddRange(GetCustomInterceptorInstancer(modelType, additionalInterfaces));

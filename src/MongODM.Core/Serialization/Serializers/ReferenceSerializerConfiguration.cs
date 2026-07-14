@@ -30,10 +30,10 @@ namespace Etherna.MongODM.Core.Serialization.Serializers
         private readonly Dictionary<Type, IModelMap> _modelMaps = new();
 
         private readonly Dictionary<Type, BsonElement> activeModelMapIdBsonElement = new();
-        private readonly IDbContext dbContext;
+        private readonly IDbContextEngine dbContext;
 
         // Constructor.
-        internal ReferenceSerializerConfiguration(IDbContext dbContext)
+        internal ReferenceSerializerConfiguration(IDbContextEngine dbContext)
         {
             this.dbContext = dbContext;
         }

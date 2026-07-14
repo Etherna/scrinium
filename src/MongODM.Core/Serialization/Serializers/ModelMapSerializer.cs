@@ -18,7 +18,6 @@ using Etherna.MongoDB.Bson.Serialization;
 using Etherna.MongoDB.Bson.Serialization.Conventions;
 using Etherna.MongoDB.Bson.Serialization.Serializers;
 using Etherna.MongODM.Core.Domain.Models;
-using Etherna.MongODM.Core.Extensions;
 using Etherna.MongODM.Core.ProxyModels;
 using Etherna.MongODM.Core.Serialization.Mapping;
 using System;
@@ -27,7 +26,7 @@ using System.Threading.Tasks;
 
 namespace Etherna.MongODM.Core.Serialization.Serializers
 {
-    public class ModelMapSerializer<TModel>(IDbContext dbContext) :
+    public class ModelMapSerializer<TModel>(IDbContextEngine dbContext) :
         SerializerBase<TModel>,
         IBsonDocumentSerializer,
         IBsonIdProvider,

@@ -13,7 +13,7 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "MongODM.AspNetCore", "src\M
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "MongODM.Core", "src\MongODM.Core\MongODM.Core.csproj", "{4F2498A9-D60D-4D49-95B9-BC78EE2917B5}"
 EndProject
-Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "MongODM.Core.Tests", "test\MongODM.Core.Tests\MongODM.Core.Tests.csproj", "{50D6BEE5-54B5-43F3-BA92-6107AB6E311E}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "MongODM.Core.UnitTests", "test\MongODM.Core.UnitTests\MongODM.Core.UnitTests.csproj", "{50D6BEE5-54B5-43F3-BA92-6107AB6E311E}"
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution Items", "{03C64D98-FF9F-4760-AE82-203953FF4940}"
 	ProjectSection(SolutionItems) = preProject

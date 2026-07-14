@@ -37,7 +37,7 @@ namespace Etherna.MongODM.Core.Serialization.Mapping
 
         // Constructor.
         protected ModelMap(
-            IDbContext dbContext,
+            IDbContextEngine dbContext,
             Type modelType)
             : base(modelType)
         {
@@ -67,7 +67,7 @@ namespace Etherna.MongODM.Core.Serialization.Mapping
         }
         public IEnumerable<IMemberMap> AllDescendingMemberMaps => DefinedMemberMaps.Concat(
                                                                   DefinedMemberMaps.SelectMany(mm => mm.AllDescendingMemberMaps));
-        public IDbContext DbContext { get; }
+        public IDbContextEngine DbContext { get; }
         public IEnumerable<IMemberMap> DefinedMemberMaps
         {
             get
@@ -222,7 +222,7 @@ namespace Etherna.MongODM.Core.Serialization.Mapping
     }
 
     [SuppressMessage("Reliability", "CA2000:Dispose objects before losing scope")]
-    public sealed class ModelMap<TModel>(IDbContext dbContext)
+    public sealed class ModelMap<TModel>(IDbContextEngine dbContext)
         : ModelMap(dbContext, typeof(TModel)), IModelMapBuilder<TModel>
     {
         // Methods.

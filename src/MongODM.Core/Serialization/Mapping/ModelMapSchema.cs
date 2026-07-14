@@ -84,7 +84,7 @@ namespace Etherna.MongODM.Core.Serialization.Mapping
         public BsonMemberMap? TryGetMemberMap(string memberName) =>
             bsonClassMap.GetMemberMap(memberName);
 
-        public void UseProxyGenerator(IDbContext dbContext) =>
+        public void UseProxyGenerator(IDbContextEngine dbContext) =>
             ExecuteConfigAction(() =>
             {
                 ArgumentNullException.ThrowIfNull(dbContext);
@@ -111,7 +111,7 @@ namespace Etherna.MongODM.Core.Serialization.Mapping
                 bsonClassMap.SetCreator(() => dbContext.ProxyGenerator.CreateInstance(ModelMap.ModelType, dbContext));
             });
 
-        public bool TryUseProxyGenerator(IDbContext dbContext)
+        public bool TryUseProxyGenerator(IDbContextEngine dbContext)
         {
             ArgumentNullException.ThrowIfNull(dbContext);
 

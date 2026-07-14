@@ -10,7 +10,7 @@ Libraries multi-target **.NET 8, 9 and 10**; the test projects target **.NET 10 
 dotnet restore MongODM.sln
 dotnet build MongODM.sln -c Release                  # compiles every target framework
 dotnet test  MongODM.sln -c Release                  # runs the xUnit test projects
-dotnet test test/MongODM.Core.Tests/MongODM.Core.Tests.csproj    # single project
+dotnet test test/MongODM.Core.UnitTests/MongODM.Core.UnitTests.csproj    # single project
 dotnet test --filter "FullyQualifiedName~DbContextTest"          # single class
 dotnet test --filter "FullyQualifiedName~DbContextTest.CanRunExclusiveAccess"  # single test
 dotnet run  --project samples/AspNetCoreSample       # sample web app (requires a local MongoDB)
@@ -27,7 +27,7 @@ Versioning is computed by **GitVersion** (no manual version bumps). CI (`.github
 Five source projects (one NuGet package each), two test projects, one sample:
 
 - **`src/MongODM.Core`** (`Etherna.MongODM.Core`) — The framework itself, host-agnostic. Main areas:
-  - `DbContext.cs` / `IDbContext.cs` — unit of work: owns repositories, serialization registries, seeding, migrations, and exclusive access locking (`RunWithExclusiveAccessAsync`).
+  - `DbContext.cs` / `IDbContext.cs` / `IDbContextEngine.cs` — unit of work: owns repositories, serialization registries, seeding, migrations, and exclusive access locking (`RunWithExclusiveAccessAsync`). `IDbContextEngine` exposes the scope independent engine members (connections, registries, infrastructure), and is the type captured by the serialization pipeline; `IDbContext` extends it with the current unit of work state (`ChangedModelsList`, `SaveChangesAsync`).
   - `Repositories/` — `Repository<TModel, TKey>` with typed access to collections; every collection access passes through `AccessToCollectionAsync`.
   - `Serialization/` — model maps and versioned schemas (`MapRegistry`, `ModelMap`, member maps), discriminator registry, serializers and modifiers.
   - `ProxyModels/` — Castle DynamicProxy-based model proxies enabling lazy loading and change auditing (`IAuditable`).
@@ -39,7 +39,7 @@ Five source projects (one NuGet package each), two test projects, one sample:
 - **`src/MongODM.AspNetCore.UI`** (`Etherna.MongODM.AspNetCore.UI`) — Admin dashboard as a Razor Pages area (`Areas/MongODM/Pages/Index*`), mapped on a configurable `DashboardOptions.BasePath` and guarded by `IDashboardAuthFilter`s. Static assets are self-contained in `wwwroot/` (no external client libraries); the status/start endpoints are page handlers polled by `wwwroot/js/mongodmDash.js`.
 - **`src/MongODM.Hangfire`** (`Etherna.MongODM.Hangfire`, root namespace `Etherna.MongODM.HF`) — `ITaskRunner` implementation scheduling MongODM tasks on Hangfire.
 - **`src/MongODM`** (`Etherna.MongODM`) — Meta package wiring the full stack (AspNetCore + Hangfire) with a single `AddMongODMWithHangfire` entry point.
-- **`test/MongODM.Core.Tests`** — xUnit + Moq unit tests for the core.
+- **`test/MongODM.Core.UnitTests`** — xUnit + Moq unit tests for the core.
 - **`test/MongODM.IntegrationTests`** — xUnit integration tests against a real MongoDB instance, pinning end-to-end behavior (change tracking, referenced models and lazy loading, execution scope isolation).
 - **`samples/AspNetCoreSample`** — runnable demo app (not packed).
 

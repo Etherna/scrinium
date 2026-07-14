@@ -24,17 +24,9 @@ namespace Etherna.MongODM.Core.Serialization.Serializers
     /// <summary>
     /// Utility serializer used for help into document migration scripts.
     /// </summary>
-    public class ExtraElementsSerializer : SerializerBase<object>
+    public class ExtraElementsSerializer(IDbContextEngine dbContext)
+        : SerializerBase<object>
     {
-        // Fields.
-        private readonly IDbContext dbContext;
-
-        // Constructor.
-        public ExtraElementsSerializer(IDbContext dbContext)
-        {
-            this.dbContext = dbContext;
-        }
-
         // Methods.
         public override void Serialize(BsonSerializationContext context, BsonSerializationArgs args, object value)
         {

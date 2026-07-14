@@ -29,14 +29,14 @@ namespace Etherna.MongODM.Core.Conventions
     public class HierarchicalProxyTolerantDiscriminatorConvention : IHierarchicalDiscriminatorConvention
     {
         // Fields.
-        private readonly IDbContext? _dbContext; //remove nullability with constructors that don't ask it, when will be possible
+        private readonly IDbContextEngine? _dbContext; //remove nullability with constructors that don't ask it, when will be possible
         private readonly IExecutionContext? executionContext;
 
         // Constructors.
         [SuppressMessage("Usage", "CA2249:Consider using \'string.Contains\' instead of \'string.IndexOf\'")]
         [SuppressMessage("Globalization", "CA1307:Specify StringComparison for clarity")]
         public HierarchicalProxyTolerantDiscriminatorConvention(
-            IDbContext dbContext,
+            IDbContextEngine dbContext,
             string elementName)
         {
             _dbContext = dbContext;
@@ -65,7 +65,7 @@ namespace Etherna.MongODM.Core.Conventions
             this.executionContext = executionContext;
         }
 
-        public IDbContext DbContext
+        public IDbContextEngine DbContext
         {
             get
             {
