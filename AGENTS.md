@@ -4,12 +4,12 @@ MongODM is an **ODM framework** (Object-Documental Mapper) for **MongoDB** on .N
 
 ## Build, run, test
 
-Libraries multi-target **.NET 8, 9 and 10**; the test project targets **.NET 10 only**. `TreatWarningsAsErrors=true` and `AnalysisMode=AllEnabledByDefault` are set everywhere — warnings break the build, on every target framework.
+Libraries multi-target **.NET 8, 9 and 10**; the test projects target **.NET 10 only**. `TreatWarningsAsErrors=true` and `AnalysisMode=AllEnabledByDefault` are set everywhere — warnings break the build, on every target framework.
 
 ```bash
 dotnet restore MongODM.sln
 dotnet build MongODM.sln -c Release                  # compiles every target framework
-dotnet test  MongODM.sln -c Release                  # runs the xUnit test project
+dotnet test  MongODM.sln -c Release                  # runs the xUnit test projects
 dotnet test test/MongODM.Core.Tests/MongODM.Core.Tests.csproj    # single project
 dotnet test --filter "FullyQualifiedName~DbContextTest"          # single class
 dotnet test --filter "FullyQualifiedName~DbContextTest.CanRunExclusiveAccess"  # single test
@@ -18,11 +18,13 @@ dotnet run  --project samples/AspNetCoreSample       # sample web app (requires 
 
 Because the libraries compile against the lowest target (`net8.0`), do not use APIs introduced only in a later framework — it will pass locally on `net10.0` and fail the build on `net8.0`. A green `MongODM.sln` build means all frameworks compiled.
 
+Integration tests (`test/MongODM.IntegrationTests`) need a real MongoDB instance: they use the `MONGODM_TEST_DB_URL` environment variable when set (CI provides a `mongo` service container), otherwise they spawn a throwaway local `mongod` process (the binary must be on `PATH`).
+
 Versioning is computed by **GitVersion** (no manual version bumps). CI (`.github/workflows/`) publishes unstable packages to MyGet from `dev`, and stable packages to NuGet from version tags.
 
 ## Architecture
 
-Five source projects (one NuGet package each), one test project, one sample:
+Five source projects (one NuGet package each), two test projects, one sample:
 
 - **`src/MongODM.Core`** (`Etherna.MongODM.Core`) — The framework itself, host-agnostic. Main areas:
   - `DbContext.cs` / `IDbContext.cs` — unit of work: owns repositories, serialization registries, seeding, migrations, and exclusive access locking (`RunWithExclusiveAccessAsync`).
@@ -31,19 +33,20 @@ Five source projects (one NuGet package each), one test project, one sample:
   - `ProxyModels/` — Castle DynamicProxy-based model proxies enabling lazy loading and change auditing (`IAuditable`).
   - `Migration/` — `DocumentMigration` scripts between document schemas.
   - `Tasks/` — background tasks invoked through `ITaskRunner` (`UpdateDocDependenciesTask` propagates updated summaries to referencing documents; `MigrateDbContextTask` runs a db context migration under exclusive access).
-  - `Utility/` — `DbCache`, `DbMaintainer` (enqueues dependency updates on model changes), `DbMigrationManager`, `ExclusiveAccessHandler` + `LimitedAccessMongoCollection` (deny read/write access to collections while another context holds exclusive access).
+  - `Utility/` — `LoadedModelsTracker` (tracks models loaded in the current execution scope, source of `ChangedModelsList` for `SaveChangesAsync`), `DbMaintainer` (enqueues dependency updates on model changes), `DbMigrationManager`, `ExclusiveAccessHandler` + `LimitedAccessMongoCollection` (deny read/write access to collections while another context holds exclusive access).
   - `Domain/Models/` — internal operation log entities persisted in the `_db_ops` collection (`SeedOperation`, `DbMigrationOperation` with its `DbMigrationOpAgg/` logs).
 - **`src/MongODM.AspNetCore`** (`Etherna.MongODM.AspNetCore`) — DI integration: `AddMongODM` configuration builder, singleton `DbContext` registration, `DbDependencies`, execution context wiring.
 - **`src/MongODM.AspNetCore.UI`** (`Etherna.MongODM.AspNetCore.UI`) — Admin dashboard as a Razor Pages area (`Areas/MongODM/Pages/Index*`), mapped on a configurable `DashboardOptions.BasePath` and guarded by `IDashboardAuthFilter`s. Static assets are self-contained in `wwwroot/` (no external client libraries); the status/start endpoints are page handlers polled by `wwwroot/js/mongodmDash.js`.
 - **`src/MongODM.Hangfire`** (`Etherna.MongODM.Hangfire`, root namespace `Etherna.MongODM.HF`) — `ITaskRunner` implementation scheduling MongODM tasks on Hangfire.
 - **`src/MongODM`** (`Etherna.MongODM`) — Meta package wiring the full stack (AspNetCore + Hangfire) with a single `AddMongODMWithHangfire` entry point.
 - **`test/MongODM.Core.Tests`** — xUnit + Moq unit tests for the core.
+- **`test/MongODM.IntegrationTests`** — xUnit integration tests against a real MongoDB instance, pinning end-to-end behavior (change tracking, referenced models and lazy loading, execution scope isolation).
 - **`samples/AspNetCoreSample`** — runnable demo app (not packed).
 
 Key cross-cutting points:
 
 - **The MongoDB driver is the Etherna fork** (`Etherna.MongoDB.Driver`, namespaces `Etherna.MongoDB.*`) — never reference the official `MongoDB.*` packages or namespaces.
-- **Execution contexts**: `IExecutionContext` (from `ExecutionContext` package, `Etherna.ExecContext` namespaces) provides ambient per-flow state (HTTP request or async-local scope). `DbExecutionContextHandler` associates a db context to the flow; `ExclusiveAccessHandler` marks a flow as owner of an exclusive access. Handlers are `IDisposable` scopes registered in `context.Items`.
+- **Execution contexts**: `IExecutionContext` (`Etherna.MongODM.Core.ExecContext` namespaces, vendored from the former standalone `ExecutionContext` package) provides ambient per-flow state (HTTP request or async-local scope). `DbExecutionContextHandler` associates a db context to the flow; `ExclusiveAccessHandler` marks a flow as owner of an exclusive access. Handlers are `IDisposable` scopes registered in `context.Items`.
 - **DbContexts are singletons**: state on a `DbContext` instance (exclusive access flags, seeding state) is shared by all requests of the process.
 - **Exclusive access locking**: `RunWithExclusiveAccessAsync` (used by seeding and migrations) sets `IsExclusiveReadEnabled`/`IsExclusiveWriteEnabled`; while set, `LimitedAccessMongoCollection` throws `UnauthorizedAccessException` for any flow not holding an `ExclusiveAccessHandler`. Anything that must keep working during a migration (e.g. migration status reads for the dashboard) has to create its own handler scope.
 - **`ConfigureAwait(false)` is required** on every awaited call in library code — these are libraries with no synchronization context to preserve.

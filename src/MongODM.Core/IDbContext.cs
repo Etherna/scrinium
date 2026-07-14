@@ -37,6 +37,11 @@ namespace Etherna.MongODM.Core
     {
         // Properties.
         /// <summary>
+        /// List of models loaded in the current execution scope with pending changes to save.
+        /// </summary>
+        IReadOnlyCollection<IEntityModel> ChangedModelsList { get; }
+
+        /// <summary>
         /// Current MongoDB client.
         /// </summary>
         IMongoClient Client { get; }

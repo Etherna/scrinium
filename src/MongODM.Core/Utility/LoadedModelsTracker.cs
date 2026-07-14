@@ -32,7 +32,7 @@ namespace Etherna.MongODM.Core.Utility
         private ILogger logger = default!;
         private string trackerKey = default!;
 
-        // Constructors.
+        // Initializer.
         public void Initialize(IDbContext dbContext, ILogger logger)
         {
             ArgumentNullException.ThrowIfNull(dbContext);

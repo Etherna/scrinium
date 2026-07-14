@@ -9,6 +9,15 @@ jobs:
   build-test-package:
     runs-on: ubuntu-latest
 
+    services:
+      mongodb:
+        image: mongo:8
+        ports:
+          - 27017:27017
+
+    env:
+      MONGODM_TEST_DB_URL: mongodb://localhost:27017
+
     steps:
       - name: Checkout
         uses: actions/checkout@v7
