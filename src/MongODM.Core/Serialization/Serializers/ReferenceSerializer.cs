@@ -43,19 +43,19 @@ namespace Etherna.MongODM.Core.Serialization.Serializers
         private IDiscriminatorConvention _discriminatorConvention = default!;
 
         private readonly ReaderWriterLockSlim configLockAdapters = new(LockRecursionPolicy.SupportsRecursion);
-        private readonly IDbContextEngine dbContext;
+        private readonly IDbContextEngine dbContextEngine;
         private bool disposed;
 
         // Constructor.
         public ReferenceSerializer(
-            IDbContextEngine dbContext,
+            IDbContextEngine dbContextEngine,
             Action<ReferenceSerializerConfiguration> configure)
         {
             ArgumentNullException.ThrowIfNull(configure);
 
-            this.dbContext = dbContext ?? throw new ArgumentNullException(nameof(dbContext));
+            this.dbContextEngine = dbContextEngine ?? throw new ArgumentNullException(nameof(dbContextEngine));
 
-            _configuration = new ReferenceSerializerConfiguration(dbContext);
+            _configuration = new ReferenceSerializerConfiguration(dbContextEngine);
             configure(_configuration);
         }
 
@@ -96,7 +96,7 @@ namespace Etherna.MongODM.Core.Serialization.Serializers
         {
             get
             {
-                _discriminatorConvention ??= dbContext.DiscriminatorRegistry.LookupDiscriminatorConvention(typeof(TModelBase));
+                _discriminatorConvention ??= dbContextEngine.DiscriminatorRegistry.LookupDiscriminatorConvention(typeof(TModelBase));
                 return _discriminatorConvention;
             }
         }
@@ -129,7 +129,7 @@ namespace Etherna.MongODM.Core.Serialization.Serializers
 
             //get model map id
             string? modelMapId = null;
-            if (bsonDocument.TryGetElement(dbContext.Options.ModelMapVersion.ElementName, out BsonElement modelMapIdElement))
+            if (bsonDocument.TryGetElement(dbContextEngine.Options.ModelMapVersion.ElementName, out BsonElement modelMapIdElement))
             {
                 modelMapId = BsonValueToModelMapId(modelMapIdElement.Value);
                 bsonDocument.RemoveElement(modelMapIdElement); //don't report into extra elements
@@ -155,14 +155,14 @@ namespace Etherna.MongODM.Core.Serialization.Serializers
              * In this case, simply return the model as is.
              */
             if (model != null &&
-                dbContext.ProxyGenerator.IsProxyType(model.GetType()))
+                dbContextEngine.ProxyGenerator.IsProxyType(model.GetType()))
             {
                 var id = model.Id;
                 if (id == null) //ignore refered instances without id
                     return null!;
 
                 // Set model as summarizable.
-                if (dbContext.SerializerModifierAccessor.IsReadOnlyReferencedIdEnabled)
+                if (dbContextEngine.SerializerModifierAccessor.IsReadOnlyReferencedIdEnabled)
                 {
                     ((IReferenceable)model).ClearSettedMembers();
                     ((IReferenceable)model).SetAsSummary([nameof(model.Id)]);
@@ -176,8 +176,8 @@ namespace Etherna.MongODM.Core.Serialization.Serializers
                 ((IAuditable)model).EnableAuditing();
 
                 // Track model.
-                if (!dbContext.SerializerModifierAccessor.IsNoCacheEnabled)
-                    dbContext.LoadedModelsTracker.TrackModel(model);
+                if (!dbContextEngine.SerializerModifierAccessor.IsNoCacheEnabled)
+                    dbContextEngine.LoadedModelsTracker.TrackModel(model);
             }
 
             return model!;
@@ -225,10 +225,10 @@ namespace Etherna.MongODM.Core.Serialization.Serializers
 
             // Add additional data.
             //add model map id
-            if (bsonDocument.Contains(dbContext.Options.ModelMapVersion.ElementName))
-                bsonDocument.Remove(dbContext.Options.ModelMapVersion.ElementName);
+            if (bsonDocument.Contains(dbContextEngine.Options.ModelMapVersion.ElementName))
+                bsonDocument.Remove(dbContextEngine.Options.ModelMapVersion.ElementName);
             var modelMapIdElement = Configuration.GetActiveModelMapIdBsonElement(
-                dbContext.ProxyGenerator.PurgeProxyType(value.GetType()));
+                dbContextEngine.ProxyGenerator.PurgeProxyType(value.GetType()));
             bsonDocument.InsertAt(0, modelMapIdElement);
 
             // Serialize document.

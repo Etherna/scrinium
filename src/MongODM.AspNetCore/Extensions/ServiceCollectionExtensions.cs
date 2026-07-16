@@ -15,7 +15,6 @@
 using Etherna.MongoDB.Bson;
 using Etherna.MongoDB.Bson.Serialization;
 using Etherna.MongoDB.Bson.Serialization.Conventions;
-using Etherna.MongODM.AspNetCore;
 using Etherna.MongODM.AspNetCore.ExecContext;
 using Etherna.MongODM.Core;
 using Etherna.MongODM.Core.Conventions;
@@ -33,7 +32,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using System;
 
-namespace Etherna.MongODM
+namespace Etherna.MongODM.AspNetCore.Extensions
 {
     public static class ServiceCollectionExtensions
     {
@@ -69,8 +68,8 @@ namespace Etherna.MongODM
 
             services.AddOptions<MongODMOptions>()
                 .Configure(configureOptions ?? (_ => { }))
-                .PostConfigure<IProxyGenerator, ITaskRunnerBuilder>(
-                (options, proxyGenerator, taskRunnerBuilder) =>
+                .PostConfigure<ITaskRunnerBuilder>(
+                (options, taskRunnerBuilder) =>
                 {
                     // Register global conventions.
                     ConventionRegistry.Register("Enum string", new ConventionPack

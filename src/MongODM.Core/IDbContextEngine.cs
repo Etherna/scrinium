@@ -14,17 +14,13 @@
 
 using Etherna.MongoDB.Bson.Serialization;
 using Etherna.MongoDB.Driver;
-using Etherna.MongODM.Core.Domain.Models;
 using Etherna.MongODM.Core.ExecContext;
-using Etherna.MongODM.Core.Migration;
 using Etherna.MongODM.Core.Options;
 using Etherna.MongODM.Core.ProxyModels;
-using Etherna.MongODM.Core.Repositories;
 using Etherna.MongODM.Core.Serialization.Mapping;
 using Etherna.MongODM.Core.Serialization.Modifiers;
 using Etherna.MongODM.Core.Utility;
 using System;
-using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -49,6 +45,11 @@ namespace Etherna.MongODM.Core
         IMongoDatabase Database { get; }
 
         /// <summary>
+        /// Type of the db context of this engine.
+        /// </summary>
+        Type DbContextType { get; }
+
+        /// <summary>
         /// Database operator interested into maintenance tasks.
         /// </summary>
         IDbMaintainer DbMaintainer { get; }
@@ -59,19 +60,9 @@ namespace Etherna.MongODM.Core
         IDbMigrationManager DbMigrationManager { get; }
 
         /// <summary>
-        /// Internal collection for keep db operations execution log
-        /// </summary>
-        IRepository<OperationBase, string> DbOperations { get; }
-
-        /// <summary>
         /// Registry for discriminator configuration.
         /// </summary>
         IDiscriminatorRegistry DiscriminatorRegistry { get; }
-
-        /// <summary>
-        /// List of registered migration tasks
-        /// </summary>
-        IEnumerable<DocumentMigration> DocumentMigrationList { get; }
 
         /// <summary>
         /// ExecutionContext handler.
@@ -94,9 +85,10 @@ namespace Etherna.MongODM.Core
         bool IsExclusiveWriteEnabled { get; }
 
         /// <summary>
-        /// True if it has been seeded.
+        /// Cached seeding state of the database. Null if still not verified.
+        /// Implementations must be thread safe.
         /// </summary>
-        bool IsSeeded { get; }
+        bool? IsSeededCache { get; set; }
 
         /// <summary>
         /// Tracker of models loaded in the current execution scope.
@@ -117,11 +109,6 @@ namespace Etherna.MongODM.Core
         /// Current model proxy generator.
         /// </summary>
         IProxyGenerator ProxyGenerator { get; }
-
-        /// <summary>
-        /// Registry of available repositories.
-        /// </summary>
-        IRepositoryRegistry RepositoryRegistry { get; }
 
         /// <summary>
         /// Local instance of a serializer registry.
@@ -145,22 +132,11 @@ namespace Etherna.MongODM.Core
             bool lockOnRead = true);
 
         /// <summary>
-        /// Seed database context if still not seeded, applying a db migration before the seed
-        /// </summary>
-        /// <returns>True if seed has been executed. False otherwise</returns>
-        Task<bool> SeedIfNeededAsync();
-
-        /// <summary>
         /// Start a new database transaction session.
         /// </summary>
         /// <param name="cancellationToken">Cancellation token</param>
         /// <returns>The session handler</returns>
         Task<IClientSessionHandle> StartSessionAsync(CancellationToken cancellationToken = default);
 
-        /// <summary>
-        /// Try to start a db context migration process, if no other migration is queued or running.
-        /// </summary>
-        /// <returns>The new migration operation, or null if another one is already in progress</returns>
-        Task<DbMigrationOperation?> TryStartMigrationAsync();
     }
 }

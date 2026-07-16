@@ -17,6 +17,7 @@ using Etherna.MongODM.Core.Attributes;
 using Etherna.MongODM.Core.Domain.Models;
 using Etherna.MongODM.Core.Extensions;
 using Etherna.MongODM.Core.Repositories;
+using Etherna.MongODM.Core.Utility;
 using Microsoft.Extensions.Logging;
 using System;
 using System.Collections.Generic;
@@ -31,7 +32,7 @@ namespace Etherna.MongODM.Core.ProxyModels
     {
         // Fields.
         private readonly ILogger<ReferenceableInterceptor<TModel, TKey>> logger;
-        private readonly IRepository repository;
+        private readonly IRepository? repository;
         private readonly Dictionary<string, bool> settedMemberNames = new(); //<memberName, isFromSummary>
 
         private bool isSummary;
@@ -39,13 +40,17 @@ namespace Etherna.MongODM.Core.ProxyModels
         // Constructors.
         public ReferenceableInterceptor(
             IEnumerable<Type> additionalInterfaces,
-            IDbContextEngine dbContext,
+            IDbContextEngine dbContextEngine,
             ILogger<ReferenceableInterceptor<TModel, TKey>> logger)
             : base(additionalInterfaces)
         {
-            ArgumentNullException.ThrowIfNull(dbContext);
+            ArgumentNullException.ThrowIfNull(dbContextEngine);
 
-            repository = dbContext.RepositoryRegistry.GetRepositoryByHandledModelType(typeof(TModel));
+            /* Bind lazy loading to the db context scope running the current operation, if any.
+             * Models created outside of a scope (e.g. during schema registration) stay unbound,
+             * and can't lazy load. */
+            var currentDbContext = DbExecutionContextHandler.TryGetCurrentDbContext(dbContextEngine.ExecutionContext);
+            repository = currentDbContext?.RepositoryRegistry.TryGetRepositoryByHandledModelType(typeof(TModel));
             this.logger = logger;
         }
 
@@ -153,6 +158,10 @@ namespace Etherna.MongODM.Core.ProxyModels
         {
             if (model.Id is null)
                 throw new InvalidOperationException("model or id can't be null");
+
+            if (repository is null)
+                throw new InvalidOperationException(
+                    $"Model of type {typeof(TModel).Name} is not bound to a db context scope, and can't lazy load");
 
             if (isSummary)
             {

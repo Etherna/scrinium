@@ -1,4 +1,4 @@
-// Copyright 2020-present Etherna SA
+﻿// Copyright 2020-present Etherna SA
 // This file is part of MongODM.
 // 
 // MongODM is free software: you can redistribute it and/or modify it under the terms of the
@@ -26,7 +26,7 @@ namespace Etherna.MongODM.Core.Utility
 {
     [SuppressMessage("Naming", "CA1711:Identifiers should not have incorrect suffix")]
     public class LimitedAccessMongoCollection<TDocument>(
-        DbContext dbContext,
+        IDbContextEngine dbContextEngine,
         IMongoCollection<TDocument> mongoCollection,
         bool isReadOnly)
         : IMongoCollection<TDocument>
@@ -996,26 +996,26 @@ namespace Etherna.MongODM.Core.Utility
         public IMongoCollection<TDocument> WithReadConcern(ReadConcern readConcern)
         {
             var collection = mongoCollection.WithReadConcern(readConcern);
-            return new LimitedAccessMongoCollection<TDocument>(dbContext, collection, isReadOnly);
+            return new LimitedAccessMongoCollection<TDocument>(dbContextEngine, collection, isReadOnly);
         }
 
         public IMongoCollection<TDocument> WithReadPreference(ReadPreference readPreference)
         {
             var collection = mongoCollection.WithReadPreference(readPreference);
-            return new LimitedAccessMongoCollection<TDocument>(dbContext, collection, isReadOnly);
+            return new LimitedAccessMongoCollection<TDocument>(dbContextEngine, collection, isReadOnly);
         }
 
         public IMongoCollection<TDocument> WithWriteConcern(WriteConcern writeConcern)
         {
             var collection = mongoCollection.WithWriteConcern(writeConcern);
-            return new LimitedAccessMongoCollection<TDocument>(dbContext, collection, isReadOnly);
+            return new LimitedAccessMongoCollection<TDocument>(dbContextEngine, collection, isReadOnly);
         }
 
         // Helpers.
         private void VerifyReadPermission()
         {
-            if (dbContext.IsExclusiveReadEnabled &&
-                !ExclusiveAccessHandler.IsExclusiveAccessAllowed(dbContext.ExecutionContext))
+            if (dbContextEngine.IsExclusiveReadEnabled &&
+                !ExclusiveAccessHandler.IsExclusiveAccessAllowed(dbContextEngine.ExecutionContext))
                 throw new UnauthorizedAccessException("Read access is not allowed");
         }
 
@@ -1024,8 +1024,8 @@ namespace Etherna.MongODM.Core.Utility
             if (isReadOnly)
                 throw new UnauthorizedAccessException("Collection is read only");
             
-            if (dbContext.IsExclusiveWriteEnabled &&
-                !ExclusiveAccessHandler.IsExclusiveAccessAllowed(dbContext.ExecutionContext))
+            if (dbContextEngine.IsExclusiveWriteEnabled &&
+                !ExclusiveAccessHandler.IsExclusiveAccessAllowed(dbContextEngine.ExecutionContext))
                 throw new UnauthorizedAccessException("Write access is not allowed");
         }
     }

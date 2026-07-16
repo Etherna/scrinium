@@ -23,8 +23,8 @@ namespace Etherna.MongODM.Core.Utility
         // Method.
         public IBsonSerializerRegistry? TryGetCurrentBsonSerializerRegistry()
         {
-            var dbContext = DbExecutionContextHandler.TryGetCurrentDbContext(executionContext);
-            return dbContext?.SerializerRegistry;
+            var dbContextEngine = DbExecutionContextHandler.TryGetCurrentDbContextEngine(executionContext);
+            return dbContextEngine?.SerializerRegistry;
         }
     }
 }

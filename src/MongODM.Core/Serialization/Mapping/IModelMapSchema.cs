@@ -44,8 +44,8 @@ namespace Etherna.MongODM.Core.Serialization.Mapping
         Task<object> FixDeserializedModelAsync(object model);
         void SetBaseModelMapSchema(IModelMapSchema baseModelMapSchema);
         BsonMemberMap? TryGetMemberMap(string memberName);
-        bool TryUseProxyGenerator(IDbContextEngine dbContext);
-        void UseProxyGenerator(IDbContextEngine dbContext);
+        bool TryUseProxyGenerator(IDbContextEngine dbContextEngine);
+        void UseProxyGenerator(IDbContextEngine dbContextEngine);
     }
 
     public interface IModelMapSchema<TModel> : IModelMapSchema

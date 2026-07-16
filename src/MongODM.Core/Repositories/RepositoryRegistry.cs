@@ -25,8 +25,8 @@ namespace Etherna.MongODM.Core.Repositories
     public class RepositoryRegistry : IRepositoryRegistry
     {
         // Fields.
-        private ILogger logger = default!;
-        private Dictionary<Type, IRepository> _repositoriesByModelType = default!;
+        private ILogger logger = null!;
+        private Dictionary<Type, IRepository> _repositoriesByModelType = null!;
 
         // Initializer.
         public void Initialize(IDbContext dbContext, ILogger logger)
@@ -65,7 +65,7 @@ namespace Etherna.MongODM.Core.Repositories
 
             IsInitialized = true;
 
-            this.logger.RepositoryRegistryInitialized(dbContext.Options.DbName);
+            this.logger.RepositoryRegistryInitialized(dbContext.Engine.Options.DbName);
         }
 
         // Properties.

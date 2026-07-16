@@ -19,9 +19,9 @@ namespace Etherna.MongODM.AspNetCoreSample.Models.ModelMaps
 {
     class CatMap : IModelMapsCollector
     {
-        public void Register(IDbContext dbContext)
+        public void Register(IDbContextEngine dbContextEngine)
         {
-            dbContext.MapRegistry.AddModelMap<Cat>("cd37bafa-a36d-4b1f-815a-deb50c49d030");
+            dbContextEngine.MapRegistry.AddModelMap<Cat>("cd37bafa-a36d-4b1f-815a-deb50c49d030");
         }
     }
 }

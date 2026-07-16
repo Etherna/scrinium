@@ -14,26 +14,26 @@
 
 using Etherna.MongoDB.Bson.Serialization;
 using Etherna.MongoDB.Driver;
-using Etherna.MongODM.Core.Domain.Models;
 using Etherna.MongODM.Core.ExecContext.AsyncLocal;
 using Etherna.MongODM.Core.Models;
 using Etherna.MongODM.Core.Options;
+using Etherna.MongODM.Core.ProxyModels;
 using Etherna.MongODM.Core.Repositories;
 using Etherna.MongODM.Core.Serialization.Mapping;
 using Etherna.MongODM.Core.Utility;
 using Moq;
 using System;
-using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Xunit;
 
 namespace Etherna.MongODM.Core
 {
-    public class DbContextTest
+    public class DbContextTest : IDisposable
     {
         // Fields.
         private readonly FakeDbContext dbContext;
+        private readonly IDbContextEngine engine;
 
         private readonly Mock<IMongoCollection<FakeModel>> collectionMock = new();
         private readonly Mock<IDbDependencies> dependenciesMock = new();
@@ -61,6 +61,8 @@ namespace Etherna.MongODM.Core
                 .Returns(loadedModelsTrackerMock.Object);
             dependenciesMock.Setup(d => d.MapRegistry)
                 .Returns(new Mock<IMapRegistry>().Object);
+            dependenciesMock.Setup(d => d.ProxyGenerator)
+                .Returns(new Mock<IProxyGenerator>().Object);
             dependenciesMock.Setup(d => d.RepositoryRegistry)
                 .Returns(new RepositoryRegistry());
 
@@ -80,11 +82,18 @@ namespace Etherna.MongODM.Core
                 .Returns(mongoDatabaseMock.Object);
             
             dbContext = new FakeDbContext();
-            dbContext.Initialize(
+            engine = dbContext.BuildEngine(
                 dependenciesMock.Object,
                 mongoClientMock.Object,
-                new DbContextOptions(),
-                []);
+                new DbContextOptions());
+            dbContext.AttachToEngine(engine, [], dependenciesMock.Object.RepositoryRegistry);
+        }
+
+        // Dispose.
+        public void Dispose()
+        {
+            (engine as IDisposable)?.Dispose();
+            GC.SuppressFinalize(this);
         }
         
         // Tests.
@@ -129,7 +138,7 @@ namespace Etherna.MongODM.Core
                 await Task.Delay(250);
                 
                 //run exclusive access with allowed area
-                var result = await dbContext.RunWithExclusiveAccessAsync(async () =>
+                var result = await dbContext.Engine.RunWithExclusiveAccessAsync(async () =>
                 {
                     //succeed with exclusive access in allowed area
                     await dbContext.FakeModels.CreateAsync(fakeModel);

@@ -91,12 +91,13 @@ namespace Etherna.MongODM.IntegrationTests.Fixtures
 
             try
             {
+                //log to file: redirecting standard streams without reading them
+                //would block mongod when the pipe buffer fills up
+                var logPath = Path.Combine(dataDirectory, "mongod.log");
                 mongodProcess = Process.Start(new ProcessStartInfo
                 {
                     FileName = "mongod",
-                    Arguments = $"--dbpath \"{dataDirectory}\" --port {port} --bind_ip 127.0.0.1",
-                    RedirectStandardOutput = true,
-                    RedirectStandardError = true,
+                    Arguments = $"--dbpath \"{dataDirectory}\" --port {port} --bind_ip 127.0.0.1 --logpath \"{logPath}\"",
                     UseShellExecute = false
                 });
             }

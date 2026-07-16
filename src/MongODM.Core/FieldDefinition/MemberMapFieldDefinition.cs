@@ -109,7 +109,7 @@ namespace Etherna.MongODM.Core.FieldDefinition
                 customFieldSerializer ??
                 (IBsonSerializer<TField>)FieldValueSerializerHelper.GetSerializerForValueType(
                     MemberMap.Serializer,
-                    MemberMap.DbContext.SerializerRegistry,
+                    MemberMap.DbContextEngine.SerializerRegistry,
                     typeof(TField),
                     args.PathRenderArgs.AllowScalarValueForArray);
 

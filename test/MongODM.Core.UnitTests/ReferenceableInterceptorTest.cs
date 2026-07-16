@@ -12,10 +12,12 @@
 // You should have received a copy of the GNU Lesser General Public License along with MongODM.
 // If not, see <https://www.gnu.org/licenses/>.
 
+using Etherna.MongODM.Core.ExecContext.AsyncLocal;
 using Etherna.MongODM.Core.MockHelpers;
 using Etherna.MongODM.Core.Models;
 using Etherna.MongODM.Core.ProxyModels;
 using Etherna.MongODM.Core.Repositories;
+using Etherna.MongODM.Core.Utility;
 using Microsoft.Extensions.Logging;
 using Moq;
 using System;
@@ -31,6 +33,7 @@ namespace Etherna.MongODM.Core
         private readonly ReferenceableInterceptor<FakeModel, string> interceptor;
         private readonly Mock<IRepository<FakeModel, string>> repositoryMock;
         private readonly Mock<IDbContext> dbContextMock;
+        private readonly Mock<IDbContextEngine> dbContextEngineMock;
 
         private readonly Mock<Castle.DynamicProxy.IInvocation> getIsSummaryInvocationMock;
         private readonly Mock<Castle.DynamicProxy.IInvocation> getLoadedMembersInvocationMock;
@@ -39,15 +42,24 @@ namespace Etherna.MongODM.Core
         {
             repositoryMock = new Mock<IRepository<FakeModel, string>>();
 
+            dbContextEngineMock = new Mock<IDbContextEngine>();
+            dbContextEngineMock.Setup(e => e.ExecutionContext)
+                .Returns(AsyncLocalContext.Instance);
+
             dbContextMock = new Mock<IDbContext>();
-            dbContextMock.Setup(c => c.RepositoryRegistry.GetRepositoryByHandledModelType(typeof(FakeModel)))
+            dbContextMock.Setup(c => c.Engine)
+                .Returns(() => dbContextEngineMock.Object);
+            dbContextMock.Setup(c => c.RepositoryRegistry.TryGetRepositoryByHandledModelType(typeof(FakeModel)))
                 .Returns(() => repositoryMock.Object);
 
             var loggerMock = new Mock<ILogger<ReferenceableInterceptor<FakeModel, string>>>();
-            
+
+            /* Resolve the repository binding from the current db context scope,
+             * like during a model deserialization inside a repository call. */
+            using var dbExecutionContext = new DbExecutionContextHandler(dbContextMock.Object);
             interceptor = new ReferenceableInterceptor<FakeModel, string>(
                 [typeof(IReferenceable)],
-                dbContextMock.Object,
+                dbContextEngineMock.Object,
                 loggerMock.Object);
 
             getIsSummaryInvocationMock = InterceptorMockHelper.GetExternalPropertyGetInvocationMock<FakeModel, IReferenceable, bool>(

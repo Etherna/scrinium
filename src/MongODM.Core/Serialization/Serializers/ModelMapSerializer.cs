@@ -26,7 +26,7 @@ using System.Threading.Tasks;
 
 namespace Etherna.MongODM.Core.Serialization.Serializers
 {
-    public class ModelMapSerializer<TModel>(IDbContextEngine dbContext) :
+    public class ModelMapSerializer<TModel>(IDbContextEngine dbContextEngine) :
         SerializerBase<TModel>,
         IBsonDocumentSerializer,
         IBsonIdProvider,
@@ -37,12 +37,12 @@ namespace Etherna.MongODM.Core.Serialization.Serializers
 
         // Properties.
         public BsonClassMapSerializer<TModel> DefaultBsonClassMapSerializer =>
-            (BsonClassMapSerializer<TModel>)dbContext.MapRegistry.GetModelMap(typeof(TModel)).ActiveSchema.Serializer;
+            (BsonClassMapSerializer<TModel>)dbContextEngine.MapRegistry.GetModelMap(typeof(TModel)).ActiveSchema.Serializer;
 
         public IDiscriminatorConvention DiscriminatorConvention =>
-            _discriminatorConvention ??= dbContext.DiscriminatorRegistry.LookupDiscriminatorConvention(typeof(TModel));
+            _discriminatorConvention ??= dbContextEngine.DiscriminatorRegistry.LookupDiscriminatorConvention(typeof(TModel));
 
-        public IEnumerable<IModelMap> HandledModelMaps => [dbContext.MapRegistry.GetModelMap(typeof(TModel))];
+        public IEnumerable<IModelMap> HandledModelMaps => [dbContextEngine.MapRegistry.GetModelMap(typeof(TModel))];
 
         // Methods.
         public override TModel Deserialize(BsonDeserializationContext context, BsonDeserializationArgs args)
@@ -59,14 +59,14 @@ namespace Etherna.MongODM.Core.Serialization.Serializers
             // Find pre-deserialization information.
             //get actual type and schema
             var actualType = DiscriminatorConvention.GetActualType(context.Reader, args.NominalType);
-            var actualTypeModelMap = dbContext.MapRegistry.GetModelMap(actualType);
+            var actualTypeModelMap = dbContextEngine.MapRegistry.GetModelMap(actualType);
 
             //deserialize on document
             var bsonDocument = BsonDocumentSerializer.Instance.Deserialize(context, args);
 
             //get model map id
             string? modelMapId = null;
-            if (bsonDocument.TryGetElement(dbContext.Options.ModelMapVersion.ElementName, out BsonElement modelMapIdElement))
+            if (bsonDocument.TryGetElement(dbContextEngine.Options.ModelMapVersion.ElementName, out BsonElement modelMapIdElement))
             {
                 modelMapId = BsonValueToModelMapId(modelMapIdElement.Value);
                 bsonDocument.RemoveElement(modelMapIdElement); //don't report into extra elements
@@ -119,11 +119,11 @@ namespace Etherna.MongODM.Core.Serialization.Serializers
              * (for example for tests scope) these additional operations are not possible or required.
              * In this case, don't track any not-proxy models.
              */
-            if (!dbContext.SerializerModifierAccessor.IsNoCacheEnabled &&
-                dbContext.ProxyGenerator.IsProxyType(model!.GetType()) &&
+            if (!dbContextEngine.SerializerModifierAccessor.IsNoCacheEnabled &&
+                dbContextEngine.ProxyGenerator.IsProxyType(model!.GetType()) &&
                 GetDocumentId(model, out var id, out _, out _) && id != null)
             {
-                dbContext.LoadedModelsTracker.TrackModel((IEntityModel)model);
+                dbContextEngine.LoadedModelsTracker.TrackModel((IEntityModel)model);
             }
 
             // Enable auditing.
@@ -162,7 +162,7 @@ namespace Etherna.MongODM.Core.Serialization.Serializers
 
             // Get default schema.
             var actualType = value.GetType();
-            var modelMap = dbContext.MapRegistry.GetModelMap(actualType);
+            var modelMap = dbContextEngine.MapRegistry.GetModelMap(actualType);
 
             // Serialize.
             modelMap.ActiveSchema.Serializer.Serialize(localContext, args, value);
@@ -175,8 +175,8 @@ namespace Etherna.MongODM.Core.Serialization.Serializers
              * from bson class map serializer. In that case, the right model map id is already be setted, and we
              * don't have to replace it with the one wrong of the basic collection model type.
              */
-            if (!bsonDocument.Contains(dbContext.Options.ModelMapVersion.ElementName))
-                bsonDocument.InsertAt(0, dbContext.MapRegistry.GetActiveModelMapIdBsonElement(actualType));
+            if (!bsonDocument.Contains(dbContextEngine.Options.ModelMapVersion.ElementName))
+                bsonDocument.InsertAt(0, dbContextEngine.MapRegistry.GetActiveModelMapIdBsonElement(actualType));
 
             // Serialize document.
             BsonDocumentSerializer.Instance.Serialize(context, args, bsonDocument);

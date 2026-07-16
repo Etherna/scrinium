@@ -17,8 +17,8 @@ namespace Etherna.MongODM.Core.Domain.Models
     public class SeedOperation : OperationBase
     {
         // Constructors.
-        public SeedOperation(IDbContext owner)
-            : base(owner)
+        public SeedOperation(IDbContextEngine dbContextEngine)
+            : base(dbContextEngine)
         { }
         protected SeedOperation() { }
     }

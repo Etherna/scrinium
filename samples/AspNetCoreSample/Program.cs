@@ -15,6 +15,7 @@
 using Etherna.MongODM.AspNetCore.Extensions;
 using Etherna.MongODM.AspNetCore.UI;
 using Etherna.MongODM.AspNetCoreSample.Persistence;
+using Etherna.MongODM.Extensions;
 using Hangfire;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.DependencyInjection;

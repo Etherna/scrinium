@@ -22,11 +22,11 @@ namespace Etherna.MongODM.AspNetCoreSample.Models.ModelMaps
 {
     class ModelBaseMap : IModelMapsCollector
     {
-        public void Register(IDbContext dbContext)
+        public void Register(IDbContextEngine dbContextEngine)
         {
-            dbContext.MapRegistry.AddModelMap<ModelBase>("1252861f-82d9-4c72-975e-3571d5e1b6e6");
+            dbContextEngine.MapRegistry.AddModelMap<ModelBase>("1252861f-82d9-4c72-975e-3571d5e1b6e6");
 
-            dbContext.MapRegistry.AddModelMap<EntityModelBase<string>>("81dd8b35-a0af-44d9-80b4-ab7ae9844eb5", schema =>
+            dbContextEngine.MapRegistry.AddModelMap<EntityModelBase<string>>("81dd8b35-a0af-44d9-80b4-ab7ae9844eb5", schema =>
             {
                 schema.AutoMap();
 

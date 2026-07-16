@@ -12,23 +12,14 @@
 // You should have received a copy of the GNU Lesser General Public License along with MongODM.
 // If not, see <https://www.gnu.org/licenses/>.
 
-using System;
-using System.Threading.Tasks;
+using Microsoft.Extensions.Logging;
 
-namespace Etherna.MongODM.Core.Tasks
+namespace Etherna.MongODM.Core
 {
-    public class MigrateDbContextTask(IServiceProvider serviceProvider)
-        : IMigrateDbContextTask
+    public interface IDbContextEngineInitializable
     {
-        // Methods.
-        public async Task RunAsync<TDbContext>(string dbMigrationOpId, string taskId)
-            where TDbContext : class, IDbContext
-        {
-            var dbContext = (TDbContext)serviceProvider.GetService(typeof(TDbContext))!;
+        bool IsInitialized { get; }
 
-            // Run with exclusive access.
-            await dbContext.Engine.RunWithExclusiveAccessAsync(() =>
-                dbContext.ExecuteMigrationAsync(dbMigrationOpId, taskId)).ConfigureAwait(false);
-        }
+        void Initialize(IDbContextEngine dbContextEngine, ILogger logger);
     }
 }

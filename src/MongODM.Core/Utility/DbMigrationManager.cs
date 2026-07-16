@@ -29,29 +29,29 @@ namespace Etherna.MongODM.Core.Utility
     public class DbMigrationManager(ITaskRunner taskRunner) : IDbMigrationManager
     {
         // Fields.
-        private IDbContext dbContext = null!;
         private ILogger logger = null!;
 
         // Initializer.
-        public void Initialize(IDbContext dbContext, ILogger logger)
+        public void Initialize(IDbContextEngine dbContextEngine, ILogger logger)
         {
+            ArgumentNullException.ThrowIfNull(dbContextEngine);
             if (IsInitialized)
                 throw new InvalidOperationException("Instance already initialized");
 
-            this.dbContext = dbContext ?? throw new ArgumentNullException(nameof(dbContext));
             this.logger = logger ?? throw new ArgumentNullException(nameof(logger));
 
             IsInitialized = true;
 
-            this.logger.DbMigrationManagerInitialized(dbContext.Options.DbName);
+            this.logger.DbMigrationManagerInitialized(dbContextEngine.Options.DbName);
         }
 
         // Properties.
         public bool IsInitialized { get; private set; }
 
         // Methods.
-        public async Task ExecuteDbContextMigrationAsync(string dbMigrationOpId, string? taskId = null, bool throwOnErrors = false)
+        public async Task ExecuteDbContextMigrationAsync(IDbContext dbContext, string dbMigrationOpId, string? taskId = null, bool throwOnErrors = false)
         {
+            ArgumentNullException.ThrowIfNull(dbContext);
             ArgumentNullException.ThrowIfNull(dbMigrationOpId);
 
             var dbMigrationOp = (DbMigrationOperation)await dbContext.DbOperations.FindOneAsync(dbMigrationOpId).ConfigureAwait(false);
@@ -158,7 +158,7 @@ namespace Etherna.MongODM.Core.Utility
             // Report errors if required.
             if (errors.Count > 0 && throwOnErrors)
                 throw new MongodmDbMigrationException(
-                    $"Error migrating {dbContext.Identifier} dbContext",
+                    $"Error migrating {dbContext.Engine.Identifier} dbContext",
                     new AggregateException(errors));
         }
 
@@ -166,23 +166,26 @@ namespace Etherna.MongODM.Core.Utility
          * Migration state reads run with exclusive access allowance,
          * so they keep working also while a migration is locking the db context.
          */
-        public async Task<List<DbMigrationOperation>> GetLastMigrationsAsync(int page, int take)
+        public async Task<List<DbMigrationOperation>> GetLastMigrationsAsync(IDbContext dbContext, int page, int take)
         {
-            using var exclusiveAccess = new ExclusiveAccessHandler(dbContext.ExecutionContext);
+            ArgumentNullException.ThrowIfNull(dbContext);
+
+            using var exclusiveAccess = new ExclusiveAccessHandler(dbContext.Engine.ExecutionContext);
 
             // Paginate on Id: CreationDateTime is not persisted, and ObjectId ids embed the creation instant.
             return await dbContext.DbOperations.QueryElementsAsync(elements =>
                 elements.OfType<DbMigrationOperation>()
-                        .Where(op => op.DbContextName == dbContext.Identifier)
+                        .Where(op => op.DbContextName == dbContext.Engine.Identifier)
                         .PaginateDescending(r => r.Id, page, take)
                         .ToListAsync()).ConfigureAwait(false);
         }
 
-        public async Task<DbMigrationOperation> GetMigrationAsync(string migrateOperationId)
+        public async Task<DbMigrationOperation> GetMigrationAsync(IDbContext dbContext, string migrateOperationId)
         {
+            ArgumentNullException.ThrowIfNull(dbContext);
             ArgumentNullException.ThrowIfNull(migrateOperationId);
 
-            using var exclusiveAccess = new ExclusiveAccessHandler(dbContext.ExecutionContext);
+            using var exclusiveAccess = new ExclusiveAccessHandler(dbContext.Engine.ExecutionContext);
 
             var migrateOp = await dbContext.DbOperations.QueryElementsAsync(elements =>
                 elements.OfType<DbMigrationOperation>()
@@ -192,13 +195,15 @@ namespace Etherna.MongODM.Core.Utility
             return migrateOp;
         }
 
-        public async Task<DbMigrationOperation?> IsMigrationRunningAsync()
+        public async Task<DbMigrationOperation?> IsMigrationRunningAsync(IDbContext dbContext)
         {
-            using var exclusiveAccess = new ExclusiveAccessHandler(dbContext.ExecutionContext);
+            ArgumentNullException.ThrowIfNull(dbContext);
+
+            using var exclusiveAccess = new ExclusiveAccessHandler(dbContext.Engine.ExecutionContext);
 
             var migrateOp = await dbContext.DbOperations.QueryElementsAsync(elements =>
                 elements.OfType<DbMigrationOperation>()
-                        .Where(op => op.DbContextName == dbContext.Identifier)
+                        .Where(op => op.DbContextName == dbContext.Engine.Identifier)
                         .Where(op => op.CurrentStatus == DbMigrationOperation.Status.New ||
                                      op.CurrentStatus == DbMigrationOperation.Status.Running)
                         .FirstOrDefaultAsync()).ConfigureAwait(false);
@@ -206,14 +211,16 @@ namespace Etherna.MongODM.Core.Utility
             return migrateOp;
         }
 
-        public async Task<DbMigrationOperation?> TryStartDbContextMigrationAsync()
+        public async Task<DbMigrationOperation?> TryStartDbContextMigrationAsync(IDbContext dbContext)
         {
+            ArgumentNullException.ThrowIfNull(dbContext);
+
             // Deny start when another migration is queued or running, or an exclusive access is locking the db context.
-            if (dbContext.IsExclusiveWriteEnabled ||
-                await IsMigrationRunningAsync().ConfigureAwait(false) is not null)
+            if (dbContext.Engine.IsExclusiveWriteEnabled ||
+                await IsMigrationRunningAsync(dbContext).ConfigureAwait(false) is not null)
                 return null;
 
-            var migrateOp = new DbMigrationOperation(dbContext);
+            var migrateOp = new DbMigrationOperation(dbContext.Engine);
             await dbContext.DbOperations.CreateAsync(migrateOp).ConfigureAwait(false);
 
             taskRunner.RunMigrateDbTask(dbContext.GetType(), migrateOp.Id);

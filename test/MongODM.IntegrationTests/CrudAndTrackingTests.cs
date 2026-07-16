@@ -1,4 +1,4 @@
-// Copyright 2020-present Etherna SA
+﻿// Copyright 2020-present Etherna SA
 // This file is part of MongODM.
 //
 // MongODM is free software: you can redistribute it and/or modify it under the terms of the
@@ -145,7 +145,7 @@ namespace Etherna.MongODM.IntegrationTests
 
             using var workContextHandler = AsyncLocalContext.Instance.InitAsyncLocalContext();
             Post loadedPost;
-            using (dbContext.SerializerModifierAccessor.EnableCacheSerializerModifier(noCache: true))
+            using (dbContext.Engine.SerializerModifierAccessor.EnableCacheSerializerModifier(noCache: true))
             {
                 loadedPost = await dbContext.Posts.FindOneAsync(post.Id);
             }

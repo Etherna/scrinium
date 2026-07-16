@@ -1,4 +1,4 @@
-// Copyright 2020-present Etherna SA
+﻿// Copyright 2020-present Etherna SA
 // This file is part of MongODM.
 //
 // MongODM is free software: you can redistribute it and/or modify it under the terms of the
@@ -12,7 +12,9 @@
 // You should have received a copy of the GNU Lesser General Public License along with MongODM.
 // If not, see <https://www.gnu.org/licenses/>.
 
+using Etherna.MongODM.AspNetCore.Extensions;
 using Etherna.MongODM.Core.ExecContext.AsyncLocal;
+using Etherna.MongODM.Core.Tasks;
 using Microsoft.Extensions.DependencyInjection;
 using System;
 using System.Threading.Tasks;
@@ -33,6 +35,8 @@ namespace Etherna.MongODM.IntegrationTests.Fixtures
         // Properties.
         public ISecondDbContext SecondDbContext { get; private set; } = default!;
         public string SecondDbName { get; } = "mongodm-it-second-" + Guid.NewGuid().ToString("N");
+        public IServiceProvider ServiceProvider => serviceProvider;
+        internal InlineTaskRunner TaskRunner { get; private set; } = default!;
         public ITestDbContext TestDbContext { get; private set; } = default!;
         public string TestDbName { get; } = "mongodm-it-test-" + Guid.NewGuid().ToString("N");
 
@@ -41,8 +45,8 @@ namespace Etherna.MongODM.IntegrationTests.Fixtures
         {
             if (TestDbContext is not null)
             {
-                await TestDbContext.Client.DropDatabaseAsync(TestDbName);
-                await TestDbContext.Client.DropDatabaseAsync(SecondDbName);
+                await TestDbContext.Engine.Client.DropDatabaseAsync(TestDbName);
+                await TestDbContext.Engine.Client.DropDatabaseAsync(SecondDbName);
             }
 
             if (serviceProvider is not null)
@@ -56,7 +60,7 @@ namespace Etherna.MongODM.IntegrationTests.Fixtures
             var services = new ServiceCollection();
             services.AddLogging();
 
-            services.AddMongODM<NoopTaskRunner>()
+            services.AddMongODM<InlineTaskRunner>()
                 .AddDbContext<ITestDbContext, TestDbContext>(
                     _ => new TestDbContext(),
                     options =>
@@ -72,6 +76,7 @@ namespace Etherna.MongODM.IntegrationTests.Fixtures
 
             serviceProvider = services.BuildServiceProvider();
 
+            TaskRunner = (InlineTaskRunner)serviceProvider.GetRequiredService<ITaskRunner>();
             TestDbContext = serviceProvider.GetRequiredService<ITestDbContext>();
             SecondDbContext = serviceProvider.GetRequiredService<ISecondDbContext>();
 

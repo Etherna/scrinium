@@ -59,7 +59,7 @@ namespace Etherna.MongODM.Core.Repositories
 
             IsInitialized = true;
 
-            this.logger.RepositoryInitialized(Name, dbContext.Options.DbName);
+            this.logger.RepositoryInitialized(Name, dbContext.Engine.Options.DbName);
         }
 
         // Properties.
@@ -86,7 +86,7 @@ namespace Etherna.MongODM.Core.Repositories
             ArgumentNullException.ThrowIfNull(func);
 
             // Initialize collection cache.
-            _collection ??= DbContext.GetMongoCollection<TModel>(options.Name);
+            _collection ??= DbContext.Engine.GetMongoCollection<TModel>(options.Name);
 
             // Invoke func into optional implicit execution context.
             DbExecutionContextHandler? dbExecContextHandler = null;
@@ -97,7 +97,7 @@ namespace Etherna.MongODM.Core.Repositories
 
             dbExecContextHandler?.Dispose();
 
-            logger.RepositoryAccessedCollection(Name, DbContext.Options.DbName);
+            logger.RepositoryAccessedCollection(Name, DbContext.Engine.Options.DbName);
 
             return result;
         }
@@ -110,7 +110,7 @@ namespace Etherna.MongODM.Core.Repositories
                 await AccessToCollectionAsync(collection =>
                     collection.Indexes.CreateManyAsync(definedIndexes, cancellationToken)).ConfigureAwait(false);
             
-            logger.RepositoryBuiltIndexes(Name, DbContext.Options.DbName);
+            logger.RepositoryBuiltIndexes(Name, DbContext.Engine.Options.DbName);
         }
 
         public Task CreateAsync(object model, CancellationToken cancellationToken = default) =>
@@ -123,7 +123,7 @@ namespace Etherna.MongODM.Core.Repositories
         {
             await CreateOnDBAsync(models, cancellationToken).ConfigureAwait(false);
 
-            logger.RepositoryCreatedDocuments(Name, DbContext.Options.DbName, models.Select(m => m.Id!.ToString()!));
+            logger.RepositoryCreatedDocuments(Name, DbContext.Engine.Options.DbName, models.Select(m => m.Id!.ToString()!));
 
             await DbContext.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
         }
@@ -134,7 +134,7 @@ namespace Etherna.MongODM.Core.Repositories
 
             await CreateOnDBAsync(model, cancellationToken).ConfigureAwait(false);
 
-            logger.RepositoryCreatedDocument(Name, DbContext.Options.DbName, model.Id!.ToString()!);
+            logger.RepositoryCreatedDocument(Name, DbContext.Engine.Options.DbName, model.Id!.ToString()!);
 
             await DbContext.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
         }
@@ -160,9 +160,9 @@ namespace Etherna.MongODM.Core.Repositories
             await DeleteOnDBAsync(model, additionalFilters ?? [], cancellationToken).ConfigureAwait(false);
 
             // Stop tracking.
-            DbContext.LoadedModelsTracker.UntrackModel(model);
+            DbContext.Engine.LoadedModelsTracker.UntrackModel(model);
 
-            logger.RepositoryDeletedDocument(Name, DbContext.Options.DbName, model.Id!.ToString()!);
+            logger.RepositoryDeletedDocument(Name, DbContext.Engine.Options.DbName, model.Id!.ToString()!);
         }
 
         public async Task DeleteAsync(IEntityModel model, CancellationToken cancellationToken = default)
@@ -209,7 +209,7 @@ namespace Etherna.MongODM.Core.Repositories
                 var resultCursor = await collection.FindAsync(filter, options, cancellationToken).ConfigureAwait(false);
                 var wrappedCursor = new AsyncCursorWrapper<TProjection>(resultCursor, dbExecContextHandler);
 
-                logger.RepositoryQueriedCollection(Name, DbContext.Options.DbName);
+                logger.RepositoryQueriedCollection(Name, DbContext.Engine.Options.DbName);
 
                 return wrappedCursor;
             }, false).ConfigureAwait(false);
@@ -254,7 +254,7 @@ namespace Etherna.MongODM.Core.Repositories
                 }));
 
                 // By referenced documents.
-                var idMemberMaps = DbContext.MapRegistry.TryGetModelMap(typeof(TModel), out var modelMap) ?
+                var idMemberMaps = DbContext.Engine.MapRegistry.TryGetModelMap(typeof(TModel), out var modelMap) ?
                     modelMap.AllDescendingMemberMaps.Where(mm => mm is { IsEntityReferenceMember: true, IsIdMember: true }) :
                     [];
 
@@ -294,7 +294,7 @@ namespace Etherna.MongODM.Core.Repositories
 
                 var result = query(collection.AsQueryable(aggregateOptions));
 
-                logger.RepositoryQueriedCollection(Name, DbContext.Options.DbName);
+                logger.RepositoryQueriedCollection(Name, DbContext.Engine.Options.DbName);
 
                 return result;
             });
@@ -474,7 +474,7 @@ namespace Etherna.MongODM.Core.Repositories
             CancellationToken cancellationToken = default) =>
             AccessToCollectionAsync(async collection =>
             {
-                var serializer = DbContext.MapRegistry.GetMappedSerializer(typeof(TModel));
+                var serializer = DbContext.Engine.MapRegistry.GetMappedSerializer(typeof(TModel));
                 
                 // Serialize model.
                 var modelBsonDoc = new BsonDocument();
@@ -489,7 +489,7 @@ namespace Etherna.MongODM.Core.Repositories
 
                 // Update "update" definition with OnInsert instructions.
                 var skipFieldsNames = updatedFields
-                    .Select(f => f.Render(new((IBsonSerializer<TModel>)serializer, DbContext.SerializerRegistry)))
+                    .Select(f => f.Render(new((IBsonSerializer<TModel>)serializer, DbContext.Engine.SerializerRegistry)))
                     .Select(f => f.FieldName.Split('.').First())
                     .ToArray();
                 var onInsertUpdate = modelBsonDoc[0].AsBsonDocument.Elements
@@ -506,7 +506,7 @@ namespace Etherna.MongODM.Core.Repositories
                 
                 // Stop tracking old document, if present.
                 if (oldDocument is not null)
-                    DbContext.LoadedModelsTracker.UntrackModel(oldDocument);
+                    DbContext.Engine.LoadedModelsTracker.UntrackModel(oldDocument);
 
                 return oldDocument;
             });
@@ -616,7 +616,7 @@ namespace Etherna.MongODM.Core.Repositories
                 if (model == null)
                     throw new MongodmEntityNotFoundException("Can't find element");
 
-                logger.RepositoryFoundDocument(Name, DbContext.Options.DbName, model.Id!.ToString()!);
+                logger.RepositoryFoundDocument(Name, DbContext.Engine.Options.DbName, model.Id!.ToString()!);
 
                 return model;
             });
@@ -649,12 +649,12 @@ namespace Etherna.MongODM.Core.Repositories
 
                 // Update dependent documents.
                 if (updateDependentDocuments)
-                    DbContext.DbMaintainer.OnUpdatedModel<TKey>((IAuditable)model);
+                    DbContext.Engine.DbMaintainer.OnUpdatedModel<TKey>((IAuditable)model, this);
 
                 // Reset changed members.
                 ((IAuditable)model).ResetChangedMembers();
 
-                logger.RepositoryReplacedDocument(Name, DbContext.Options.DbName, model.Id!.ToString()!);
+                logger.RepositoryReplacedDocument(Name, DbContext.Engine.Options.DbName, model.Id!.ToString()!);
             });
     }
 }

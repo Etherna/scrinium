@@ -15,7 +15,6 @@
 using Etherna.MongoDB.Bson.Serialization;
 using Etherna.MongoDB.Bson.Serialization.Options;
 using Etherna.MongODM.Core.Extensions;
-using MoreLinq;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -50,7 +49,7 @@ namespace Etherna.MongODM.Core.Serialization.Mapping
 
         public IEnumerable<IMemberMap> ChildMemberMaps => _childMemberMaps;
 
-        public IDbContextEngine DbContext => ModelMapSchema.ModelMap.DbContext;
+        public IDbContextEngine DbContextEngine => ModelMapSchema.ModelMap.DbContextEngine;
 
         public bool ElementPathHasUndefinedArrayIndex => MemberMapPath.Any(mm => mm.InternalElementPath.OfType<ArrayElementRepresentation>().Any(e => e.ItemIndex == null));
 

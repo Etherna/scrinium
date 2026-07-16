@@ -1,4 +1,4 @@
-// Copyright 2020-present Etherna SA
+﻿// Copyright 2020-present Etherna SA
 // This file is part of MongODM.
 //
 // MongODM is free software: you can redistribute it and/or modify it under the terms of the
@@ -24,17 +24,17 @@ namespace Etherna.MongODM.IntegrationTests.ModelMaps
 {
     internal sealed class PostMap : IModelMapsCollector
     {
-        public void Register(IDbContext dbContext)
+        public void Register(IDbContextEngine dbContextEngine)
         {
-            dbContext.MapRegistry.AddModelMap<Post>(
+            dbContextEngine.MapRegistry.AddModelMap<Post>(
                 "f44d03bb-dd75-496b-82fb-27d571be602b");
         }
 
         /// <summary>
         /// Preview information serializer, including the post title
         /// </summary>
-        public static ReferenceSerializer<Post, string> PreviewInfoSerializer(IDbContext dbContext) =>
-            new(dbContext, config =>
+        public static ReferenceSerializer<Post, string> PreviewInfoSerializer(IDbContextEngine dbContextEngine) =>
+            new(dbContextEngine, config =>
             {
                 config.AddModelMap<ModelBase>("5a55693d-e49a-4079-968d-0d210db49721");
                 config.AddModelMap<EntityModelBase<string>>("3e87ebac-b5a4-4372-9b44-07cec75d5c24", mm =>
@@ -51,8 +51,8 @@ namespace Etherna.MongODM.IntegrationTests.ModelMaps
         /// <summary>
         /// Minimal reference to the entity
         /// </summary>
-        public static ReferenceSerializer<Post, string> ReferenceSerializer(IDbContext dbContext) =>
-            new(dbContext, config =>
+        public static ReferenceSerializer<Post, string> ReferenceSerializer(IDbContextEngine dbContextEngine) =>
+            new(dbContextEngine, config =>
             {
                 config.AddModelMap<ModelBase>("837dd14f-022c-459b-9c84-c4cd0bf5aea6");
                 config.AddModelMap<EntityModelBase<string>>("473640d8-3259-43dd-baa2-effebfdf8ef7", mm =>

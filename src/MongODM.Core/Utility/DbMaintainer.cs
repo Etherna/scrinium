@@ -15,6 +15,7 @@
 using Etherna.MongODM.Core.Domain.Models;
 using Etherna.MongODM.Core.Extensions;
 using Etherna.MongODM.Core.ProxyModels;
+using Etherna.MongODM.Core.Repositories;
 using Etherna.MongODM.Core.Tasks;
 using Microsoft.Extensions.Logging;
 using System;
@@ -25,21 +26,21 @@ namespace Etherna.MongODM.Core.Utility
     public class DbMaintainer(ITaskRunner taskRunner) : IDbMaintainer
     {
         // Fields.
-        private IDbContext dbContext = null!;
+        private IDbContextEngine dbContextEngine = null!;
         private ILogger logger = null!;
 
         // Initializer.
-        public void Initialize(IDbContext dbContext, ILogger logger)
+        public void Initialize(IDbContextEngine dbContextEngine, ILogger logger)
         {
             if (IsInitialized)
                 throw new InvalidOperationException("Instance already initialized");
 
-            this.dbContext = dbContext ?? throw new ArgumentNullException(nameof(dbContext));
+            this.dbContextEngine = dbContextEngine ?? throw new ArgumentNullException(nameof(dbContextEngine));
             this.logger = logger ?? throw new ArgumentNullException(nameof(logger));
 
             IsInitialized = true;
 
-            this.logger.DbMaintainerInitialized(dbContext.Options.DbName);
+            this.logger.DbMaintainerInitialized(dbContextEngine.Options.DbName);
         }
 
         // Properties.
@@ -71,18 +72,16 @@ namespace Etherna.MongODM.Core.Utility
          * If referred document "referredDoc" updates it's fields "b" and "c" with a new value,
          * "originDoc1.a" and "originDoc2.b" fields would be updated by this process.
          */
-        public void OnUpdatedModel<TKey>(IAuditable updatedModel)
+        public void OnUpdatedModel<TKey>(IAuditable updatedModel, IRepository referenceRepository)
         {
             ArgumentNullException.ThrowIfNull(updatedModel);
+            ArgumentNullException.ThrowIfNull(referenceRepository);
             if (updatedModel is not IEntityModel<TKey>)
                 throw new ArgumentException($"Model is not of type {nameof(IEntityModel<TKey>)}", nameof(updatedModel));
 
-            // Find referenced model repository.
-            var referenceRepository = dbContext.RepositoryRegistry.GetRepositoryByHandledModelType(updatedModel.GetType());
-
             // Find all possibly involved member maps with changes, from all model maps. Select only referenced members.
             var referenceMemberMaps = updatedModel.ChangedMembers
-                .SelectMany(updatedMemberInfo => dbContext.MapRegistry.GetMemberMapsFromMemberInfo(updatedMemberInfo))
+                .SelectMany(updatedMemberInfo => dbContextEngine.MapRegistry.GetMemberMapsFromMemberInfo(updatedMemberInfo))
                 .Where(memberMap => memberMap.IsEntityReferenceMember);
 
             // Find related id member maps.
@@ -101,7 +100,7 @@ namespace Etherna.MongODM.Core.Utility
              * Otherwise, if for example active schema serialize only reference Id, it will be never considered has a valid serialization schema by task.
              */
             var allIdMemberMaps = idMemberMaps
-                .SelectMany(dbContext.MapRegistry.GetMemberMapsWithSameElementPath)
+                .SelectMany(dbContextEngine.MapRegistry.GetMemberMapsWithSameElementPath)
                 .Distinct();
 
             // Enqueue call of background job.
@@ -110,11 +109,11 @@ namespace Etherna.MongODM.Core.Utility
              * All member maps must be recovered by the task using Ids from the schema register.
              */
             taskRunner.RunUpdateDocDependenciesTask(
-                dbContext.GetType(),
+                dbContextEngine.DbContextType,
                 referenceRepository.Name,
                 ((IEntityModel<TKey>)updatedModel).Id!,
                 allIdMemberMaps.Select(mm => mm.Id),
-                ExclusiveAccessHandler.IsExclusiveAccessAllowed(dbContext.ExecutionContext));
+                ExclusiveAccessHandler.IsExclusiveAccessAllowed(dbContextEngine.ExecutionContext));
         }
     }
 }

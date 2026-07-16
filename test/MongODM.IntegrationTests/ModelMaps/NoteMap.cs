@@ -1,4 +1,4 @@
-// Copyright 2020-present Etherna SA
+﻿// Copyright 2020-present Etherna SA
 // This file is part of MongODM.
 //
 // MongODM is free software: you can redistribute it and/or modify it under the terms of the
@@ -20,9 +20,9 @@ namespace Etherna.MongODM.IntegrationTests.ModelMaps
 {
     internal sealed class NoteMap : IModelMapsCollector
     {
-        public void Register(IDbContext dbContext)
+        public void Register(IDbContextEngine dbContextEngine)
         {
-            dbContext.MapRegistry.AddModelMap<Note>(
+            dbContextEngine.MapRegistry.AddModelMap<Note>(
                 "8190d652-4aa2-44fd-b847-e811919b4592");
         }
     }

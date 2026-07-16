@@ -20,7 +20,7 @@ using System.Reflection;
 
 namespace Etherna.MongODM.Core.Serialization.Providers
 {
-    public class ModelMapSerializationProvider(DbContext dbContext)
+    public class ModelMapSerializationProvider(IDbContextEngine dbContextEngine)
         : BsonSerializationProviderBase
     {
         // Methods.
@@ -40,7 +40,7 @@ namespace Etherna.MongODM.Core.Serialization.Providers
             {
                 var modelMapSerializerDefinition = typeof(ModelMapSerializer<>);
                 var modelMapSerializerType = modelMapSerializerDefinition.MakeGenericType(type);
-                return (IBsonSerializer)Activator.CreateInstance(modelMapSerializerType, dbContext)!;
+                return (IBsonSerializer)Activator.CreateInstance(modelMapSerializerType, dbContextEngine)!;
             }
 
             return null;

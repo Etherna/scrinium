@@ -20,17 +20,17 @@ namespace Etherna.MongODM.Core.Domain.ModelMaps
 {
     internal sealed class DbMigrationOperationMap : IModelMapsCollector
     {
-        public void Register(IDbContext dbContext)
+        public void Register(IDbContextEngine dbContextEngine)
         {
-            dbContext.MapRegistry.AddModelMap<BuildNewIndexesMigrationLog>("555eed70-62e2-4d85-ac47-75bae10eefa9");
-            dbContext.MapRegistry.AddModelMap<DbMigrationOperation>("afdb63c9-791b-41f8-8216-556e233df0de");
-            dbContext.MapRegistry.AddModelMap<DeleteOldIndexesMigrationLog>("ac9d8011-6247-4365-b8ca-ac8401f838a1");
-            dbContext.MapRegistry.AddModelMap<DocumentMigrationLog>("d2b49514-464e-4b28-8b38-ad2d0cc69d3e");
-            dbContext.MapRegistry.AddModelMap<MigrationLogBase>("1696c0c9-d615-44d9-ab9b-4e3618164185");
+            dbContextEngine.MapRegistry.AddModelMap<BuildNewIndexesMigrationLog>("555eed70-62e2-4d85-ac47-75bae10eefa9");
+            dbContextEngine.MapRegistry.AddModelMap<DbMigrationOperation>("afdb63c9-791b-41f8-8216-556e233df0de");
+            dbContextEngine.MapRegistry.AddModelMap<DeleteOldIndexesMigrationLog>("ac9d8011-6247-4365-b8ca-ac8401f838a1");
+            dbContextEngine.MapRegistry.AddModelMap<DocumentMigrationLog>("d2b49514-464e-4b28-8b38-ad2d0cc69d3e");
+            dbContextEngine.MapRegistry.AddModelMap<MigrationLogBase>("1696c0c9-d615-44d9-ab9b-4e3618164185");
             
             //obsolete
 #pragma warning disable CS0618 // Type or member is obsolete
-            dbContext.MapRegistry.AddModelMap<IndexMigrationLog>("24d65670-a3c3-443c-977a-51112df04e2a");
+            dbContextEngine.MapRegistry.AddModelMap<IndexMigrationLog>("24d65670-a3c3-443c-977a-51112df04e2a");
 #pragma warning restore CS0618 // Type or member is obsolete
         }
     }

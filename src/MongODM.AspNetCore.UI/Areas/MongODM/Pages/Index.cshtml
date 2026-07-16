@@ -11,9 +11,9 @@
 <div class="dbcontexts">
     @foreach (var context in Model.DbContexts)
     {
-        <section class="dbcontext-card" data-identifier="@context.Identifier">
+        <section class="dbcontext-card" data-identifier="@context.Engine.Identifier">
             <header class="dbcontext-card-header">
-                <h2>@context.Identifier</h2>
+                <h2>@context.Engine.Identifier</h2>
                 <span class="status-badge" data-role="status">&hellip;</span>
                 <button type="button" class="btn-start" data-role="start" disabled>Start migration</button>
             </header>

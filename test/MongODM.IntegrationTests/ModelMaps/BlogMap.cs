@@ -1,4 +1,4 @@
-// Copyright 2020-present Etherna SA
+﻿// Copyright 2020-present Etherna SA
 // This file is part of MongODM.
 //
 // MongODM is free software: you can redistribute it and/or modify it under the terms of the
@@ -22,19 +22,19 @@ namespace Etherna.MongODM.IntegrationTests.ModelMaps
 {
     internal sealed class BlogMap : IModelMapsCollector
     {
-        public void Register(IDbContext dbContext)
+        public void Register(IDbContextEngine dbContextEngine)
         {
-            dbContext.MapRegistry.AddModelMap<Blog>(
+            dbContextEngine.MapRegistry.AddModelMap<Blog>(
                 "4cd47c3a-0495-4724-a954-c8c64ba8d6e2",
                 mm =>
                 {
                     mm.AutoMap();
 
                     // Set members with custom serializers.
-                    mm.SetMemberSerializer(b => b.LastPost!, PostMap.PreviewInfoSerializer(dbContext));
+                    mm.SetMemberSerializer(b => b.LastPost!, PostMap.PreviewInfoSerializer(dbContextEngine));
                     mm.SetMemberSerializer(b => b.Posts,
                         new EnumerableSerializer<Post>(
-                            PostMap.ReferenceSerializer(dbContext)));
+                            PostMap.ReferenceSerializer(dbContextEngine)));
                 });
         }
     }

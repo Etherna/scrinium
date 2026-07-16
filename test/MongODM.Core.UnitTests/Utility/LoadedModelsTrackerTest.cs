@@ -1,4 +1,4 @@
-// Copyright 2020-present Etherna SA
+﻿// Copyright 2020-present Etherna SA
 // This file is part of MongODM.
 //
 // MongODM is free software: you can redistribute it and/or modify it under the terms of the
@@ -23,20 +23,20 @@ namespace Etherna.MongODM.Core.Utility
     public class LoadedModelsTrackerTest
     {
         // Fields.
-        private readonly Mock<IDbContext> dbContextMock = new();
+        private readonly Mock<IDbContextEngine> dbContextEngineMock = new();
         private readonly LoadedModelsTracker loadedModelsTracker = new();
 
         // Constructor.
         public LoadedModelsTrackerTest()
         {
-            dbContextMock.Setup(c => c.ExecutionContext)
+            dbContextEngineMock.Setup(c => c.ExecutionContext)
                 .Returns(AsyncLocalContext.Instance);
-            dbContextMock.Setup(c => c.Identifier)
+            dbContextEngineMock.Setup(c => c.Identifier)
                 .Returns("FakeDbContext");
-            dbContextMock.Setup(c => c.Options.DbName)
+            dbContextEngineMock.Setup(c => c.Options.DbName)
                 .Returns("fakeDb");
 
-            loadedModelsTracker.Initialize(dbContextMock.Object, Mock.Of<ILogger>());
+            loadedModelsTracker.Initialize(dbContextEngineMock.Object, Mock.Of<ILogger>());
         }
 
         // Tests.

@@ -84,10 +84,10 @@ namespace Etherna.MongODM.Core.Serialization.Mapping
         public BsonMemberMap? TryGetMemberMap(string memberName) =>
             bsonClassMap.GetMemberMap(memberName);
 
-        public void UseProxyGenerator(IDbContextEngine dbContext) =>
+        public void UseProxyGenerator(IDbContextEngine dbContextEngine) =>
             ExecuteConfigAction(() =>
             {
-                ArgumentNullException.ThrowIfNull(dbContext);
+                ArgumentNullException.ThrowIfNull(dbContextEngine);
                 if (ModelMap.ModelType.IsAbstract)
                     throw new InvalidOperationException("Can't generate proxy of an abstract model");
 
@@ -108,19 +108,19 @@ namespace Etherna.MongODM.Core.Serialization.Mapping
                 }
 
                 // Set creator.
-                bsonClassMap.SetCreator(() => dbContext.ProxyGenerator.CreateInstance(ModelMap.ModelType, dbContext));
+                bsonClassMap.SetCreator(() => dbContextEngine.ProxyGenerator.CreateInstance(ModelMap.ModelType));
             });
 
-        public bool TryUseProxyGenerator(IDbContextEngine dbContext)
+        public bool TryUseProxyGenerator(IDbContextEngine dbContextEngine)
         {
-            ArgumentNullException.ThrowIfNull(dbContext);
+            ArgumentNullException.ThrowIfNull(dbContextEngine);
 
             // Verify if can use proxy model.
             if (ModelMap.ModelType != typeof(object) &&
                 !ModelMap.ModelType.IsAbstract &&
-                !dbContext.ProxyGenerator.IsProxyType(ModelMap.ModelType))
+                !dbContextEngine.ProxyGenerator.IsProxyType(ModelMap.ModelType))
             {
-                UseProxyGenerator(dbContext);
+                UseProxyGenerator(dbContextEngine);
                 return true;
             }
 

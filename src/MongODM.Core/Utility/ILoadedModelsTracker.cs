@@ -1,4 +1,4 @@
-// Copyright 2020-present Etherna SA
+﻿// Copyright 2020-present Etherna SA
 // This file is part of MongODM.
 //
 // MongODM is free software: you can redistribute it and/or modify it under the terms of the
@@ -20,7 +20,7 @@ namespace Etherna.MongODM.Core.Utility
     /// <summary>
     /// Interface for <see cref="LoadedModelsTracker"/> implementation.
     /// </summary>
-    public interface ILoadedModelsTracker : IDbContextInitializable
+    public interface ILoadedModelsTracker : IDbContextEngineInitializable
     {
         // Properties.
         /// <summary>

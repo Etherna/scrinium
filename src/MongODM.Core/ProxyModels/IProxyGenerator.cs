@@ -22,8 +22,8 @@ namespace Etherna.MongODM.Core.ProxyModels
         bool DisableCreationWithProxyTypes { get; set; }
 
         // Methods.
-        object CreateInstance(Type type, IDbContextEngine dbContext, params object[] constructorArguments);
-        TModel CreateInstance<TModel>(IDbContextEngine dbContext, params object[] constructorArguments);
+        object CreateInstance(Type type, params object[] constructorArguments);
+        TModel CreateInstance<TModel>(params object[] constructorArguments);
         bool IsProxyType(Type type);
         Type PurgeProxyType(Type type);
     }

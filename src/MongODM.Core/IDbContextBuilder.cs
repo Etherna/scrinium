@@ -14,16 +14,29 @@
 
 using Etherna.MongoDB.Driver;
 using Etherna.MongODM.Core.Options;
+using Etherna.MongODM.Core.Repositories;
 using System.Collections.Generic;
 
 namespace Etherna.MongODM.Core
 {
     public interface IDbContextBuilder
     {
-        void Initialize(
+        /// <summary>
+        /// Attach this db context instance to its engine, initializing the unit of work state.
+        /// The engine lifetime belongs to whoever built it, not to the attached db context.
+        /// </summary>
+        void AttachToEngine(
+            IDbContextEngine engine,
+            IEnumerable<IDbContext> childDbContexts,
+            IRepositoryRegistry repositoryRegistry);
+
+        /// <summary>
+        /// Build and initialize a new engine from this db context definitions, without attaching to it.
+        /// </summary>
+        /// <returns>The new initialized engine, owned by the caller</returns>
+        IDbContextEngine BuildEngine(
             IDbDependencies dependencies,
             IMongoClient mongoClient,
-            IDbContextOptions options,
-            IEnumerable<IDbContext> childDbContexts);
+            IDbContextOptions options);
     }
 }

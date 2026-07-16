@@ -1,4 +1,4 @@
-// Copyright 2020-present Etherna SA
+﻿// Copyright 2020-present Etherna SA
 // This file is part of MongODM.
 //
 // MongODM is free software: you can redistribute it and/or modify it under the terms of the
@@ -33,21 +33,21 @@ namespace Etherna.MongODM.Core.Utility
         private string trackerKey = default!;
 
         // Initializer.
-        public void Initialize(IDbContext dbContext, ILogger logger)
+        public void Initialize(IDbContextEngine dbContextEngine, ILogger logger)
         {
-            ArgumentNullException.ThrowIfNull(dbContext);
+            ArgumentNullException.ThrowIfNull(dbContextEngine);
             if (IsInitialized)
                 throw new InvalidOperationException("Instance already initialized");
 
             var trackerKeyBuilder = new StringBuilder(TrackerKeyPrefix);
-            trackerKeyBuilder.Append(dbContext.Identifier);
+            trackerKeyBuilder.Append(dbContextEngine.Identifier);
             trackerKey = trackerKeyBuilder.ToString();
-            executionContext = dbContext.ExecutionContext;
+            executionContext = dbContextEngine.ExecutionContext;
             this.logger = logger ?? throw new ArgumentNullException(nameof(logger));
 
             IsInitialized = true;
 
-            this.logger.LoadedModelsTrackerInitialized(dbContext.Options.DbName);
+            this.logger.LoadedModelsTrackerInitialized(dbContextEngine.Options.DbName);
         }
 
         // Properties.

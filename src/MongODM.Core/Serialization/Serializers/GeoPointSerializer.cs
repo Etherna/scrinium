@@ -24,7 +24,7 @@ using System.Reflection;
 namespace Etherna.MongODM.Core.Serialization.Serializers
 {
     public class GeoPointSerializer<TInModel>(
-        IDbContextEngine dbContext,
+        IDbContextEngine dbContextEngine,
         Expression<Func<TInModel, double>> longitudeMember,
         Expression<Func<TInModel, double>> latitudeMember)
         : SerializerBase<TInModel>
@@ -34,8 +34,7 @@ namespace Etherna.MongODM.Core.Serialization.Serializers
         private readonly MemberInfo latitudeMemberInfo = ReflectionHelper.GetMemberInfoFromLambda(latitudeMember);
         private readonly MemberInfo longitudeMemberInfo = ReflectionHelper.GetMemberInfoFromLambda(longitudeMember);
         private readonly GeoJsonPointSerializer<GeoJson2DGeographicCoordinates> pointSerializer = new();
-        private readonly IDbContextEngine dbContext = dbContext ?? throw new ArgumentNullException(nameof(dbContext));
-        private readonly IProxyGenerator proxyGenerator = dbContext.ProxyGenerator;
+        private readonly IProxyGenerator proxyGenerator = (dbContextEngine ?? throw new ArgumentNullException(nameof(dbContextEngine))).ProxyGenerator;
 
         // Methods.
         public override TInModel Deserialize(BsonDeserializationContext context, BsonDeserializationArgs args)
@@ -48,7 +47,7 @@ namespace Etherna.MongODM.Core.Serialization.Serializers
             }
 
             // Create model instance.
-            var model = proxyGenerator.CreateInstance<TInModel>(dbContext);
+            var model = proxyGenerator.CreateInstance<TInModel>();
 
             // Copy data.
             ReflectionHelper.SetValue(model, longitudeMemberInfo, point.Coordinates.Values[0]);

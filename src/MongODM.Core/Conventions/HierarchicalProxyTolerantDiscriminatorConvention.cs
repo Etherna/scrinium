@@ -29,17 +29,17 @@ namespace Etherna.MongODM.Core.Conventions
     public class HierarchicalProxyTolerantDiscriminatorConvention : IHierarchicalDiscriminatorConvention
     {
         // Fields.
-        private readonly IDbContextEngine? _dbContext; //remove nullability with constructors that don't ask it, when will be possible
+        private readonly IDbContextEngine? _dbContextEngine; //remove nullability with constructors that don't ask it, when will be possible
         private readonly IExecutionContext? executionContext;
 
         // Constructors.
         [SuppressMessage("Usage", "CA2249:Consider using \'string.Contains\' instead of \'string.IndexOf\'")]
         [SuppressMessage("Globalization", "CA1307:Specify StringComparison for clarity")]
         public HierarchicalProxyTolerantDiscriminatorConvention(
-            IDbContextEngine dbContext,
+            IDbContextEngine dbContextEngine,
             string elementName)
         {
-            _dbContext = dbContext;
+            _dbContextEngine = dbContextEngine;
 
             ElementName = elementName ?? throw new ArgumentNullException(nameof(elementName));
             if (elementName.IndexOf('\0') != -1)
@@ -65,19 +65,19 @@ namespace Etherna.MongODM.Core.Conventions
             this.executionContext = executionContext;
         }
 
-        public IDbContextEngine DbContext
+        public IDbContextEngine DbContextEngine
         {
             get
             {
-                if (_dbContext is not null)
-                    return _dbContext;
+                if (_dbContextEngine is not null)
+                    return _dbContextEngine;
 
-                /* If we didn't injected a dbContext, this is an instance retrieved from a static invoke.
+                /* If we didn't injected a dbContextEngine, this is an instance retrieved from a static invoke.
                  * Try to find it from execution contenxt. */
                 if (executionContext is null)
                     throw new InvalidOperationException();
 
-                return DbExecutionContextHandler.TryGetCurrentDbContext(executionContext)
+                return DbExecutionContextHandler.TryGetCurrentDbContextEngine(executionContext)
                     ?? throw new InvalidOperationException();
             }
         }
@@ -93,7 +93,7 @@ namespace Etherna.MongODM.Core.Conventions
             if (bsonType == BsonType.Document)
             {
                 //we can skip looking for a discriminator if nominalType has no discriminated sub types
-                if (DbContext.DiscriminatorRegistry.IsTypeDiscriminated(nominalType))
+                if (DbContextEngine.DiscriminatorRegistry.IsTypeDiscriminated(nominalType))
                 {
                     var bookmark = bsonReader.GetBookmark();
                     bsonReader.ReadStartDocument();
@@ -106,7 +106,7 @@ namespace Etherna.MongODM.Core.Conventions
                         {
                             discriminator = discriminator.AsBsonArray.Last(); //last item is leaf class discriminator
                         }
-                        actualType = DbContext.DiscriminatorRegistry.LookupActualType(nominalType, discriminator);
+                        actualType = DbContextEngine.DiscriminatorRegistry.LookupActualType(nominalType, discriminator);
                     }
                     bsonReader.ReturnToBookmark(bookmark);
                     return actualType;
@@ -125,10 +125,10 @@ namespace Etherna.MongODM.Core.Conventions
         public BsonValue? GetDiscriminator(Type nominalType, Type actualType)
         {
             // Remove proxy type.
-            actualType = DbContext.ProxyGenerator.PurgeProxyType(actualType);
+            actualType = DbContextEngine.ProxyGenerator.PurgeProxyType(actualType);
             
             // Find active schema for model type.
-            if (!DbContext.MapRegistry.TryGetModelMap(actualType, out var modelMap))
+            if (!DbContextEngine.MapRegistry.TryGetModelMap(actualType, out var modelMap))
                 return null;
             var schema = modelMap.ActiveSchema;
             

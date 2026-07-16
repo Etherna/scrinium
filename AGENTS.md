@@ -27,7 +27,7 @@ Versioning is computed by **GitVersion** (no manual version bumps). CI (`.github
 Five source projects (one NuGet package each), two test projects, one sample:
 
 - **`src/MongODM.Core`** (`Etherna.MongODM.Core`) — The framework itself, host-agnostic. Main areas:
-  - `DbContext.cs` / `IDbContext.cs` / `IDbContextEngine.cs` — unit of work: owns repositories, serialization registries, seeding, migrations, and exclusive access locking (`RunWithExclusiveAccessAsync`). `IDbContextEngine` exposes the scope independent engine members (connections, registries, infrastructure), and is the type captured by the serialization pipeline; `IDbContext` extends it with the current unit of work state (`ChangedModelsList`, `SaveChangesAsync`).
+  - `DbContext.cs` / `IDbContext.cs` / `DbContextEngine.cs` / `IDbContextEngine.cs` — unit of work and its engine, related by composition (`IDbContext` does NOT extend `IDbContextEngine`). `DbContextEngine` owns the scope independent members built once at initialization (connections, schema registries, seeding cache, exclusive access locking with `RunWithExclusiveAccessAsync`), and is the type captured by the serialization pipeline; `DbContext` attaches to its engine (exposed as `IDbContext.Engine`) and owns the current unit of work state (`ChangedModelsList`, `SaveChangesAsync`, per-instance repositories, migration facades).
   - `Repositories/` — `Repository<TModel, TKey>` with typed access to collections; every collection access passes through `AccessToCollectionAsync`.
   - `Serialization/` — model maps and versioned schemas (`MapRegistry`, `ModelMap`, member maps), discriminator registry, serializers and modifiers.
   - `ProxyModels/` — Castle DynamicProxy-based model proxies enabling lazy loading and change auditing (`IAuditable`).
@@ -35,7 +35,7 @@ Five source projects (one NuGet package each), two test projects, one sample:
   - `Tasks/` — background tasks invoked through `ITaskRunner` (`UpdateDocDependenciesTask` propagates updated summaries to referencing documents; `MigrateDbContextTask` runs a db context migration under exclusive access).
   - `Utility/` — `LoadedModelsTracker` (tracks models loaded in the current execution scope, source of `ChangedModelsList` for `SaveChangesAsync`), `DbMaintainer` (enqueues dependency updates on model changes), `DbMigrationManager`, `ExclusiveAccessHandler` + `LimitedAccessMongoCollection` (deny read/write access to collections while another context holds exclusive access).
   - `Domain/Models/` — internal operation log entities persisted in the `_db_ops` collection (`SeedOperation`, `DbMigrationOperation` with its `DbMigrationOpAgg/` logs).
-- **`src/MongODM.AspNetCore`** (`Etherna.MongODM.AspNetCore`) — DI integration: `AddMongODM` configuration builder, singleton `DbContext` registration, `DbDependencies`, execution context wiring.
+- **`src/MongODM.AspNetCore`** (`Etherna.MongODM.AspNetCore`) — DI integration: `AddMongODM` configuration builder, keyed singleton `IDbContextEngine` + scoped `DbContext` registration, `DbDependencies`, execution context wiring.
 - **`src/MongODM.AspNetCore.UI`** (`Etherna.MongODM.AspNetCore.UI`) — Admin dashboard as a Razor Pages area (`Areas/MongODM/Pages/Index*`), mapped on a configurable `DashboardOptions.BasePath` and guarded by `IDashboardAuthFilter`s. Static assets are self-contained in `wwwroot/` (no external client libraries); the status/start endpoints are page handlers polled by `wwwroot/js/mongodmDash.js`.
 - **`src/MongODM.Hangfire`** (`Etherna.MongODM.Hangfire`, root namespace `Etherna.MongODM.HF`) — `ITaskRunner` implementation scheduling MongODM tasks on Hangfire.
 - **`src/MongODM`** (`Etherna.MongODM`) — Meta package wiring the full stack (AspNetCore + Hangfire) with a single `AddMongODMWithHangfire` entry point.
@@ -46,8 +46,8 @@ Five source projects (one NuGet package each), two test projects, one sample:
 Key cross-cutting points:
 
 - **The MongoDB driver is the Etherna fork** (`Etherna.MongoDB.Driver`, namespaces `Etherna.MongoDB.*`) — never reference the official `MongoDB.*` packages or namespaces.
-- **Execution contexts**: `IExecutionContext` (`Etherna.MongODM.Core.ExecContext` namespaces, vendored from the former standalone `ExecutionContext` package) provides ambient per-flow state (HTTP request or async-local scope). `DbExecutionContextHandler` associates a db context to the flow; `ExclusiveAccessHandler` marks a flow as owner of an exclusive access. Handlers are `IDisposable` scopes registered in `context.Items`.
-- **DbContexts are singletons**: state on a `DbContext` instance (exclusive access flags, seeding state) is shared by all requests of the process.
+- **Execution contexts**: `IExecutionContext` (`Etherna.MongODM.Core.ExecContext` namespaces, vendored from the former standalone `ExecutionContext` package) provides ambient per-flow state (HTTP request or async-local scope). `DbExecutionContextHandler` associates the current db operation to the flow, always carrying the `IDbContextEngine` and, when the operation runs inside a scope, also the `IDbContext` (null for engine level work like schema registration); `ExclusiveAccessHandler` marks a flow as owner of an exclusive access. Handlers are `IDisposable` scopes registered in `context.Items`.
+- **DbContext engines are singletons, DbContext instances are scoped**: each DI scope (request, Hangfire job) gets its own `DbContext` instance, attached with `AttachToEngine` to the singleton `DbContextEngine` of its type (registered as keyed singleton `IDbContextEngine`, keyed by the db context type). Process-wide state (exclusive access flags, seeding state, registries, connections) lives on the engine; scoped instances own their repositories and unit of work state.
 - **Exclusive access locking**: `RunWithExclusiveAccessAsync` (used by seeding and migrations) sets `IsExclusiveReadEnabled`/`IsExclusiveWriteEnabled`; while set, `LimitedAccessMongoCollection` throws `UnauthorizedAccessException` for any flow not holding an `ExclusiveAccessHandler`. Anything that must keep working during a migration (e.g. migration status reads for the dashboard) has to create its own handler scope.
 - **`ConfigureAwait(false)` is required** on every awaited call in library code — these are libraries with no synchronization context to preserve.
 - **Logging** uses strongly-typed `LoggerMessage.Define` delegates in each project's `Extensions/LoggerExtensions.cs`, grouped by level, with incremental never-reused event ids; the header comment `Last event id is: N` is the source of truth for the next free id — update it when adding a delegate.
@@ -136,7 +136,7 @@ private void InternalHelper() { ... }
 
 - `internal sealed` for implementations that aren't part of the public API
 - Primary constructors everywhere the constructor is a simple assignment
-- Framework-initialized components implement `IDbContextInitializable` (`Initialize(dbContext, logger)` + `IsInitialized` guard) instead of taking the db context in the constructor
+- Framework-initialized components implement `IDbContextEngineInitializable` (engine level: registries, maintainer, migration manager) or `IDbContextInitializable` (scope level: repositories and their registry) — `Initialize(..., logger)` + `IsInitialized` guard instead of taking the dependency in the constructor
 
 ### Persisted Model Classes
 
@@ -155,7 +155,7 @@ private void InternalHelper() { ... }
 ## Null Handling
 
 - Nullable reference types enabled (`<Nullable>enable</Nullable>`)
-- `ArgumentNullException.ThrowIfNull(param, nameof(param))` for parameter validation
+- `ArgumentNullException.ThrowIfNull(param)` for parameter validation — no explicit `nameof`, the parameter name is captured automatically
 - `is null` / `is not null` (not `== null`)
 - Prefer `null` over `default` as default value for optional reference parameters
 - `= null!` on non-nullable members assigned after construction (e.g. by `Initialize`)
