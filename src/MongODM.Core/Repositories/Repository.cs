@@ -382,6 +382,114 @@ namespace Etherna.MongODM.Core.Repositories
             CancellationToken cancellationToken = default) =>
             ReplaceHelperAsync(model, session, updateDependentDocuments, cancellationToken);
 
+        public async Task SaveChangesAsync(
+            IEntityModel model,
+            CancellationToken cancellationToken = default)
+        {
+            ArgumentNullException.ThrowIfNull(model);
+            if (model is not TModel castedModel)
+                throw new MongodmInvalidEntityTypeException("Invalid model type");
+
+            // Fallback to a whole document replace when member level update isn't applicable.
+            if (options.SaveWithDocumentReplace ||
+                model is not IAuditable auditableModel ||
+                model is not IReferenceable)
+            {
+                await ReplaceAsync(castedModel, cancellationToken: cancellationToken).ConfigureAwait(false);
+                return;
+            }
+
+            // Build the changed members update from the active schema.
+            /* Members serialization needs the ambient db execution context, like the
+             * documents serialization inside collection accesses. */
+            using var dbExecutionContext = new DbExecutionContextHandler(DbContext);
+
+            var activeSchema = DbContext.Engine.MapRegistry.GetModelMap(
+                DbContext.Engine.ProxyGenerator.PurgeProxyType(model.GetType())).ActiveSchema;
+
+            var setDocument = new BsonDocument();
+            var unsetDocument = new BsonDocument();
+            foreach (var memberInfo in auditableModel.ChangedMembers)
+            {
+                var memberMap = activeSchema.AllMemberMaps.FirstOrDefault(mm => mm.MemberName == memberInfo.Name);
+                if (memberMap is null)
+                {
+                    /* A changed member not mapped by the active schema can't be updated
+                     * member level: persist with a whole document replace. */
+                    await ReplaceAsync(castedModel, cancellationToken: cancellationToken).ConfigureAwait(false);
+                    return;
+                }
+
+                var memberValue = memberMap.Getter(castedModel);
+                if (memberMap.ShouldSerialize(castedModel, memberValue))
+                    setDocument[memberMap.ElementName] = SerializeMemberValue(memberMap, memberValue);
+                else
+                    unsetDocument[memberMap.ElementName] = 1;
+            }
+
+            var update = new BsonDocument();
+            if (setDocument.ElementCount > 0)
+                update["$set"] = setDocument;
+            if (unsetDocument.ElementCount > 0)
+                update["$unset"] = unsetDocument;
+
+            if (update.ElementCount == 0)
+            {
+                await ReplaceAsync(castedModel, cancellationToken: cancellationToken).ConfigureAwait(false);
+                return;
+            }
+
+            // Update only documents serialized with the current active schema.
+            /* The schema check lives in the update filter to be atomic with the update
+             * itself: setting members serialized with the active schema into a document
+             * shaped by an older schema would mix schemas into a broken document. */
+            var filter = Builders<TModel>.Filter.Eq(m => m.Id, castedModel.Id) &
+                Builders<TModel>.Filter.Eq(
+                    new StringFieldDefinition<TModel, string>(DbContext.Engine.Options.ModelMapVersion.ElementName),
+                    activeSchema.Id);
+
+            var updatedModel = await AccessToCollectionAsync(async collection =>
+            {
+                /* Deserialize the returned document detached from the scope, with the no
+                 * cache modifier: the model instance to refresh is already the canonical
+                 * one, and deduplication would return it discarding the fresh state. */
+                using (DbContext.Engine.SerializerModifierAccessor.EnableCacheSerializerModifier(noCache: true))
+                {
+                    return await collection.FindOneAndUpdateAsync(
+                        filter,
+                        new BsonDocumentUpdateDefinition<TModel>(update),
+                        new FindOneAndUpdateOptions<TModel> { ReturnDocument = ReturnDocument.After },
+                        cancellationToken).ConfigureAwait(false);
+                }
+            }).ConfigureAwait(false);
+
+            // Fallback: document not serialized with the active schema, or concurrently deleted.
+            /* The whole document replace migrates old schema documents to the active one,
+             * and skips silently the deleted documents. */
+            if (updatedModel is null)
+            {
+                await ReplaceAsync(castedModel, cancellationToken: cancellationToken).ConfigureAwait(false);
+                return;
+            }
+
+            // Refresh the model in place with the updated document state.
+            /* A summary model merges the full document, upgrading also its bookkeeping;
+             * a full model refreshes all its members: at this point every local change has
+             * just been persisted, so only concurrent changes from other scopes can differ. */
+            if (model is IReferenceable { IsSummary: true } referenceableModel)
+                referenceableModel.MergeFullModel(updatedModel);
+            else
+                RefreshModel(castedModel, updatedModel);
+
+            // Update dependent documents.
+            DbContext.Engine.DbMaintainer.OnUpdatedModel<TKey>(auditableModel, this);
+
+            // Reset changed members.
+            auditableModel.ResetChangedMembers();
+
+            logger.RepositorySavedModelChanges(Name, DbContext.Engine.Options.DbName, castedModel.Id!.ToString()!);
+        }
+
         public Task<TModel?> TryFindOneAndAddToSetAsync<TItem>(
             FilterDefinition<TModel> filter,
             Expression<Func<TModel, IEnumerable<TItem>>> setField,
@@ -595,6 +703,34 @@ namespace Etherna.MongODM.Core.Repositories
                 onInsertModel,
                 [setField],
                 cancellationToken);
+
+        // Helpers.
+        private static void RefreshModel(TModel model, TModel updatedModel)
+        {
+            // Temporary disable auditing.
+            (model as IAuditable)?.DisableAuditing();
+
+            foreach (var member in ReflectionHelper.GetWritableInstanceProperties(typeof(TModel)))
+            {
+                var value = ReflectionHelper.GetValue(updatedModel, member);
+                ReflectionHelper.SetValue(model, member, value);
+            }
+
+            // Reenable auditing.
+            (model as IAuditable)?.EnableAuditing();
+        }
+
+        private static BsonValue SerializeMemberValue(BsonMemberMap memberMap, object? memberValue)
+        {
+            var document = new BsonDocument();
+            using var bsonWriter = new BsonDocumentWriter(document);
+            var context = BsonSerializationContext.CreateRoot(bsonWriter);
+            bsonWriter.WriteStartDocument();
+            bsonWriter.WriteName("value");
+            memberMap.GetSerializer().Serialize(context, memberValue);
+            bsonWriter.WriteEndDocument();
+            return document["value"];
+        }
 
         // Protected virtual methods.
         protected virtual Task CreateOnDBAsync(IEnumerable<TModel> models, CancellationToken cancellationToken) =>

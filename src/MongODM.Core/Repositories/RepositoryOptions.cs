@@ -23,5 +23,11 @@ namespace Etherna.MongODM.Core.Repositories
         // Properties.
         public IEnumerable<(IndexKeysDefinition<TModel> keys, CreateIndexOptions<TModel> options)> IndexBuilders { get; set; } = [];
         public string Name { get; } = name ?? throw new ArgumentNullException(nameof(name));
+
+        /// <summary>
+        /// When true, saving the tracked changes of a model replaces the whole document,
+        /// instead of updating only the changed members.
+        /// </summary>
+        public bool SaveWithDocumentReplace { get; set; }
     }
 }

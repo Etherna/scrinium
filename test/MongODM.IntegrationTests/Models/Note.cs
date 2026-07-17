@@ -1,4 +1,4 @@
-// Copyright 2020-present Etherna SA
+﻿// Copyright 2020-present Etherna SA
 // This file is part of MongODM.
 //
 // MongODM is free software: you can redistribute it and/or modify it under the terms of the
@@ -28,6 +28,7 @@ namespace Etherna.MongODM.IntegrationTests.Models
 #pragma warning restore CS8618 // Non-nullable field must contain a non-null value when exiting constructor. Consider declaring as nullable.
 
         // Properties.
+        public virtual string? Tag { get; set; }
         public virtual string Text { get; set; }
     }
 }

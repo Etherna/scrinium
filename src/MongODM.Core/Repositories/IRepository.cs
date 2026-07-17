@@ -67,6 +67,22 @@ namespace Etherna.MongODM.Core.Repositories
             CancellationToken cancellationToken = default);
 
         /// <summary>
+        /// Persist the tracked changes of a model. By default only the changed members are
+        /// updated, with a single atomic statement guarded by the current active model map
+        /// schema id, and the model is refreshed in place with the returned document state,
+        /// including concurrent changes from other scopes: the save is the synchronization
+        /// point of the unit of work. Documents serialized with a not active schema are
+        /// replaced instead, migrating them, like when the repository requires document
+        /// replacement on save. Conflict granularity is the member: concurrent changes to
+        /// disjoint members all survive, changes to the same member are last writer wins.
+        /// </summary>
+        /// <param name="model">The changed model to save</param>
+        /// <param name="cancellationToken">Cancellation token</param>
+        Task SaveChangesAsync(
+            IEntityModel model,
+            CancellationToken cancellationToken = default);
+
+        /// <summary>
         /// Try to find a model and don't throw exception if it is not found
         /// </summary>
         /// <param name="id">Model's Id</param>
