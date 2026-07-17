@@ -1,4 +1,4 @@
-// Copyright 2020-present Etherna SA
+﻿// Copyright 2020-present Etherna SA
 // This file is part of MongODM.
 //
 // MongODM is free software: you can redistribute it and/or modify it under the terms of the
@@ -30,6 +30,16 @@ namespace Etherna.MongODM.IntegrationTests.Fixtures
     {
         // Fields.
         private readonly List<Func<IServiceProvider, Task>> pendingTasks = [];
+
+        // Properties.
+        public int PendingCount
+        {
+            get
+            {
+                lock (pendingTasks)
+                    return pendingTasks.Count;
+            }
+        }
 
         // Methods.
         public void ClearPending()

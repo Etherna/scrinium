@@ -20,7 +20,7 @@ namespace Etherna.MongODM.Core.Extensions
 {
     /*
      * Always group similar log delegates by type, always use incremental event ids.
-     * Last event id is: 21
+     * Last event id is: 22
      */
     public static class LoggerExtensions
     {
@@ -124,6 +124,12 @@ namespace Etherna.MongODM.Core.Extensions
                 new EventId(15, nameof(RepositoryDeletedDocument)),
                 "Repository {RepositoryName} of DbContext {DbName} deleted document with Id: {ModelId}");
 
+        private static readonly Action<ILogger, string, string, long, Exception> _repositoryDeletedDocuments =
+            LoggerMessage.Define<string, string, long>(
+                LogLevel.Information,
+                new EventId(22, nameof(RepositoryDeletedDocuments)),
+                "Repository {RepositoryName} of DbContext {DbName} deleted {DeletedCount} documents with filter");
+
         private static readonly Action<ILogger, string, string, string, Exception> _repositoryFoundDocument =
             LoggerMessage.Define<string, string, string>(
                 LogLevel.Information,
@@ -196,6 +202,9 @@ namespace Etherna.MongODM.Core.Extensions
 
         public static void RepositoryDeletedDocument(this ILogger logger, string repositoryName, string dbName, string modelId) =>
             _repositoryDeletedDocument(logger, repositoryName, dbName, modelId, null!);
+
+        public static void RepositoryDeletedDocuments(this ILogger logger, string repositoryName, string dbName, long deletedCount) =>
+            _repositoryDeletedDocuments(logger, repositoryName, dbName, deletedCount, null!);
 
         public static void RepositoryFoundDocument(this ILogger logger, string repositoryName, string dbName, string modelId) =>
             _repositoryFoundDocument(logger, repositoryName, dbName, modelId, null!);

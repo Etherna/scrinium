@@ -173,6 +173,23 @@ namespace Etherna.MongODM.Core.Repositories
             await DeleteAsync(castedModel, [], cancellationToken).ConfigureAwait(false);
         }
 
+        public Task<long> DeleteManyAsync(
+            Expression<Func<TModel, bool>> filter,
+            CancellationToken cancellationToken = default) =>
+            DeleteManyAsync(new ExpressionFilterDefinition<TModel>(filter), cancellationToken);
+
+        public Task<long> DeleteManyAsync(
+            FilterDefinition<TModel> filter,
+            CancellationToken cancellationToken = default) =>
+            AccessToCollectionAsync(async collection =>
+            {
+                var result = await collection.DeleteManyAsync(filter, cancellationToken).ConfigureAwait(false);
+
+                logger.RepositoryDeletedDocuments(Name, DbContext.Engine.Options.DbName, result.DeletedCount);
+
+                return result.DeletedCount;
+            });
+
         public async Task DeleteOldIndexesAsync(CancellationToken cancellationToken = default)
         {
             var definedIndexes = await GetDefinedIndexModelsAsync().ConfigureAwait(false);
@@ -647,16 +664,17 @@ namespace Etherna.MongODM.Core.Repositories
                 ArgumentNullException.ThrowIfNull(model);
 
                 // Replace on db.
+                ReplaceOneResult result;
                 if (session == null)
                 {
-                    await collection.ReplaceOneAsync(
+                    result = await collection.ReplaceOneAsync(
                         Builders<TModel>.Filter.Eq(m => m.Id, model.Id),
                         model,
                         cancellationToken: cancellationToken).ConfigureAwait(false);
                 }
                 else
                 {
-                    await collection.ReplaceOneAsync(
+                    result = await collection.ReplaceOneAsync(
                         session,
                         Builders<TModel>.Filter.Eq(m => m.Id, model.Id),
                         model,
@@ -664,7 +682,10 @@ namespace Etherna.MongODM.Core.Repositories
                 }
 
                 // Update dependent documents.
-                if (updateDependentDocuments)
+                /* Skip when the replace matched no document: the model has been deleted
+                 * concurrently, like by a bulk delete with filter, and a dependencies
+                 * update task would fail reloading it. */
+                if (updateDependentDocuments && result.MatchedCount > 0)
                     DbContext.Engine.DbMaintainer.OnUpdatedModel<TKey>((IAuditable)model, this);
 
                 // Reset changed members.
