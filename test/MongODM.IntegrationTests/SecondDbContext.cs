@@ -1,4 +1,4 @@
-// Copyright 2020-present Etherna SA
+﻿// Copyright 2020-present Etherna SA
 // This file is part of MongODM.
 //
 // MongODM is free software: you can redistribute it and/or modify it under the terms of the
@@ -30,7 +30,8 @@ namespace Etherna.MongODM.IntegrationTests
     {
         // Properties.
         //repositories
-        public IRepository<Note, string> Notes { get; } = new Repository<Note, string>("notes");
+        public IRepository<Note, string> Notes { get; } = new Repository<Note, string>(
+            new RepositoryOptions<Note>("notes") { SaveWithDocumentReplace = true });
 
         // Protected properties.
         protected override IEnumerable<IModelMapsCollector> ModelMapsCollectors =>

@@ -20,7 +20,7 @@ namespace Etherna.MongODM.Core.Extensions
 {
     /*
      * Always group similar log delegates by type, always use incremental event ids.
-     * Last event id is: 22
+     * Last event id is: 23
      */
     public static class LoggerExtensions
     {
@@ -148,6 +148,12 @@ namespace Etherna.MongODM.Core.Extensions
                 new EventId(17, nameof(RepositoryReplacedDocument)),
                 "Repository {RepositoryName} of DbContext {DbName} replaced document with Id: {ModelId}");
 
+        private static readonly Action<ILogger, string, string, string, Exception> _repositorySavedModelChanges =
+            LoggerMessage.Define<string, string, string>(
+                LogLevel.Information,
+                new EventId(23, nameof(RepositorySavedModelChanges)),
+                "Repository {RepositoryName} of DbContext {DbName} saved changed members of document with Id: {ModelId}");
+
         private static readonly Action<ILogger, Type, string, string, Exception> _updateDocDependenciesTaskEnded =
             LoggerMessage.Define<Type, string, string>(
                 LogLevel.Information,
@@ -220,6 +226,9 @@ namespace Etherna.MongODM.Core.Extensions
 
         public static void RepositoryReplacedDocument(this ILogger logger, string repositoryName, string dbName, string modelId) =>
             _repositoryReplacedDocument(logger, repositoryName, dbName, modelId, null!);
+
+        public static void RepositorySavedModelChanges(this ILogger logger, string repositoryName, string dbName, string modelId) =>
+            _repositorySavedModelChanges(logger, repositoryName, dbName, modelId, null!);
 
         public static void SchemaRegistryInitialized(this ILogger logger, string dbName) =>
             _schemaRegistryInitialized(logger, dbName, null!);

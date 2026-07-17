@@ -195,7 +195,7 @@ namespace Etherna.MongODM.Core
                 var repository = RepositoryRegistry.TryGetRepositoryByHandledModelType(modelType);
                 if (repository != null)
                 {
-                    await repository.ReplaceAsync(model, cancellationToken: cancellationToken).ConfigureAwait(false);
+                    await repository.SaveChangesAsync(model, cancellationToken).ConfigureAwait(false);
 
                     logger.DbContextSavedChangedModelToRepository(engine.Options.DbName, repository.ModelIdToString(model), repository.Name);
                 }
