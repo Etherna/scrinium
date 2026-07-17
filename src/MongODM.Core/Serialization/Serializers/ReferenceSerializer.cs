@@ -20,6 +20,7 @@ using Etherna.MongoDB.Bson.Serialization.Serializers;
 using Etherna.MongODM.Core.Domain.Models;
 using Etherna.MongODM.Core.ProxyModels;
 using Etherna.MongODM.Core.Serialization.Mapping;
+using Etherna.MongODM.Core.Utility;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -175,9 +176,27 @@ namespace Etherna.MongODM.Core.Serialization.Serializers
                 // Enable auditing.
                 ((IAuditable)model).EnableAuditing();
 
-                // Track model.
+                // Deduplicate model instance on the current db context scope.
+                /* A reference to an already loaded document returns the existing instance.
+                 * The first loaded instance becomes the canonical one for its document, but a
+                 * new summary can carry denormalized members that the loaded instance doesn't
+                 * have yet: merge them instead of discarding the fresh deserialization. */
                 if (!dbContextEngine.SerializerModifierAccessor.IsNoCacheEnabled)
-                    dbContextEngine.LoadedModelsTracker.TrackModel(model);
+                {
+                    var currentDbContext = DbExecutionContextHandler.TryGetCurrentDbContext(dbContextEngine.ExecutionContext);
+                    if (currentDbContext is not null)
+                    {
+                        var loadedModel = currentDbContext.TryGetLoadedModel(typeof(TModelBase), id);
+                        if (loadedModel is null)
+                            currentDbContext.RegisterLoadedModel(id, model);
+                        else if (loadedModel is TModelBase typedLoadedModel)
+                        {
+                            if (typedLoadedModel is IReferenceable { IsSummary: true } referenceableModel)
+                                referenceableModel.MergeSummaryModel(model);
+                            model = typedLoadedModel;
+                        }
+                    }
+                }
             }
 
             return model!;

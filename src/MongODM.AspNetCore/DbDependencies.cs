@@ -34,7 +34,6 @@ namespace Etherna.MongODM.AspNetCore
             IDbMigrationManager dbContextMigrationManager,
             IDiscriminatorRegistry discriminatorRegistry,
             IExecutionContext executionContext,
-            ILoadedModelsTracker loadedModelsTracker,
             IMapRegistry mapRegistry,
             IOptions<MongODMOptions> mongODMOptions,
             IProxyGenerator proxyGenerator,
@@ -47,7 +46,6 @@ namespace Etherna.MongODM.AspNetCore
             DbMigrationManager = dbContextMigrationManager;
             DiscriminatorRegistry = discriminatorRegistry;
             ExecutionContext = executionContext;
-            LoadedModelsTracker = loadedModelsTracker;
             MapRegistry = mapRegistry;
             MongODMOptions = mongODMOptions.Value;
             ProxyGenerator = proxyGenerator;
@@ -60,7 +58,6 @@ namespace Etherna.MongODM.AspNetCore
         public IDbMigrationManager DbMigrationManager { get; }
         public IDiscriminatorRegistry DiscriminatorRegistry { get; }
         public IExecutionContext ExecutionContext { get; }
-        public ILoadedModelsTracker LoadedModelsTracker { get; }
         public IMapRegistry MapRegistry { get; }
         public MongODMOptions MongODMOptions { get; }
         public IProxyGenerator ProxyGenerator { get; }

@@ -70,7 +70,6 @@ namespace Etherna.MongODM.Core
             DbMigrationManager = dependencies.DbMigrationManager;
             DiscriminatorRegistry = dependencies.DiscriminatorRegistry;
             ExecutionContext = dependencies.ExecutionContext;
-            LoadedModelsTracker = dependencies.LoadedModelsTracker;
             MapRegistry = dependencies.MapRegistry;
             Options = options;
             ProxyGenerator = dependencies.ProxyGenerator;
@@ -84,7 +83,6 @@ namespace Etherna.MongODM.Core
             DbMaintainer.Initialize(this, logger);
             DbMigrationManager.Initialize(this, logger);
             DiscriminatorRegistry.Initialize(this, logger);
-            LoadedModelsTracker.Initialize(this, logger);
             MapRegistry.Initialize(this, logger);
             InitializeSerializerRegistry();
 
@@ -173,7 +171,6 @@ namespace Etherna.MongODM.Core
                 }
             }
         }
-        public ILoadedModelsTracker LoadedModelsTracker { get; private set; } = null!;
         public IMapRegistry MapRegistry { get; private set; } = null!;
         public IDbContextOptions Options { get; private set; } = null!;
         public IProxyGenerator ProxyGenerator { get; private set; } = null!;

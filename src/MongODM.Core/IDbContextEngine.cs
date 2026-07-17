@@ -1,4 +1,4 @@
-// Copyright 2020-present Etherna SA
+﻿// Copyright 2020-present Etherna SA
 // This file is part of MongODM.
 //
 // MongODM is free software: you can redistribute it and/or modify it under the terms of the
@@ -89,11 +89,6 @@ namespace Etherna.MongODM.Core
         /// Implementations must be thread safe.
         /// </summary>
         bool? IsSeededCache { get; set; }
-
-        /// <summary>
-        /// Tracker of models loaded in the current execution scope.
-        /// </summary>
-        ILoadedModelsTracker LoadedModelsTracker { get; }
 
         /// <summary>
         /// Registry for model serialization and maps information.

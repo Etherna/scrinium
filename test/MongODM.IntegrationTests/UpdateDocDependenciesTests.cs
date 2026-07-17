@@ -1,4 +1,4 @@
-// Copyright 2020-present Etherna SA
+﻿// Copyright 2020-present Etherna SA
 // This file is part of MongODM.
 //
 // MongODM is free software: you can redistribute it and/or modify it under the terms of the
@@ -17,14 +17,37 @@ using Etherna.MongoDB.Driver;
 using Etherna.MongODM.Core.ExecContext.AsyncLocal;
 using Etherna.MongODM.IntegrationTests.Fixtures;
 using Etherna.MongODM.IntegrationTests.Models;
+using Microsoft.Extensions.DependencyInjection;
+using System;
 using System.Threading.Tasks;
 using Xunit;
 
 namespace Etherna.MongODM.IntegrationTests
 {
     [Collection("Integration")]
-    public class UpdateDocDependenciesTests(IntegrationFixture fixture)
+    public class UpdateDocDependenciesTests : IDisposable
     {
+        // Fields.
+        private readonly ITestDbContext dbContext;
+        private readonly IntegrationFixture fixture;
+        private readonly IServiceScope serviceScope;
+
+        // Constructor and dispose.
+        /* Each test runs on its own DI scope, resolving fresh db context instances
+         * like a production request or job would do. */
+        public UpdateDocDependenciesTests(IntegrationFixture fixture)
+        {
+            this.fixture = fixture;
+            serviceScope = fixture.ServiceProvider.CreateScope();
+            dbContext = serviceScope.ServiceProvider.GetRequiredService<ITestDbContext>();
+        }
+
+        public void Dispose()
+        {
+            serviceScope.Dispose();
+            GC.SuppressFinalize(this);
+        }
+
         // Tests.
         [Fact]
         public async Task ChangedReferencedModelUpdatesSummariesOnDependentDocuments()
@@ -39,19 +62,19 @@ namespace Etherna.MongODM.IntegrationTests
             fixture.TaskRunner.ClearPending();
 
             var post = new Post("original title", "content");
-            await fixture.TestDbContext.Posts.CreateAsync(post);
+            await dbContext.Posts.CreateAsync(post);
 
             var blog = new Blog("my blog");
             blog.AddPost(post);
-            await fixture.TestDbContext.Blogs.CreateAsync(blog);
+            await dbContext.Blogs.CreateAsync(blog);
 
             // Action: update the referenced post through its repository.
-            var loadedPost = await fixture.TestDbContext.Posts.FindOneAsync(post.Id);
+            var loadedPost = await dbContext.Posts.FindOneAsync(post.Id);
             loadedPost.Title = "updated title";
-            await fixture.TestDbContext.SaveChangesAsync();
+            await dbContext.SaveChangesAsync();
 
             // Assert: the persisted summary is refreshed only by the enqueued task execution.
-            var blogsCollection = fixture.TestDbContext.Engine.Database.GetCollection<BsonDocument>("blogs");
+            var blogsCollection = dbContext.Engine.Database.GetCollection<BsonDocument>("blogs");
             var blogFilter = Builders<BsonDocument>.Filter.Eq("_id", ObjectId.Parse(blog.Id));
 
             var rawBlog = await blogsCollection.Find(blogFilter).SingleAsync();

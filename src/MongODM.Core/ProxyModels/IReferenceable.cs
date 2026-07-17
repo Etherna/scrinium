@@ -42,6 +42,14 @@ namespace Etherna.MongODM.Core.ProxyModels
         void MergeFullModel(object fullModel);
 
         /// <summary>
+        /// Merge current summary model with another summary model of the same document,
+        /// copying the members that the current one doesn't have. The model keeps
+        /// requiring a full load for the still missing members.
+        /// </summary>
+        /// <param name="summaryModel">The other summary model</param>
+        void MergeSummaryModel(object summaryModel);
+
+        /// <summary>
         /// Set a list of member names as coming from summary loading
         /// </summary>
         /// <param name="summaryLoadedMemberNames">The member name list</param>

@@ -1,4 +1,4 @@
-// Copyright 2020-present Etherna SA
+﻿// Copyright 2020-present Etherna SA
 // This file is part of MongODM.
 //
 // MongODM is free software: you can redistribute it and/or modify it under the terms of the
@@ -15,24 +15,46 @@
 using Etherna.MongODM.Core.ExecContext.AsyncLocal;
 using Etherna.MongODM.IntegrationTests.Fixtures;
 using Etherna.MongODM.IntegrationTests.Models;
+using Microsoft.Extensions.DependencyInjection;
+using System;
 using System.Threading.Tasks;
 using Xunit;
 
 namespace Etherna.MongODM.IntegrationTests
 {
     [Collection("Integration")]
-    public class ScopeIsolationTests(IntegrationFixture fixture)
+    public class ScopeIsolationTests : IDisposable
     {
         // Fields.
-        private readonly ISecondDbContext secondDbContext = fixture.SecondDbContext;
-        private readonly ITestDbContext testDbContext = fixture.TestDbContext;
+        private readonly ISecondDbContext secondDbContext;
+        private readonly ITestDbContext testDbContext;
+        private readonly IntegrationFixture fixture;
+        private readonly IServiceScope serviceScope;
+
+        // Constructor and dispose.
+        /* Each test runs on its own DI scope, resolving fresh db context instances
+         * like a production request or job would do. */
+        public ScopeIsolationTests(IntegrationFixture fixture)
+        {
+            this.fixture = fixture;
+            serviceScope = fixture.ServiceProvider.CreateScope();
+            secondDbContext = serviceScope.ServiceProvider.GetRequiredService<ISecondDbContext>();
+            testDbContext = serviceScope.ServiceProvider.GetRequiredService<ITestDbContext>();
+        }
+
+        public void Dispose()
+        {
+            serviceScope.Dispose();
+            GC.SuppressFinalize(this);
+        }
 
         // Tests.
         [Fact]
         public async Task ParallelScopesDontShareTrackedModels()
         {
-            /* Simulate two background jobs on the same singleton db context, each with its
-             * own execution scope, like Hangfire jobs run with AsyncLocalContextHangfireFilter. */
+            /* Simulate two parallel background jobs, each with its own DI scope and so its
+             * own db context instance, sharing the same engine. Changed models belong to the
+             * instance: one job can't see, nor save, the pending changes of the other. */
 
             // Setup.
             using var contextHandler = AsyncLocalContext.Instance.InitAsyncLocalContext();
@@ -45,12 +67,14 @@ namespace Etherna.MongODM.IntegrationTests
             // Action.
             var job0 = Task.Run(async () =>
             {
+                using var jobScope = fixture.ServiceProvider.CreateScope();
+                var jobDbContext = jobScope.ServiceProvider.GetRequiredService<ITestDbContext>();
                 using var jobContextHandler = AsyncLocalContext.Instance.InitAsyncLocalContext();
 
-                var loadedPost = await testDbContext.Posts.FindOneAsync(post.Id);
+                var loadedPost = await jobDbContext.Posts.FindOneAsync(post.Id);
                 loadedPost.Content = "updated by job0";
 
-                Assert.Single(testDbContext.ChangedModelsList);
+                Assert.Single(jobDbContext.ChangedModelsList);
 
                 job0Mutated.SetResult();
                 await job1Verified.Task;
@@ -60,14 +84,16 @@ namespace Etherna.MongODM.IntegrationTests
             {
                 await job0Mutated.Task;
 
+                using var jobScope = fixture.ServiceProvider.CreateScope();
+                var jobDbContext = jobScope.ServiceProvider.GetRequiredService<ITestDbContext>();
                 using var jobContextHandler = AsyncLocalContext.Instance.InitAsyncLocalContext();
 
-                var loadedPost = await testDbContext.Posts.FindOneAsync(post.Id);
+                var loadedPost = await jobDbContext.Posts.FindOneAsync(post.Id);
 
                 // Assert.
-                //job1 doesn't see job0's in-memory mutation, nor its tracked models
+                //job1 doesn't see job0's in-memory mutation, nor its changed models
                 Assert.Equal("content", loadedPost.Content);
-                Assert.Empty(testDbContext.ChangedModelsList);
+                Assert.Empty(jobDbContext.ChangedModelsList);
 
                 job1Verified.SetResult();
             });
@@ -96,10 +122,15 @@ namespace Etherna.MongODM.IntegrationTests
             await testDbContext.SaveChangesAsync();
 
             // Assert.
-            using (var readContextHandler = AsyncLocalContext.Instance.InitAsyncLocalContext())
+            //read the db state through a fresh scope, not deduplicated with local instances
+            using (var readScope = fixture.ServiceProvider.CreateScope())
             {
-                var foundPost = await testDbContext.Posts.FindOneAsync(post.Id);
-                var foundNote = await secondDbContext.Notes.FindOneAsync(note.Id);
+                var readTestDbContext = readScope.ServiceProvider.GetRequiredService<ITestDbContext>();
+                var readSecondDbContext = readScope.ServiceProvider.GetRequiredService<ISecondDbContext>();
+                using var readContextHandler = AsyncLocalContext.Instance.InitAsyncLocalContext();
+
+                var foundPost = await readTestDbContext.Posts.FindOneAsync(post.Id);
+                var foundNote = await readSecondDbContext.Notes.FindOneAsync(note.Id);
                 Assert.Equal("updated content", foundPost.Content);
                 Assert.Equal("text", foundNote.Text);
             }
@@ -108,9 +139,12 @@ namespace Etherna.MongODM.IntegrationTests
             await secondDbContext.SaveChangesAsync();
 
             // Assert.
-            using (var readContextHandler = AsyncLocalContext.Instance.InitAsyncLocalContext())
+            using (var readScope = fixture.ServiceProvider.CreateScope())
             {
-                var foundNote = await secondDbContext.Notes.FindOneAsync(note.Id);
+                var readSecondDbContext = readScope.ServiceProvider.GetRequiredService<ISecondDbContext>();
+                using var readContextHandler = AsyncLocalContext.Instance.InitAsyncLocalContext();
+
+                var foundNote = await readSecondDbContext.Notes.FindOneAsync(note.Id);
                 Assert.Equal("updated text", foundNote.Text);
             }
         }

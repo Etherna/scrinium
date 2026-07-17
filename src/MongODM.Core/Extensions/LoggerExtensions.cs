@@ -33,12 +33,6 @@ namespace Etherna.MongODM.Core.Extensions
                 "Repository {RepositoryName} of DbContext {DbName} accessed collection");
 
         //*** DEBUG LOGS ***
-        private static readonly Action<ILogger, string, Exception> _loadedModelsTrackerInitialized =
-            LoggerMessage.Define<string>(
-                LogLevel.Debug,
-                new EventId(7, nameof(LoadedModelsTrackerInitialized)),
-                "Loaded models tracker of DbContext {DbName} initialized");
-
         private static readonly Action<ILogger, string, string, string, Exception> _dbContextSavedChangedModelToRepository =
             LoggerMessage.Define<string, string, string>(
                 LogLevel.Debug,
@@ -187,9 +181,6 @@ namespace Etherna.MongODM.Core.Extensions
 
         public static void DiscriminatorRegistryInitialized(this ILogger logger, string dbName) =>
             _discriminatorRegistryInitialized(logger, dbName, null!);
-
-        public static void LoadedModelsTrackerInitialized(this ILogger logger, string dbName) =>
-            _loadedModelsTrackerInitialized(logger, dbName, null!);
 
         public static void RepositoryAccessedCollection(this ILogger logger, string repositoryName, string dbName) =>
             _repositoryAccessedCollection(logger, repositoryName, dbName, null!);

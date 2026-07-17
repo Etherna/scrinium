@@ -20,6 +20,7 @@ using Etherna.MongoDB.Bson.Serialization.Serializers;
 using Etherna.MongODM.Core.Domain.Models;
 using Etherna.MongODM.Core.ProxyModels;
 using Etherna.MongODM.Core.Serialization.Mapping;
+using Etherna.MongODM.Core.Utility;
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
@@ -114,20 +115,32 @@ namespace Etherna.MongODM.Core.Serialization.Serializers
                 model = task.Result;
             }
 
-            // Track model (if proxy).
-            /* Proxy models enable different features. Anyway, if the model as not been created as a proxy
-             * (for example for tests scope) these additional operations are not possible or required.
-             * In this case, don't track any not-proxy models.
-             */
+            // Enable auditing.
+            (model as IAuditable)?.EnableAuditing();
+
+            // Deduplicate model instance on the current db context scope (if proxy).
+            /* One document materializes one instance inside a scope: a full load of a document
+             * with an already loaded instance returns the existing one, upgrading it in place
+             * from summary with the fresh full model, if required. Models deserialized with the
+             * no cache serializer modifier, or outside of a scope, stay not deduplicated. */
             if (!dbContextEngine.SerializerModifierAccessor.IsNoCacheEnabled &&
                 dbContextEngine.ProxyGenerator.IsProxyType(model!.GetType()) &&
                 GetDocumentId(model, out var id, out _, out _) && id != null)
             {
-                dbContextEngine.LoadedModelsTracker.TrackModel((IEntityModel)model);
+                var currentDbContext = DbExecutionContextHandler.TryGetCurrentDbContext(dbContextEngine.ExecutionContext);
+                if (currentDbContext is not null)
+                {
+                    var loadedModel = currentDbContext.TryGetLoadedModel(typeof(TModel), id);
+                    if (loadedModel is null)
+                        currentDbContext.RegisterLoadedModel(id, (IEntityModel)model);
+                    else if (loadedModel is TModel typedLoadedModel)
+                    {
+                        if (typedLoadedModel is IReferenceable { IsSummary: true } referenceableModel)
+                            referenceableModel.MergeFullModel(model);
+                        model = typedLoadedModel;
+                    }
+                }
             }
-
-            // Enable auditing.
-            (model as IAuditable)?.EnableAuditing();
 
             return model;
         }

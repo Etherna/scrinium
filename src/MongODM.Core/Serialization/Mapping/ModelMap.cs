@@ -235,7 +235,7 @@ namespace Etherna.MongODM.Core.Serialization.Mapping
         public IModelMapBuilder<TModel> AddFallbackSchema(
             Action<BsonClassMap<TModel>>? modelMapSchemaInitializer = null,
             string? baseSchemaId = null,
-            Func<TModel, Task<TModel>>? fixDeserializedModelFunc = null)
+            Func<IDbContext, TModel, Task<TModel>>? fixDeserializedModelFunc = null)
         {
             AddFallbackModelMapSchemaHelper(new ModelMapSchema<TModel>(
                 "fallback",
@@ -250,7 +250,7 @@ namespace Etherna.MongODM.Core.Serialization.Mapping
             string id,
             Action<BsonClassMap<TModel>>? modelMapSchemaInitializer = null,
             string? baseSchemaId = null,
-            Func<TModel, Task<TModel>>? fixDeserializedModelFunc = null)
+            Func<IDbContext, TModel, Task<TModel>>? fixDeserializedModelFunc = null)
         {
             AddSecondarySchemaHelper(new ModelMapSchema<TModel>(
                 id,
@@ -265,7 +265,7 @@ namespace Etherna.MongODM.Core.Serialization.Mapping
             string id,
             Action<BsonClassMap<TOverrideNominal>>? modelMapSchemaInitializer = null,
             string? baseSchemaId = null,
-            Func<TOverrideNominal, Task<TOverrideNominal>>? fixDeserializedModelFunc = null)
+            Func<IDbContext, TOverrideNominal, Task<TOverrideNominal>>? fixDeserializedModelFunc = null)
             where TOverrideNominal : class, TModel
         {
             AddSecondarySchemaHelper(new ModelMapSchema<TModel, TOverrideNominal>(

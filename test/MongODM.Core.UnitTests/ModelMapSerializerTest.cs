@@ -17,13 +17,13 @@ using Etherna.MongoDB.Bson.IO;
 using Etherna.MongoDB.Bson.Serialization;
 using Etherna.MongODM.Core.Comparers;
 using Etherna.MongODM.Core.Conventions;
+using Etherna.MongODM.Core.ExecContext.AsyncLocal;
 using Etherna.MongODM.Core.Extensions;
 using Etherna.MongODM.Core.Models;
 using Etherna.MongODM.Core.Options;
 using Etherna.MongODM.Core.Serialization.Mapping;
 using Etherna.MongODM.Core.Serialization.Modifiers;
 using Etherna.MongODM.Core.Serialization.Serializers;
-using Etherna.MongODM.Core.Utility;
 using Moq;
 using System;
 using System.Collections.Generic;
@@ -73,7 +73,6 @@ namespace Etherna.MongODM.Core
         // Fields.
         private readonly Mock<IDbContextEngine> dbContextEngineMock = new();
         private readonly Mock<IDiscriminatorRegistry> discriminatorRegistryMock = new();
-        private readonly Mock<ILoadedModelsTracker> loadedModelsTrackerMock = new();
         private readonly Mock<IModelMap> modelMapMock = new();
         private readonly ModelMapVersionOptions modelMapVersionOptions = new();
         private readonly Mock<IMapRegistry> mapRegistryMock = new();
@@ -85,10 +84,10 @@ namespace Etherna.MongODM.Core
             discriminatorRegistryMock.Setup(r => r.LookupDiscriminatorConvention(It.IsAny<Type>()))
                 .Returns(() => new HierarchicalProxyTolerantDiscriminatorConvention(dbContextEngineMock.Object, "_t"));
 
-            dbContextEngineMock.Setup(c => c.LoadedModelsTracker)
-                .Returns(() => loadedModelsTrackerMock.Object);
             dbContextEngineMock.Setup(c => c.DiscriminatorRegistry)
                 .Returns(() => discriminatorRegistryMock.Object);
+            dbContextEngineMock.Setup(c => c.ExecutionContext)
+                .Returns(AsyncLocalContext.Instance);
             dbContextEngineMock.Setup(c => c.ProxyGenerator.IsProxyType(It.IsAny<Type>()))
                 .Returns(true);
             dbContextEngineMock.Setup(c => c.Options.ModelMapVersion)

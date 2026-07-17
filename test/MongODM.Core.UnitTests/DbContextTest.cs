@@ -37,16 +37,13 @@ namespace Etherna.MongODM.Core
 
         private readonly Mock<IMongoCollection<FakeModel>> collectionMock = new();
         private readonly Mock<IDbDependencies> dependenciesMock = new();
-        private readonly Mock<ILoadedModelsTracker> loadedModelsTrackerMock = new();
         private readonly Mock<IMongoClient> mongoClientMock = new();
         private readonly Mock<IMongoDatabase> mongoDatabaseMock = new();
+        private readonly Mock<IProxyGenerator> proxyGeneratorMock = new();
         
         // Constructor.
         public DbContextTest()
         {
-            loadedModelsTrackerMock.Setup(t => t.LoadedModels)
-                .Returns([]);
-            
             dependenciesMock.Setup(d => d.BsonSerializerRegistry)
                 .Returns(new BsonSerializerRegistry());
             dependenciesMock.Setup(d => d.DbMaintainer)
@@ -57,12 +54,12 @@ namespace Etherna.MongODM.Core
                 .Returns(new Mock<IDiscriminatorRegistry>().Object);
             dependenciesMock.Setup(d => d.ExecutionContext)
                 .Returns(AsyncLocalContext.Instance);
-            dependenciesMock.Setup(d => d.LoadedModelsTracker)
-                .Returns(loadedModelsTrackerMock.Object);
             dependenciesMock.Setup(d => d.MapRegistry)
                 .Returns(new Mock<IMapRegistry>().Object);
+            proxyGeneratorMock.Setup(p => p.PurgeProxyType(It.IsAny<Type>()))
+                .Returns<Type>(t => t);
             dependenciesMock.Setup(d => d.ProxyGenerator)
-                .Returns(new Mock<IProxyGenerator>().Object);
+                .Returns(proxyGeneratorMock.Object);
             dependenciesMock.Setup(d => d.RepositoryRegistry)
                 .Returns(new RepositoryRegistry());
 
@@ -97,6 +94,26 @@ namespace Etherna.MongODM.Core
         }
         
         // Tests.
+        [Fact]
+        public void LoadedModelsAreRegisteredPerInstance()
+        {
+            // Setup.
+            var model = new FakeModel { Id = "id" };
+
+            // Action.
+            dbContext.RegisterLoadedModel("id", model);
+
+            // Assert.
+            Assert.Same(model, dbContext.TryGetLoadedModel(typeof(FakeModel), "id"));
+            Assert.Null(dbContext.TryGetLoadedModel(typeof(FakeModel), "otherId"));
+
+            // Action.
+            dbContext.UnregisterLoadedModel("id", model);
+
+            // Assert.
+            Assert.Null(dbContext.TryGetLoadedModel(typeof(FakeModel), "id"));
+        }
+
         [Theory]
         [InlineData(false)]
         [InlineData(true)]

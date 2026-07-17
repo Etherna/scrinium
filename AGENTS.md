@@ -1,4 +1,4 @@
-# MongODM
+﻿# MongODM
 
 MongODM is an **ODM framework** (Object-Documental Mapper) for **MongoDB** on .NET, oriented to Asp.NET Core applications. It maps domain objects to documents, manages denormalized references between documents (with automatic dependency updates), versioned document schemas on the same collection, and data migrations. It is a set of **libraries**, not an application.
 
@@ -33,7 +33,7 @@ Five source projects (one NuGet package each), two test projects, one sample:
   - `ProxyModels/` — Castle DynamicProxy-based model proxies enabling lazy loading and change auditing (`IAuditable`).
   - `Migration/` — `DocumentMigration` scripts between document schemas.
   - `Tasks/` — background tasks invoked through `ITaskRunner` (`UpdateDocDependenciesTask` propagates updated summaries to referencing documents; `MigrateDbContextTask` runs a db context migration under exclusive access).
-  - `Utility/` — `LoadedModelsTracker` (tracks models loaded in the current execution scope, source of `ChangedModelsList` for `SaveChangesAsync`), `DbMaintainer` (enqueues dependency updates on model changes), `DbMigrationManager`, `ExclusiveAccessHandler` + `LimitedAccessMongoCollection` (deny read/write access to collections while another context holds exclusive access).
+  - `Utility/` — `DbMaintainer` (enqueues dependency updates on model changes), `DbMigrationManager`, `ExclusiveAccessHandler` + `LimitedAccessMongoCollection` (deny read/write access to collections while another context holds exclusive access). Changed models are registered on their db context instance by `AuditableInterceptor` at the first change (source of `ChangedModelsList` for `SaveChangesAsync`). Loaded models are deduplicated per db context instance (identity map, EF-like): one document materializes one instance inside a scope, references to already loaded documents return the existing instance, and a full load upgrades a loaded summary in place (`MergeFullModel`); deletes and upsert old snapshots evict from the map. The no cache serializer modifier disables both change registration and deduplication.
   - `Domain/Models/` — internal operation log entities persisted in the `_db_ops` collection (`SeedOperation`, `DbMigrationOperation` with its `DbMigrationOpAgg/` logs).
 - **`src/MongODM.AspNetCore`** (`Etherna.MongODM.AspNetCore`) — DI integration: `AddMongODM` configuration builder, keyed singleton `IDbContextEngine` + scoped `DbContext` registration, `DbDependencies`, execution context wiring.
 - **`src/MongODM.AspNetCore.UI`** (`Etherna.MongODM.AspNetCore.UI`) — Admin dashboard as a Razor Pages area (`Areas/MongODM/Pages/Index*`), mapped on a configurable `DashboardOptions.BasePath` and guarded by `IDashboardAuthFilter`s. Static assets are self-contained in `wwwroot/` (no external client libraries); the status/start endpoints are page handlers polled by `wwwroot/js/mongodmDash.js`.

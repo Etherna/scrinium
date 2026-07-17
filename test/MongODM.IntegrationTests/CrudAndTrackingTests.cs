@@ -12,19 +12,41 @@
 // You should have received a copy of the GNU Lesser General Public License along with MongODM.
 // If not, see <https://www.gnu.org/licenses/>.
 
+using Etherna.MongoDB.Bson;
+using Etherna.MongoDB.Driver;
 using Etherna.MongODM.Core.ExecContext.AsyncLocal;
 using Etherna.MongODM.IntegrationTests.Fixtures;
 using Etherna.MongODM.IntegrationTests.Models;
+using Microsoft.Extensions.DependencyInjection;
+using System;
 using System.Threading.Tasks;
 using Xunit;
 
 namespace Etherna.MongODM.IntegrationTests
 {
     [Collection("Integration")]
-    public class CrudAndTrackingTests(IntegrationFixture fixture)
+    public class CrudAndTrackingTests : IDisposable
     {
         // Fields.
-        private readonly ITestDbContext dbContext = fixture.TestDbContext;
+        private readonly ITestDbContext dbContext;
+        private readonly IntegrationFixture fixture;
+        private readonly IServiceScope serviceScope;
+
+        // Constructor and dispose.
+        /* Each test runs on its own DI scope, resolving fresh db context instances
+         * like a production request or job would do. */
+        public CrudAndTrackingTests(IntegrationFixture fixture)
+        {
+            this.fixture = fixture;
+            serviceScope = fixture.ServiceProvider.CreateScope();
+            dbContext = serviceScope.ServiceProvider.GetRequiredService<ITestDbContext>();
+        }
+
+        public void Dispose()
+        {
+            serviceScope.Dispose();
+            GC.SuppressFinalize(this);
+        }
 
         // Tests.
         [Fact]
@@ -90,25 +112,33 @@ namespace Etherna.MongODM.IntegrationTests
         }
 
         [Fact]
-        public async Task DistinctInstancesForSameDocumentInSameScope()
+        public async Task FindOneReadsThroughLoadedFullInstances()
         {
+            /* A full instance already loaded on the scope satisfies FindOneAsync without a db
+             * round trip: proved by deleting the document behind the scenes, where a db read
+             * would fail. Inside its scope, the unit of work is the source of truth. */
+
             // Setup.
             using var contextHandler = AsyncLocalContext.Instance.InitAsyncLocalContext();
             var post = new Post("title", "content");
             await dbContext.Posts.CreateAsync(post);
 
+            var loadedPost = await dbContext.Posts.FindOneAsync(post.Id);
+
+            //delete the document behind the scenes
+            var postsCollection = dbContext.Engine.Database.GetCollection<BsonDocument>("posts");
+            await postsCollection.DeleteOneAsync(
+                Builders<BsonDocument>.Filter.Eq("_id", ObjectId.Parse(post.Id)));
+
             // Action.
-            var firstLoadedPost = await dbContext.Posts.FindOneAsync(post.Id);
-            var secondLoadedPost = await dbContext.Posts.FindOneAsync(post.Id);
+            var foundPost = await dbContext.Posts.FindOneAsync(post.Id);
 
             // Assert.
-            //no identity map: same document, distinct instances
-            Assert.NotSame(firstLoadedPost, secondLoadedPost);
-            Assert.Equal(firstLoadedPost.Id, secondLoadedPost.Id);
+            Assert.Same(loadedPost, foundPost);
         }
 
         [Fact]
-        public async Task FindOneAlwaysReadsFreshDataAfterExternalUpdate()
+        public async Task FindOneReturnsSameInstanceInScopeAndFreshDataInNewScope()
         {
             // Setup.
             using var contextHandler = AsyncLocalContext.Instance.InitAsyncLocalContext();
@@ -117,22 +147,29 @@ namespace Etherna.MongODM.IntegrationTests
 
             var firstLoadedPost = await dbContext.Posts.FindOneAsync(post.Id);
 
-            //simulate a concurrent update from an isolated execution scope
-            using (var externalContextHandler = AsyncLocalContext.Instance.InitAsyncLocalContext())
+            //simulate a concurrent update from a different DI scope
+            using (var externalScope = fixture.ServiceProvider.CreateScope())
             {
-                var externalPost = await dbContext.Posts.FindOneAsync(post.Id);
+                var externalDbContext = externalScope.ServiceProvider.GetRequiredService<ITestDbContext>();
+                var externalPost = await externalDbContext.Posts.FindOneAsync(post.Id);
                 externalPost.Content = "updated externally";
-                await dbContext.SaveChangesAsync();
+                await externalDbContext.SaveChangesAsync();
             }
 
             // Action.
             var secondLoadedPost = await dbContext.Posts.FindOneAsync(post.Id);
 
             // Assert.
-            //no identity map: a new read always hits the database
-            Assert.NotSame(firstLoadedPost, secondLoadedPost);
-            Assert.Equal("content", firstLoadedPost.Content);
-            Assert.Equal("updated externally", secondLoadedPost.Content);
+            //identity map: the same scope keeps returning the loaded instance, with its state
+            Assert.Same(firstLoadedPost, secondLoadedPost);
+            Assert.Equal("content", secondLoadedPost.Content);
+
+            //a new scope reads fresh data on a new instance
+            using var freshScope = fixture.ServiceProvider.CreateScope();
+            var freshDbContext = freshScope.ServiceProvider.GetRequiredService<ITestDbContext>();
+            var freshLoadedPost = await freshDbContext.Posts.FindOneAsync(post.Id);
+            Assert.NotSame(secondLoadedPost, freshLoadedPost);
+            Assert.Equal("updated externally", freshLoadedPost.Content);
         }
 
         [Fact]
@@ -161,6 +198,35 @@ namespace Etherna.MongODM.IntegrationTests
             using var readContextHandler = AsyncLocalContext.Instance.InitAsyncLocalContext();
             var foundPost = await dbContext.Posts.FindOneAsync(post.Id);
             Assert.Equal("content", foundPost.Content);
+
+            //no cache: loads don't register instances, nor deduplicate between them
+            var post2 = new Post("title 2", "content 2");
+            await dbContext.Posts.CreateAsync(post2);
+            using (dbContext.Engine.SerializerModifierAccessor.EnableCacheSerializerModifier(noCache: true))
+            {
+                var firstNoCachePost = await dbContext.Posts.FindOneAsync(post2.Id);
+                var secondNoCachePost = await dbContext.Posts.FindOneAsync(post2.Id);
+                Assert.NotSame(firstNoCachePost, secondNoCachePost);
+            }
+            Assert.Null(dbContext.TryGetLoadedModel(typeof(Post), post2.Id!));
+        }
+
+        [Fact]
+        public async Task SameInstanceForSameDocumentInSameScope()
+        {
+            // Setup.
+            using var contextHandler = AsyncLocalContext.Instance.InitAsyncLocalContext();
+            var post = new Post("title", "content");
+            await dbContext.Posts.CreateAsync(post);
+
+            // Action.
+            var firstLoadedPost = await dbContext.Posts.FindOneAsync(post.Id);
+            var secondLoadedPost = await dbContext.Posts.FindOneAsync(post.Id);
+
+            // Assert.
+            //identity map: one document, one instance inside the scope
+            Assert.Same(firstLoadedPost, secondLoadedPost);
+            Assert.Same(firstLoadedPost, dbContext.TryGetLoadedModel(typeof(Post), post.Id!));
         }
     }
 }

@@ -78,6 +78,10 @@ namespace Etherna.MongODM.Core.ProxyModels
                 {
                     MergeFullModel((TModel)invocation.Proxy, invocation.GetArgumentValue(0) as TModel);
                 }
+                else if (invocation.Method.Name == nameof(IReferenceable.MergeSummaryModel))
+                {
+                    MergeSummaryModel((TModel)invocation.Proxy, invocation.GetArgumentValue(0) as TModel);
+                }
                 else if (invocation.Method.Name == nameof(IReferenceable.SetAsSummary))
                 {
                     isSummary = true;
@@ -171,6 +175,35 @@ namespace Etherna.MongODM.Core.ProxyModels
 
                 logger.SummaryModelFullLoaded(typeof(TModel), model.Id.ToString()!);
             }
+        }
+
+        private void MergeSummaryModel(TModel model, TModel? summaryModel)
+        {
+            if (summaryModel is not IReferenceable summaryReferenceable)
+                return;
+
+            // Temporary disable auditing.
+            (model as IAuditable)?.DisableAuditing();
+
+            /* Merging two summaries is additive only: copy just the members that the current
+             * model doesn't have at all. Both models are denormalized copies coming from
+             * different origin documents, updated at different times: neither is authoritative,
+             * so an already loaded member is never overwritten, also keeping values stable for
+             * who already read them on this scope. A full model merge instead also refreshes
+             * the summary loaded members, because a full document read is authoritative. */
+            var summaryModelMemberNames = summaryReferenceable.SettedMemberNames.ToHashSet();
+            foreach (var member in ReflectionHelper.GetWritableInstanceProperties(typeof(TModel))
+                                   .Where(info => summaryModelMemberNames.Contains(info.Name) &&
+                                                  !settedMemberNames.ContainsKey(info.Name))
+                                   .ToArray())
+            {
+                var value = ReflectionHelper.GetValue(summaryModel, member);
+                ReflectionHelper.SetValue(model, member, value);
+                settedMemberNames[member.Name] = true; //from summary
+            }
+
+            // Reenable auditing.
+            (model as IAuditable)?.EnableAuditing();
         }
 
         private void MergeFullModel(TModel model, TModel? fullModel)

@@ -159,8 +159,9 @@ namespace Etherna.MongODM.Core.Repositories
             // Delete model.
             await DeleteOnDBAsync(model, additionalFilters ?? [], cancellationToken).ConfigureAwait(false);
 
-            // Stop tracking.
-            DbContext.Engine.LoadedModelsTracker.UntrackModel(model);
+            // Remove from pending changes and loaded models.
+            DbContext.UnregisterChangedModel(model);
+            DbContext.UnregisterLoadedModel(model.Id!, model);
 
             logger.RepositoryDeletedDocument(Name, DbContext.Engine.Options.DbName, model.Id!.ToString()!);
         }
@@ -220,8 +221,17 @@ namespace Etherna.MongODM.Core.Repositories
 
         public virtual Task<TModel> FindOneAsync(
             TKey id,
-            CancellationToken cancellationToken = default) =>
-            FindOneOnDBAsync(id, cancellationToken);
+            CancellationToken cancellationToken = default)
+        {
+            /* Read through the loaded models of the current scope: a full instance already
+             * loaded satisfies the request without a db round trip. Summary instances still
+             * go to db, to be upgraded in place with the full document by deserialization. */
+            if (DbContext.TryGetLoadedModel(typeof(TModel), id!) is TModel loadedModel &&
+                loadedModel is IReferenceable { IsSummary: false })
+                return Task.FromResult(loadedModel);
+
+            return FindOneOnDBAsync(id, cancellationToken);
+        }
 
         public Task<TModel> FindOneAsync(
             Expression<Func<TModel, bool>> predicate,
@@ -472,7 +482,7 @@ namespace Etherna.MongODM.Core.Repositories
             TModel onInsertModel,
             FieldDefinition<TModel>[] updatedFields,
             CancellationToken cancellationToken = default) =>
-            AccessToCollectionAsync(async collection =>
+            AccessToCollectionAsync<TModel?>(async collection =>
             {
                 var serializer = DbContext.Engine.MapRegistry.GetMappedSerializer(typeof(TModel));
                 
@@ -499,14 +509,20 @@ namespace Etherna.MongODM.Core.Repositories
                 var upsertUpdate = Builders<TModel>.Update.Combine(onInsertUpdate.Append(updateDefinition));
 
                 // Exec on db.
-                var oldDocument = await collection.FindOneAndUpdateAsync(filter, upsertUpdate, new FindOneAndUpdateOptions<TModel>
+                TModel? oldDocument = await collection.FindOneAndUpdateAsync(filter, upsertUpdate, new FindOneAndUpdateOptions<TModel>
                 {
                     IsUpsert = true
                 }, cancellationToken).ConfigureAwait(false);
                 
-                // Stop tracking old document, if present.
+                // Detach old document, if present.
+                /* The returned old document is a snapshot replaced on db by the upsert: disable
+                 * its auditing and remove it from the loaded models, keeping it out of the unit
+                 * of work and of next loads deduplication. */
                 if (oldDocument is not null)
-                    DbContext.Engine.LoadedModelsTracker.UntrackModel(oldDocument);
+                {
+                    (oldDocument as IAuditable)?.DisableAuditing();
+                    DbContext.UnregisterLoadedModel(oldDocument.Id!, oldDocument);
+                }
 
                 return oldDocument;
             });

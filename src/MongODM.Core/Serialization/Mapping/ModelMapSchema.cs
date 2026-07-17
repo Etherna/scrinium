@@ -130,6 +130,14 @@ namespace Etherna.MongODM.Core.Serialization.Mapping
         // Protected methods.
         protected abstract Task<object> FixDeserializedModelHelperAsync(object model);
 
+        /// <summary>
+        /// Resolve the db context scope running the current operation, required to fix
+        /// deserialized models. Deserializations always run inside a db context scope.
+        /// </summary>
+        protected IDbContext ResolveCurrentDbContext() =>
+            DbExecutionContextHandler.TryGetCurrentDbContext(ModelMap.DbContextEngine.ExecutionContext)
+                ?? throw new InvalidOperationException("Can't fix a deserialized model outside of a db context scope");
+
         protected override void FreezeAction()
         {
             // Freeze bson class map.
@@ -142,14 +150,14 @@ namespace Etherna.MongODM.Core.Serialization.Mapping
 
     public class ModelMapSchema<TModel> : ModelMapSchema, IModelMapSchema<TModel>
     {
-        private readonly Func<TModel, Task<TModel>>? fixDeserializedModelFunc;
+        private readonly Func<IDbContext, TModel, Task<TModel>>? fixDeserializedModelFunc;
 
         // Constructors.
         internal ModelMapSchema(
             string id,
             BsonClassMap<TModel>? bsonClassMap,
             string? baseSchemaId,
-            Func<TModel, Task<TModel>>? fixDeserializedModelFunc,
+            Func<IDbContext, TModel, Task<TModel>>? fixDeserializedModelFunc,
             IModelMap modelMap)
             : base(id, baseSchemaId, bsonClassMap ?? new BsonClassMap<TModel>(cm => cm.AutoMap()), modelMap)
         {
@@ -171,23 +179,26 @@ namespace Etherna.MongODM.Core.Serialization.Mapping
         {
             ArgumentNullException.ThrowIfNull(model);
 
-            return fixDeserializedModelFunc is not null ?
-                (await fixDeserializedModelFunc((TModel)model).ConfigureAwait(false))! :
-                model;
+            if (fixDeserializedModelFunc is null)
+                return model;
+
+            return (await fixDeserializedModelFunc(
+                ResolveCurrentDbContext(),
+                (TModel)model).ConfigureAwait(false))!;
         }
     }
 
     public class ModelMapSchema<TModel, TOverrideNominal> : ModelMapSchema, IModelMapSchema<TModel>
         where TOverrideNominal : class, TModel
     {
-        private readonly Func<TOverrideNominal, Task<TOverrideNominal>>? fixDeserializedModelFunc;
+        private readonly Func<IDbContext, TOverrideNominal, Task<TOverrideNominal>>? fixDeserializedModelFunc;
 
         // Constructors.
         internal ModelMapSchema(
             string id,
             BsonClassMap<TOverrideNominal>? bsonClassMap,
             string? baseSchemaId,
-            Func<TOverrideNominal, Task<TOverrideNominal>>? fixDeserializedModelFunc,
+            Func<IDbContext, TOverrideNominal, Task<TOverrideNominal>>? fixDeserializedModelFunc,
             IModelMap modelMap)
             : base(id, baseSchemaId, bsonClassMap ?? new BsonClassMap<TOverrideNominal>(cm => cm.AutoMap()), modelMap)
         {
@@ -209,9 +220,12 @@ namespace Etherna.MongODM.Core.Serialization.Mapping
         {
             ArgumentNullException.ThrowIfNull(model);
 
-            return fixDeserializedModelFunc is not null ?
-                (await fixDeserializedModelFunc((TOverrideNominal)model).ConfigureAwait(false))! :
-                model;
+            if (fixDeserializedModelFunc is null)
+                return model;
+
+            return (await fixDeserializedModelFunc(
+                ResolveCurrentDbContext(),
+                (TOverrideNominal)model).ConfigureAwait(false))!;
         }
     }
 }

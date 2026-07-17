@@ -237,9 +237,10 @@ namespace Etherna.MongODM.Core.ProxyModels
                 //auditableInterceptor
                 var auditableInterceptorType = typeof(AuditableInterceptor<>).MakeGenericType(modelType);
 
-                interceptorInstancers.Add(_ => (IInterceptor)Activator.CreateInstance(
+                interceptorInstancers.Add(dbContextEngine => (IInterceptor)Activator.CreateInstance(
                     auditableInterceptorType,
-                    additionalInterfaces)!);
+                    additionalInterfaces,
+                    dbContextEngine)!);
 
                 //referenceableInterceptor
                 var referenceableInterceptorType = typeof(ReferenceableInterceptor<,>).MakeGenericType(modelType, entityModelKeyType);

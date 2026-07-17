@@ -24,7 +24,8 @@ namespace Etherna.MongODM.IntegrationTests.Fixtures
 {
     /// <summary>
     /// Bootstraps the MongODM stack against a real MongoDB instance, mirroring the
-    /// production configuration: singleton db contexts, per-scope async local contexts.
+    /// production configuration: scoped db contexts over singleton engines, per-flow
+    /// async local contexts.
     /// </summary>
     public sealed class IntegrationFixture : IAsyncLifetime
     {
@@ -33,6 +34,7 @@ namespace Etherna.MongODM.IntegrationTests.Fixtures
         private ServiceProvider serviceProvider = default!;
 
         // Properties.
+        public string ParentDbName { get; } = "mongodm-it-parent-" + Guid.NewGuid().ToString("N");
         public ISecondDbContext SecondDbContext { get; private set; } = default!;
         public string SecondDbName { get; } = "mongodm-it-second-" + Guid.NewGuid().ToString("N");
         public IServiceProvider ServiceProvider => serviceProvider;
@@ -45,6 +47,7 @@ namespace Etherna.MongODM.IntegrationTests.Fixtures
         {
             if (TestDbContext is not null)
             {
+                await TestDbContext.Engine.Client.DropDatabaseAsync(ParentDbName);
                 await TestDbContext.Engine.Client.DropDatabaseAsync(TestDbName);
                 await TestDbContext.Engine.Client.DropDatabaseAsync(SecondDbName);
             }
@@ -72,6 +75,13 @@ namespace Etherna.MongODM.IntegrationTests.Fixtures
                     options =>
                     {
                         options.ConnectionString = $"{mongoDb.DbUrl}/{SecondDbName}";
+                    })
+                .AddDbContext<IParentDbContext, ParentDbContext>(
+                    _ => new ParentDbContext(),
+                    options =>
+                    {
+                        options.ConnectionString = $"{mongoDb.DbUrl}/{ParentDbName}";
+                        options.ParentFor<ISecondDbContext>();
                     });
 
             serviceProvider = services.BuildServiceProvider();
