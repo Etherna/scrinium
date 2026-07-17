@@ -391,10 +391,16 @@ namespace Etherna.MongODM.Core.Repositories
                 throw new MongodmInvalidEntityTypeException("Invalid model type");
 
             // Fallback to a whole document replace when member level update isn't applicable.
-            if (options.SaveWithDocumentReplace ||
-                model is not IAuditable auditableModel ||
+            if (options.SaveWithDocumentReplace)
+            {
+                logger.RepositorySaveFellBackToDocumentReplace(Name, DbContext.Engine.Options.DbName, castedModel.Id!.ToString()!, "document replace is required by repository options");
+                await ReplaceAsync(castedModel, cancellationToken: cancellationToken).ConfigureAwait(false);
+                return;
+            }
+            if (model is not IAuditable auditableModel ||
                 model is not IReferenceable)
             {
+                logger.RepositorySaveFellBackToDocumentReplace(Name, DbContext.Engine.Options.DbName, castedModel.Id!.ToString()!, "model is not trackable member level");
                 await ReplaceAsync(castedModel, cancellationToken: cancellationToken).ConfigureAwait(false);
                 return;
             }
@@ -416,6 +422,7 @@ namespace Etherna.MongODM.Core.Repositories
                 {
                     /* A changed member not mapped by the active schema can't be updated
                      * member level: persist with a whole document replace. */
+                    logger.RepositorySaveFellBackToDocumentReplace(Name, DbContext.Engine.Options.DbName, castedModel.Id!.ToString()!, $"changed member {memberInfo.Name} is not mapped by the active schema");
                     await ReplaceAsync(castedModel, cancellationToken: cancellationToken).ConfigureAwait(false);
                     return;
                 }
@@ -435,6 +442,7 @@ namespace Etherna.MongODM.Core.Repositories
 
             if (update.ElementCount == 0)
             {
+                logger.RepositorySaveFellBackToDocumentReplace(Name, DbContext.Engine.Options.DbName, castedModel.Id!.ToString()!, "no serializable changed members");
                 await ReplaceAsync(castedModel, cancellationToken: cancellationToken).ConfigureAwait(false);
                 return;
             }
@@ -468,6 +476,7 @@ namespace Etherna.MongODM.Core.Repositories
              * and skips silently the deleted documents. */
             if (updatedModel is null)
             {
+                logger.RepositorySaveFellBackToDocumentReplace(Name, DbContext.Engine.Options.DbName, castedModel.Id!.ToString()!, "document is not serialized with the active schema, or is deleted");
                 await ReplaceAsync(castedModel, cancellationToken: cancellationToken).ConfigureAwait(false);
                 return;
             }
@@ -518,10 +527,16 @@ namespace Etherna.MongODM.Core.Repositories
             FilterDefinition<TModel> filter,
             UpdateDefinition<TModel> update,
             FindOneAndUpdateOptions<TModel> options,
-            CancellationToken cancellationToken = default) =>
-            await AccessToCollectionAsync(async collection =>
+            CancellationToken cancellationToken = default)
+        {
+            var model = await AccessToCollectionAsync(async collection =>
                 await collection.FindOneAndUpdateAsync(filter, update, options, cancellationToken)
                     .ConfigureAwait(false)).ConfigureAwait(false);
+
+            logger.RepositoryFoundAndUpdatedDocument(Name, DbContext.Engine.Options.DbName, model is not null);
+
+            return model;
+        }
 
         public async Task<object?> TryFindOneAsync(object id, CancellationToken cancellationToken = default) =>
             await TryFindOneAsync((TKey)id, cancellationToken).ConfigureAwait(false);
@@ -648,6 +663,8 @@ namespace Etherna.MongODM.Core.Repositories
                     (oldDocument as IAuditable)?.DisableAuditing();
                     DbContext.UnregisterLoadedModel(oldDocument.Id!, oldDocument);
                 }
+
+                logger.RepositoryUpsertedDocument(Name, DbContext.Engine.Options.DbName, oldDocument is null);
 
                 return oldDocument;
             });
@@ -821,8 +838,13 @@ namespace Etherna.MongODM.Core.Repositories
                 /* Skip when the replace matched no document: the model has been deleted
                  * concurrently, like by a bulk delete with filter, and a dependencies
                  * update task would fail reloading it. */
-                if (updateDependentDocuments && result.MatchedCount > 0)
-                    DbContext.Engine.DbMaintainer.OnUpdatedModel<TKey>((IAuditable)model, this);
+                if (updateDependentDocuments)
+                {
+                    if (result.MatchedCount > 0)
+                        DbContext.Engine.DbMaintainer.OnUpdatedModel<TKey>((IAuditable)model, this);
+                    else
+                        logger.RepositorySkippedDependenciesUpdate(Name, DbContext.Engine.Options.DbName, model.Id!.ToString()!);
+                }
 
                 // Reset changed members.
                 ((IAuditable)model).ResetChangedMembers();

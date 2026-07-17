@@ -15,6 +15,7 @@
 using Castle.DynamicProxy;
 using Etherna.MongODM.Core.Domain.Models;
 using Etherna.MongODM.Core.ExecContext;
+using Etherna.MongODM.Core.Extensions;
 using Etherna.MongODM.Core.Utility;
 using Microsoft.Extensions.Logging;
 using System;
@@ -33,6 +34,7 @@ namespace Etherna.MongODM.Core.ProxyModels
     {
         // Fields.
         private bool disposed;
+        private readonly ILogger<ProxyGenerator> logger = loggerFactory.CreateLogger<ProxyGenerator>();
 
         private readonly Dictionary<Type,
             (Type[] AdditionalInterfaces, Func<IDbContextEngine, IInterceptor[]> InterceptorInstancerSelector)> modelConfigurationDictionary = new();
@@ -157,6 +159,7 @@ namespace Etherna.MongODM.Core.ProxyModels
                     if (!proxyTypeDictionary.ContainsKey(type))
                     {
                         proxyTypeDictionary.Add(type, proxyModel.GetType());
+                        logger.ProxyModelTypeCreated(type, proxyModel.GetType());
                     }
                 }
                 finally

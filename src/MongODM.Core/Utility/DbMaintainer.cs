@@ -108,12 +108,21 @@ namespace Etherna.MongODM.Core.Utility
              * We pass member maps' string ids because strings are better serializable by the task executor.
              * All member maps must be recovered by the task using Ids from the schema register.
              */
+            var idMemberMapIds = allIdMemberMaps.Select(mm => mm.Id).ToArray();
+            var updatedModelId = ((IEntityModel<TKey>)updatedModel).Id!;
+
             taskRunner.RunUpdateDocDependenciesTask(
                 dbContextEngine.DbContextType,
                 referenceRepository.Name,
-                ((IEntityModel<TKey>)updatedModel).Id!,
-                allIdMemberMaps.Select(mm => mm.Id),
+                updatedModelId,
+                idMemberMapIds,
                 ExclusiveAccessHandler.IsExclusiveAccessAllowed(dbContextEngine.ExecutionContext));
+
+            logger.DbMaintainerEnqueuedDependenciesUpdateTask(
+                dbContextEngine.Options.DbName,
+                dbContextEngine.ProxyGenerator.PurgeProxyType(updatedModel.GetType()),
+                updatedModelId.ToString()!,
+                idMemberMapIds.Length);
         }
     }
 }

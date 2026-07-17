@@ -66,6 +66,8 @@ namespace Etherna.MongODM.Core
                 if (!repository.IsInitialized)
                     repository.Initialize(this, logger);
             scopedRepositoryRegistry = repositoryRegistry;
+
+            logger.DbContextAttachedToEngine(engine.Options.DbName);
         }
 
         public IDbContextEngine BuildEngine(
@@ -138,8 +140,13 @@ namespace Etherna.MongODM.Core
         {
             ArgumentNullException.ThrowIfNull(model);
 
+            bool registered;
             lock (changedModels)
-                changedModels.Add(model);
+                registered = changedModels.Add(model);
+
+            if (registered &&
+                TryGetRepositoryForModelType(engine.ProxyGenerator.PurgeProxyType(model.GetType())) is { } repository)
+                logger.DbContextRegisteredChangedModel(engine.Options.DbName, repository.ModelIdToString(model), repository.Name);
         }
 
         public void RegisterLoadedModel(object modelId, IEntityModel model)
@@ -153,6 +160,8 @@ namespace Etherna.MongODM.Core
 
             lock (loadedModels)
                 loadedModels[(repository, modelId)] = model;
+
+            logger.DbContextRegisteredLoadedModel(engine.Options.DbName, modelId.ToString()!, repository.Name);
         }
 
         public virtual async Task SaveChangesAsync(CancellationToken cancellationToken = default)
@@ -188,7 +197,10 @@ namespace Etherna.MongODM.Core
             //}
 
             // Commit updated models replacement.
-            foreach (var model in ChangedModelsList)
+            var changedModelsList = ChangedModelsList;
+            logger.DbContextSavingChanges(engine.Options.DbName, changedModelsList.Count);
+
+            foreach (var model in changedModelsList)
             {
                 var modelType = engine.ProxyGenerator.PurgeProxyType(model.GetType());
 
@@ -254,8 +266,14 @@ namespace Etherna.MongODM.Core
             if (repository is null)
                 return null;
 
+            IEntityModel? model;
             lock (loadedModels)
-                return loadedModels.TryGetValue((repository, modelId), out var model) ? model : null;
+                loadedModels.TryGetValue((repository, modelId), out model);
+
+            if (model is not null)
+                logger.DbContextReturnedLoadedModel(engine.Options.DbName, modelId.ToString()!, repository.Name);
+
+            return model;
         }
 
         public Task<DbMigrationOperation?> TryStartMigrationAsync() =>
@@ -265,8 +283,13 @@ namespace Etherna.MongODM.Core
         {
             ArgumentNullException.ThrowIfNull(model);
 
+            bool unregistered;
             lock (changedModels)
-                changedModels.Remove(model);
+                unregistered = changedModels.Remove(model);
+
+            if (unregistered &&
+                TryGetRepositoryForModelType(engine.ProxyGenerator.PurgeProxyType(model.GetType())) is { } repository)
+                logger.DbContextUnregisteredChangedModel(engine.Options.DbName, repository.ModelIdToString(model), repository.Name);
         }
 
         public void UnregisterLoadedModel(object modelId, IEntityModel model)
@@ -278,13 +301,17 @@ namespace Etherna.MongODM.Core
             if (repository is null)
                 return;
 
+            bool unregistered = false;
             lock (loadedModels)
             {
                 //remove only if this same instance is the registered one
                 if (loadedModels.TryGetValue((repository, modelId), out var loadedModel) &&
                     ReferenceEquals(loadedModel, model))
-                    loadedModels.Remove((repository, modelId));
+                    unregistered = loadedModels.Remove((repository, modelId));
             }
+
+            if (unregistered)
+                logger.DbContextUnregisteredLoadedModel(engine.Options.DbName, modelId.ToString()!, repository.Name);
         }
 
         // Protected methods.
