@@ -1,34 +1,27 @@
 ﻿// Copyright 2020-present Etherna SA
 // This file is part of MongODM.
-// 
+//
 // MongODM is free software: you can redistribute it and/or modify it under the terms of the
 // GNU Lesser General Public License as published by the Free Software Foundation,
 // either version 3 of the License, or (at your option) any later version.
-// 
+//
 // MongODM is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
 // without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 // See the GNU Lesser General Public License for more details.
-// 
+//
 // You should have received a copy of the GNU Lesser General Public License along with MongODM.
 // If not, see <https://www.gnu.org/licenses/>.
 
-using Etherna.MongoDB.Bson.Serialization;
 using Etherna.MongoDB.Driver;
 using Etherna.MongoDB.Driver.Linq;
-using Etherna.MongODM.Core.Domain.ModelMaps;
 using Etherna.MongODM.Core.Domain.Models;
 using Etherna.MongODM.Core.Exceptions;
-using Etherna.MongODM.Core.ExecContext;
 using Etherna.MongODM.Core.Extensions;
 using Etherna.MongODM.Core.Migration;
 using Etherna.MongODM.Core.Options;
 using Etherna.MongODM.Core.ProxyModels;
 using Etherna.MongODM.Core.Repositories;
 using Etherna.MongODM.Core.Serialization;
-using Etherna.MongODM.Core.Serialization.Mapping;
-using Etherna.MongODM.Core.Serialization.Modifiers;
-using Etherna.MongODM.Core.Serialization.Providers;
-using Etherna.MongODM.Core.Utility;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using System;
@@ -40,235 +33,126 @@ using System.Threading.Tasks;
 namespace Etherna.MongODM.Core
 {
     public abstract class DbContext(ILogger? logger = null)
-        : IDbContext, IDbContextBuilder, IDisposable
+        : IDbContext, IDbContextBuilder
     {
         // Fields.
-        private volatile bool _isExclusiveReadEnabled;
-        private volatile bool _isExclusiveWriteEnabled;
-        private bool? _isSeeded;
-        private BsonSerializerRegistry _serializerRegistry = null!;
+        private readonly HashSet<IEntityModel> changedModels = [];
         private IEnumerable<IDbContext> childDbContexts = null!;
-        private bool disposed;
-        private readonly SemaphoreSlim exclusiveAccessSemaphore = new(1, 1); //support async/await
-        private bool isInitialized;
-        private readonly ReaderWriterLockSlim isSeededLock = new(); //support read/write locks
+        private readonly Dictionary<(IRepository Repository, object ModelId), IEntityModel> loadedModels = [];
+        private IDbContextEngine engine = null!;
         private readonly ILogger logger = logger ?? NullLogger.Instance;
+        private IRepositoryRegistry? scopedRepositoryRegistry;
 
         // Initializer.
-        public void Initialize(
+        public void AttachToEngine(
+            IDbContextEngine engine,
+            IEnumerable<IDbContext> childDbContexts,
+            IRepositoryRegistry repositoryRegistry)
+        {
+            ArgumentNullException.ThrowIfNull(engine);
+            ArgumentNullException.ThrowIfNull(repositoryRegistry);
+            if (this.engine is not null)
+                throw new InvalidOperationException(
+                    "DbContext already initialized. Register db contexts with a factory to create an instance for each scope");
+
+            this.childDbContexts = childDbContexts;
+            this.engine = engine;
+
+            // Initialize instance repositories with their own registry.
+            DbOperations = new Repository<OperationBase, string>(engine.Options.DbOperationsCollectionName);
+
+            repositoryRegistry.Initialize(this, logger);
+            foreach (var repository in repositoryRegistry.Repositories)
+                if (!repository.IsInitialized)
+                    repository.Initialize(this, logger);
+            scopedRepositoryRegistry = repositoryRegistry;
+        }
+
+        public IDbContextEngine BuildEngine(
             IDbDependencies dependencies,
             IMongoClient mongoClient,
-            IDbContextOptions options,
-            IEnumerable<IDbContext> childDbContexts)
+            IDbContextOptions options)
         {
-            if (isInitialized)
-                throw new InvalidOperationException("DbContext already initialized");
-            ArgumentNullException.ThrowIfNull(dependencies);
-            ArgumentNullException.ThrowIfNull(options);
-
-            // Set dependencies.
-            this.childDbContexts = childDbContexts;
-            DbCache = dependencies.DbCache;
-            DbMaintainer = dependencies.DbMaintainer;
-            DbMigrationManager = dependencies.DbMigrationManager;
-            DbOperations = new Repository<OperationBase, string>(options.DbOperationsCollectionName);
-            DiscriminatorRegistry = dependencies.DiscriminatorRegistry;
-            ExecutionContext = dependencies.ExecutionContext;
-            MapRegistry = dependencies.MapRegistry;
-            Options = options;
-            ProxyGenerator = dependencies.ProxyGenerator;
-            RepositoryRegistry = dependencies.RepositoryRegistry;
-            SerializerModifierAccessor = dependencies.SerializerModifierAccessor;
-            _serializerRegistry = (BsonSerializerRegistry)dependencies.BsonSerializerRegistry;
-
-            // Execute initialization into execution context.
-            using var dbExecutionContext = new DbExecutionContextHandler(this);
-
-            // Initialize internal dependencies.
-            DbCache.Initialize(this, logger);
-            DbMaintainer.Initialize(this, logger);
-            DbMigrationManager.Initialize(this, logger);
-            DiscriminatorRegistry.Initialize(this, logger);
-            MapRegistry.Initialize(this, logger);
-            RepositoryRegistry.Initialize(this, logger);
-            InitializeSerializerRegistry();
-
-            // Initialize repositories.
-            foreach (var repository in RepositoryRegistry.Repositories)
-                repository.Initialize(this, logger);
-
-            // Register model maps.
-            //internal maps
-            new DbMigrationOperationMap().Register(this);
-            new ModelBaseMap().Register(this);
-            new OperationBaseMap().Register(this);
-            new SeedOperationMap().Register(this);
-
-            //application maps
-            foreach (var maps in ModelMapsCollectors)
-                maps.Register(this);
-
-            // Build and freeze map registry.
-            MapRegistry.Freeze();
-
-            // Initialize MongoDB database.
-            Client = mongoClient;
-            Database = Client.GetDatabase(options.DbName, new MongoDatabaseSettings
-            {
-                SerializerRegistry = _serializerRegistry
-            });
-
-            // Set as initialized.
-            isInitialized = true;
-
-            logger.DbContextInitialized(options.DbName);
-        }
-        
-        // Dispose.
-        public void Dispose()
-        {
-            Dispose(true);
-            GC.SuppressFinalize(this);
-        }
-
-        protected virtual void Dispose(bool disposing)
-        {
-            if (disposed) return;
-
-            // Dispose managed resources.
-            if (disposing)
-            {
-                exclusiveAccessSemaphore.Dispose();
-                isSeededLock.Dispose();
-            }
-
-            disposed = true;
+            var newEngine = new DbContextEngine(logger);
+            newEngine.Initialize(
+                dependencies,
+                mongoClient,
+                options,
+                GetType(),
+                ModelMapsCollectors);
+            return newEngine;
         }
 
         // Public properties.
-        public IReadOnlyCollection<IEntityModel> ChangedModelsList =>
-            DbCache.LoadedModels.Values
-                .Where(model => model is IAuditable { IsChanged: true })
-                .ToList();
-        public IMongoClient Client { get; private set; } = null!;
-        public IMongoDatabase Database { get; private set; } = null!;
-        public IDbCache DbCache { get; private set; } = null!;
-        public IDbMaintainer DbMaintainer { get; private set; } = null!;
-        public IDbMigrationManager DbMigrationManager { get; private set; } = null!;
+        public IReadOnlyCollection<IEntityModel> ChangedModelsList
+        {
+            get
+            {
+                lock (changedModels)
+                    return changedModels
+                        .Where(model => model is IAuditable { IsChanged: true })
+                        .ToList();
+            }
+        }
         public IRepository<OperationBase, string> DbOperations { get; private set; } = null!;
-        public IDiscriminatorRegistry DiscriminatorRegistry { get; private set; } = null!;
         public virtual IEnumerable<DocumentMigration> DocumentMigrationList { get; } = [];
-        public bool IsExclusiveReadEnabled
-        {
-            get => _isExclusiveReadEnabled;
-            private set => _isExclusiveReadEnabled = value;
-        }
-        public bool IsExclusiveWriteEnabled 
-        {
-            get => _isExclusiveWriteEnabled;
-            private set => _isExclusiveWriteEnabled = value;
-        }
-        public IExecutionContext ExecutionContext { get; private set; } = null!;
-        public string Identifier => Options.Identifier ?? GetType().Name;
+        public IDbContextEngine Engine => engine;
         public bool IsSeeded
         {
             get
             {
                 // Try to read cached.
-                isSeededLock.EnterReadLock();
-                try
-                {
-                    if (_isSeeded.HasValue)
-                        return _isSeeded.Value;
-                }
-                finally
-                {
-                    isSeededLock.ExitReadLock();
-                }
+                var cached = engine.IsSeededCache;
+                if (cached.HasValue)
+                    return cached.Value;
 
                 // Get seeding state from db.
-                isSeededLock.EnterWriteLock();
-                try
-                {
-                    if (!_isSeeded.HasValue)
-                    {
-                        var task = DbOperations.QueryElementsAsync(elements =>
-                                elements.OfType<SeedOperation>()
-                                        .AnyAsync(sop => sop.DbContextName == Identifier));
-                        task.Wait();
-                        _isSeeded = task.Result;
-                    }
+                var task = DbOperations.QueryElementsAsync(elements =>
+                        elements.OfType<SeedOperation>()
+                                .AnyAsync(sop => sop.DbContextName == engine.Identifier));
+                task.Wait();
 
-                    return _isSeeded.Value;
-                }
-                finally
-                {
-                    isSeededLock.ExitWriteLock();
-                }
-            }
-            private set
-            {
-                isSeededLock.EnterWriteLock();
-                try
-                {
-                    _isSeeded = value;
-                }
-                finally
-                {
-                    isSeededLock.ExitWriteLock();
-                }
+                engine.IsSeededCache = task.Result;
+                return task.Result;
             }
         }
-        public IMapRegistry MapRegistry { get; private set; } = null!;
-        public IDbContextOptions Options { get; private set; } = null!;
-        public IProxyGenerator ProxyGenerator { get; private set; } = null!;
-        public IRepositoryRegistry RepositoryRegistry { get; private set; } = null!;
-        public IBsonSerializerRegistry SerializerRegistry => _serializerRegistry;
-        public ISerializerModifierAccessor SerializerModifierAccessor { get; private set; } = null!;
+        public IRepositoryRegistry RepositoryRegistry => scopedRepositoryRegistry!;
 
         // Protected properties.
         protected abstract IEnumerable<IModelMapsCollector> ModelMapsCollectors { get; }
 
         // Methods.
-        public IMongoCollection<TDocument> GetMongoCollection<TDocument>(
-            string name,
-            MongoCollectionSettings? settings = null)
+        public Task ExecuteMigrationAsync(string dbMigrationOpId, string? taskId = null, bool throwOnErrors = false) =>
+            engine.DbMigrationManager.ExecuteDbContextMigrationAsync(this, dbMigrationOpId, taskId, throwOnErrors);
+
+        public Task<List<DbMigrationOperation>> GetLastMigrationsAsync(int page, int take) =>
+            engine.DbMigrationManager.GetLastMigrationsAsync(this, page, take);
+
+        public Task<DbMigrationOperation> GetMigrationAsync(string migrateOperationId) =>
+            engine.DbMigrationManager.GetMigrationAsync(this, migrateOperationId);
+
+        public Task<DbMigrationOperation?> IsMigrationRunningAsync() =>
+            engine.DbMigrationManager.IsMigrationRunningAsync(this);
+
+        public void RegisterChangedModel(IEntityModel model)
         {
-            var mongoCollection = Database.GetCollection<TDocument>(name, settings);
-            return new LimitedAccessMongoCollection<TDocument>(this, mongoCollection, false);
+            ArgumentNullException.ThrowIfNull(model);
+
+            lock (changedModels)
+                changedModels.Add(model);
         }
 
-        public Task RunWithExclusiveAccessAsync(
-            Func<Task> action,
-            bool lockOnRead = true) =>
-            RunWithExclusiveAccessAsync(async () =>
-            {
-                await action().ConfigureAwait(false);
-                return 0;
-            }, lockOnRead);
-
-        public async Task<TResult> RunWithExclusiveAccessAsync<TResult>(
-            Func<Task<TResult>> func,
-            bool lockOnRead = true)
+        public void RegisterLoadedModel(object modelId, IEntityModel model)
         {
-            ArgumentNullException.ThrowIfNull(func);
-            
-            await exclusiveAccessSemaphore.WaitAsync().ConfigureAwait(false);
-            try
-            {
-                IsExclusiveReadEnabled = lockOnRead;
-                IsExclusiveWriteEnabled = true;
+            ArgumentNullException.ThrowIfNull(modelId);
+            ArgumentNullException.ThrowIfNull(model);
 
-                using var _ = new ExclusiveAccessHandler(ExecutionContext);
-                return await func().ConfigureAwait(false);
-            }
-            finally
-            {
-                IsExclusiveWriteEnabled = false;
-                IsExclusiveReadEnabled = false;
-                
-                exclusiveAccessSemaphore.Release();
-            }
+            var repository = TryGetRepositoryForModelType(engine.ProxyGenerator.PurgeProxyType(model.GetType()));
+            if (repository is null) //identity is meaningless without a repository
+                return;
+
+            lock (loadedModels)
+                loadedModels[(repository, modelId)] = model;
         }
 
         public virtual async Task SaveChangesAsync(CancellationToken cancellationToken = default)
@@ -306,14 +190,14 @@ namespace Etherna.MongODM.Core
             // Commit updated models replacement.
             foreach (var model in ChangedModelsList)
             {
-                var modelType = ProxyGenerator.PurgeProxyType(model.GetType());
+                var modelType = engine.ProxyGenerator.PurgeProxyType(model.GetType());
 
                 var repository = RepositoryRegistry.TryGetRepositoryByHandledModelType(modelType);
                 if (repository != null)
                 {
                     await repository.ReplaceAsync(model, cancellationToken: cancellationToken).ConfigureAwait(false);
 
-                    logger.DbContextSavedChangedModelToRepository(Options.DbName, repository.ModelIdToString(model), repository.Name);
+                    logger.DbContextSavedChangedModelToRepository(engine.Options.DbName, repository.ModelIdToString(model), repository.Name);
                 }
             }
 
@@ -323,7 +207,7 @@ namespace Etherna.MongODM.Core
                 await child.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
             }
 
-            logger.DbContextSavedChanges(Options.DbName);
+            logger.DbContextSavedChanges(engine.Options.DbName);
         }
 
         public async Task<bool> SeedIfNeededAsync()
@@ -332,7 +216,7 @@ namespace Etherna.MongODM.Core
             if (IsSeeded)
                 return false;
 
-            return await RunWithExclusiveAccessAsync(async () =>
+            return await engine.RunWithExclusiveAccessAsync(async () =>
             {
                 // Check again if seeded.
                 if (IsSeeded)
@@ -340,48 +224,75 @@ namespace Etherna.MongODM.Core
 
                 // Apply db migration, blocking seed in case of errors.
                 // This creates indexes by default on each new database.
-                var dbMigrationOp = new DbMigrationOperation(this);
+                var dbMigrationOp = new DbMigrationOperation(engine);
                 await DbOperations.CreateAsync(dbMigrationOp).ConfigureAwait(false);
-                await DbMigrationManager.ExecuteDbContextMigrationAsync(dbMigrationOp.Id, throwOnErrors: true).ConfigureAwait(false);
+                await ExecuteMigrationAsync(dbMigrationOp.Id, throwOnErrors: true).ConfigureAwait(false);
 
                 // Seed.
                 try { await SeedAsync().ConfigureAwait(false); }
                 catch (Exception e) { throw new MongodmDbSeedingException($"Error seeding {GetType().Name} dbContext", e); }
 
                 // Report operation.
-                var seedOperation = new SeedOperation(this);
+                var seedOperation = new SeedOperation(engine);
                 await DbOperations.CreateAsync(seedOperation).ConfigureAwait(false);
 
                 // Cache as seeded.
-                IsSeeded = true;
+                engine.IsSeededCache = true;
 
-                logger.DbContextSeeded(Options.DbName);
+                logger.DbContextSeeded(engine.Options.DbName);
 
                 return true;
             }).ConfigureAwait(false);
         }
 
-        public Task<IClientSessionHandle> StartSessionAsync(CancellationToken cancellationToken = default) =>
-            Client.StartSessionAsync(cancellationToken: cancellationToken);
+        public IEntityModel? TryGetLoadedModel(Type modelType, object modelId)
+        {
+            ArgumentNullException.ThrowIfNull(modelType);
+            ArgumentNullException.ThrowIfNull(modelId);
+
+            var repository = TryGetRepositoryForModelType(modelType);
+            if (repository is null)
+                return null;
+
+            lock (loadedModels)
+                return loadedModels.TryGetValue((repository, modelId), out var model) ? model : null;
+        }
 
         public Task<DbMigrationOperation?> TryStartMigrationAsync() =>
-            DbMigrationManager.TryStartDbContextMigrationAsync();
+            engine.DbMigrationManager.TryStartDbContextMigrationAsync(this);
+
+        public void UnregisterChangedModel(IEntityModel model)
+        {
+            ArgumentNullException.ThrowIfNull(model);
+
+            lock (changedModels)
+                changedModels.Remove(model);
+        }
+
+        public void UnregisterLoadedModel(object modelId, IEntityModel model)
+        {
+            ArgumentNullException.ThrowIfNull(modelId);
+            ArgumentNullException.ThrowIfNull(model);
+
+            var repository = TryGetRepositoryForModelType(engine.ProxyGenerator.PurgeProxyType(model.GetType()));
+            if (repository is null)
+                return;
+
+            lock (loadedModels)
+            {
+                //remove only if this same instance is the registered one
+                if (loadedModels.TryGetValue((repository, modelId), out var loadedModel) &&
+                    ReferenceEquals(loadedModel, model))
+                    loadedModels.Remove((repository, modelId));
+            }
+        }
 
         // Protected methods.
         protected virtual Task SeedAsync() =>
             Task.CompletedTask;
 
-        // Private helpers.
-        private void InitializeSerializerRegistry()
-        {
-            //order matters. It's in reverse order of how they'll get consumed
-            _serializerRegistry.RegisterSerializationProvider(new ModelMapSerializationProvider(this));
-            _serializerRegistry.RegisterSerializationProvider(new DiscriminatedInterfaceSerializationProvider());
-            _serializerRegistry.RegisterSerializationProvider(new CollectionsSerializationProvider());
-            _serializerRegistry.RegisterSerializationProvider(new PrimitiveSerializationProvider());
-            _serializerRegistry.RegisterSerializationProvider(new AttributedSerializationProvider());
-            _serializerRegistry.RegisterSerializationProvider(new TypeMappingSerializationProvider());
-            _serializerRegistry.RegisterSerializationProvider(new BsonObjectModelSerializationProvider());
-        }
+        // Helpers.
+        private IRepository? TryGetRepositoryForModelType(Type modelType) =>
+            scopedRepositoryRegistry?.TryGetRepositoryByHandledModelType(modelType);
     }
 }

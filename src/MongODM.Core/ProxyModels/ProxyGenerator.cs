@@ -14,6 +14,8 @@
 
 using Castle.DynamicProxy;
 using Etherna.MongODM.Core.Domain.Models;
+using Etherna.MongODM.Core.ExecContext;
+using Etherna.MongODM.Core.Utility;
 using Microsoft.Extensions.Logging;
 using System;
 using System.Collections.Generic;
@@ -23,29 +25,23 @@ using System.Threading;
 
 namespace Etherna.MongODM.Core.ProxyModels
 {
-    public class ProxyGenerator : IProxyGenerator, IDisposable
+    public class ProxyGenerator(
+        IExecutionContext executionContext,
+        ILoggerFactory loggerFactory,
+        Castle.DynamicProxy.IProxyGenerator proxyGeneratorCore)
+        : IProxyGenerator, IDisposable
     {
         // Fields.
         private bool disposed;
-        private readonly ILoggerFactory loggerFactory;
-        private readonly Castle.DynamicProxy.IProxyGenerator proxyGeneratorCore;
 
         private readonly Dictionary<Type,
-            (Type[] AdditionalInterfaces, Func<IDbContext, IInterceptor[]> InterceptorInstancerSelector)> modelConfigurationDictionary = new();
+            (Type[] AdditionalInterfaces, Func<IDbContextEngine, IInterceptor[]> InterceptorInstancerSelector)> modelConfigurationDictionary = new();
         private readonly ReaderWriterLockSlim modelConfigurationDictionaryLock = new(LockRecursionPolicy.SupportsRecursion);
 
         private readonly Dictionary<Type, Type> proxyTypeDictionary = new();
         private readonly ReaderWriterLockSlim proxyTypeDictionaryLock = new(LockRecursionPolicy.SupportsRecursion);
 
-        // Constructor and dispose.
-        public ProxyGenerator(
-            ILoggerFactory loggerFactory,
-            Castle.DynamicProxy.IProxyGenerator proxyGeneratorCore)
-        {
-            this.loggerFactory = loggerFactory;
-            this.proxyGeneratorCore = proxyGeneratorCore;
-        }
-        
+        // Dispose.
         public void Dispose()
         {
             Dispose(true);
@@ -72,11 +68,16 @@ namespace Etherna.MongODM.Core.ProxyModels
         // Methods.
         public object CreateInstance(
             Type type,
-            IDbContext dbContext,
             params object[] constructorArguments)
         {
-            ArgumentNullException.ThrowIfNull(dbContext);
             ArgumentNullException.ThrowIfNull(type);
+
+            /* Resolve the db context engine creating the proxy from the current execution
+             * context. Proxies are always created inside a db operation: model deserializations
+             * run inside repository accesses, and schema registrations inside the engine
+             * initialization, both pushing their handler on the execution context. */
+            var dbContextEngine = DbExecutionContextHandler.TryGetCurrentDbContextEngine(executionContext)
+                ?? throw new InvalidOperationException("Can't create a proxy model outside of a db context execution scope");
 
             // If creation of proxy models are disabled, create a simple model instance.
             if (DisableCreationWithProxyTypes)
@@ -90,7 +91,7 @@ namespace Etherna.MongODM.Core.ProxyModels
             }
 
             // Get configuration.
-            (Type[] AdditionalInterfaces, Func<IDbContext, IInterceptor[]> InterceptorInstancerSelector) configuration = (null!, null!);
+            (Type[] AdditionalInterfaces, Func<IDbContextEngine, IInterceptor[]> InterceptorInstancerSelector) configuration = (null!, null!);
             modelConfigurationDictionaryLock.EnterReadLock();
             bool configurationFound = false;
             try
@@ -134,7 +135,7 @@ namespace Etherna.MongODM.Core.ProxyModels
                 configuration.AdditionalInterfaces,
                 ProxyGenerationOptions.Default,
                 constructorArguments,
-                configuration.InterceptorInstancerSelector(dbContext));
+                configuration.InterceptorInstancerSelector(dbContextEngine));
 
             // Add to proxy type dictionary.
             var addToproxyTypeDictionary = false;
@@ -167,8 +168,8 @@ namespace Etherna.MongODM.Core.ProxyModels
             return proxyModel;
         }
 
-        public TModel CreateInstance<TModel>(IDbContext dbContext, params object[] constructorArguments) =>
-            (TModel)CreateInstance(typeof(TModel), dbContext, constructorArguments);
+        public TModel CreateInstance<TModel>(params object[] constructorArguments) =>
+            (TModel)CreateInstance(typeof(TModel), constructorArguments);
 
         public bool IsProxyType(Type type)
         {
@@ -193,11 +194,11 @@ namespace Etherna.MongODM.Core.ProxyModels
         }
 
         // Protected virtual methods.
-        protected virtual IEnumerable<Type> GetCustomAdditionalInterfaces(Type modelType) =>
-            Array.Empty<Type>();
+        protected virtual IEnumerable<Type> GetCustomAdditionalInterfaces(Type modelType) => [];
 
-        protected virtual IEnumerable<Func<IDbContext, IInterceptor>> GetCustomInterceptorInstancer(Type modelType, IEnumerable<Type> additionalInterfaces) =>
-            Array.Empty<Func<IDbContext, IInterceptor>>();
+        protected virtual IEnumerable<Func<IDbContextEngine, IInterceptor>> GetCustomInterceptorInstancer(
+            Type modelType,
+            IEnumerable<Type> additionalInterfaces) => [];
 
         // Helpers.
         private Type[] GetAdditionalInterfaces(Type modelType)
@@ -217,11 +218,11 @@ namespace Etherna.MongODM.Core.ProxyModels
             return interfaces.ToArray();
         }
 
-        private Func<IDbContext, IInterceptor[]> GetInterceptorInstancer(
+        private Func<IDbContextEngine, IInterceptor[]> GetInterceptorInstancer(
             Type modelType,
             IEnumerable<Type> additionalInterfaces)
         {
-            var interceptorInstancers = new List<Func<IDbContext, IInterceptor>>();
+            var interceptorInstancers = new List<Func<IDbContextEngine, IInterceptor>>();
 
             // Add custom interceptor instancers.
             interceptorInstancers.AddRange(GetCustomInterceptorInstancer(modelType, additionalInterfaces));
@@ -236,9 +237,10 @@ namespace Etherna.MongODM.Core.ProxyModels
                 //auditableInterceptor
                 var auditableInterceptorType = typeof(AuditableInterceptor<>).MakeGenericType(modelType);
 
-                interceptorInstancers.Add(_ => (IInterceptor)Activator.CreateInstance(
+                interceptorInstancers.Add(dbContextEngine => (IInterceptor)Activator.CreateInstance(
                     auditableInterceptorType,
-                    additionalInterfaces)!);
+                    additionalInterfaces,
+                    dbContextEngine)!);
 
                 //referenceableInterceptor
                 var referenceableInterceptorType = typeof(ReferenceableInterceptor<,>).MakeGenericType(modelType, entityModelKeyType);
@@ -246,15 +248,15 @@ namespace Etherna.MongODM.Core.ProxyModels
                 var referenceableInterceptorLoggerType = typeof(Logger<>).MakeGenericType(referenceableInterceptorType);
                 var referenceableInterceptorLogger = Activator.CreateInstance(referenceableInterceptorLoggerType, loggerFactory);
 
-                interceptorInstancers.Add(dbContext => (IInterceptor)Activator.CreateInstance(
+                interceptorInstancers.Add(dbContextEngine => (IInterceptor)Activator.CreateInstance(
                     referenceableInterceptorType,
                     additionalInterfaces,
-                    dbContext,
+                    dbContextEngine,
                     referenceableInterceptorLogger)!);
             }
 
-            return dbContext => (from instancer in interceptorInstancers
-                                 select instancer(dbContext)).ToArray();
+            return dbContextEngine => (from instancer in interceptorInstancers
+                                 select instancer(dbContextEngine)).ToArray();
         }
     }
 }

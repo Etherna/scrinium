@@ -23,28 +23,18 @@ using System.Reflection;
 
 namespace Etherna.MongODM.Core.Serialization.Serializers
 {
-    public class GeoPointSerializer<TInModel> : SerializerBase<TInModel>
+    public class GeoPointSerializer<TInModel>(
+        IDbContextEngine dbContextEngine,
+        Expression<Func<TInModel, double>> longitudeMember,
+        Expression<Func<TInModel, double>> latitudeMember)
+        : SerializerBase<TInModel>
         where TInModel : class
     {
         // Fields.
-        private readonly MemberInfo latitudeMemberInfo;
-        private readonly MemberInfo longitudeMemberInfo;
-        private readonly GeoJsonPointSerializer<GeoJson2DGeographicCoordinates> pointSerializer;
-        private readonly IDbContext dbContext;
-        private readonly IProxyGenerator proxyGenerator;
-
-        // Constructors.
-        public GeoPointSerializer(
-            IDbContext dbContext,
-            Expression<Func<TInModel, double>> longitudeMember,
-            Expression<Func<TInModel, double>> latitudeMember)
-        {
-            longitudeMemberInfo = ReflectionHelper.GetMemberInfoFromLambda(longitudeMember);
-            latitudeMemberInfo = ReflectionHelper.GetMemberInfoFromLambda(latitudeMember);
-            pointSerializer = new GeoJsonPointSerializer<GeoJson2DGeographicCoordinates>();
-            this.dbContext = dbContext ?? throw new ArgumentNullException(nameof(dbContext));
-            proxyGenerator = dbContext.ProxyGenerator;
-        }
+        private readonly MemberInfo latitudeMemberInfo = ReflectionHelper.GetMemberInfoFromLambda(latitudeMember);
+        private readonly MemberInfo longitudeMemberInfo = ReflectionHelper.GetMemberInfoFromLambda(longitudeMember);
+        private readonly GeoJsonPointSerializer<GeoJson2DGeographicCoordinates> pointSerializer = new();
+        private readonly IProxyGenerator proxyGenerator = (dbContextEngine ?? throw new ArgumentNullException(nameof(dbContextEngine))).ProxyGenerator;
 
         // Methods.
         public override TInModel Deserialize(BsonDeserializationContext context, BsonDeserializationArgs args)
@@ -57,7 +47,7 @@ namespace Etherna.MongODM.Core.Serialization.Serializers
             }
 
             // Create model instance.
-            var model = proxyGenerator.CreateInstance<TInModel>(dbContext);
+            var model = proxyGenerator.CreateInstance<TInModel>();
 
             // Copy data.
             ReflectionHelper.SetValue(model, longitudeMemberInfo, point.Coordinates.Values[0]);

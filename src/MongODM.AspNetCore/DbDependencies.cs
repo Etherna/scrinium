@@ -30,7 +30,6 @@ namespace Etherna.MongODM.AspNetCore
     {
         public DbDependencies(
             IBsonSerializerRegistry bsonSerializerRegistry,
-            IDbCache dbCache,
             IDbMaintainer dbMaintainer,
             IDbMigrationManager dbContextMigrationManager,
             IDiscriminatorRegistry discriminatorRegistry,
@@ -43,7 +42,6 @@ namespace Etherna.MongODM.AspNetCore
         {
             ArgumentNullException.ThrowIfNull(mongODMOptions);
             BsonSerializerRegistry = bsonSerializerRegistry;
-            DbCache = dbCache;
             DbMaintainer = dbMaintainer;
             DbMigrationManager = dbContextMigrationManager;
             DiscriminatorRegistry = discriminatorRegistry;
@@ -56,7 +54,6 @@ namespace Etherna.MongODM.AspNetCore
         }
 
         public IBsonSerializerRegistry BsonSerializerRegistry { get; }
-        public IDbCache DbCache { get; }
         public IDbMaintainer DbMaintainer { get; }
         public IDbMigrationManager DbMigrationManager { get; }
         public IDiscriminatorRegistry DiscriminatorRegistry { get; }

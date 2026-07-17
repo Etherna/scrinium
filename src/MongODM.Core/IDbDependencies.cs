@@ -25,7 +25,6 @@ namespace Etherna.MongODM.Core
     public interface IDbDependencies
     {
         IBsonSerializerRegistry BsonSerializerRegistry { get; }
-        IDbCache DbCache { get; }
         IDbMaintainer DbMaintainer { get; }
         IDbMigrationManager DbMigrationManager { get; }
         IDiscriminatorRegistry DiscriminatorRegistry { get; }

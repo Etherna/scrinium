@@ -27,7 +27,7 @@ namespace Etherna.MongODM.Core.Serialization.Mapping
 
         IEnumerable<IMemberMap> ChildMemberMaps { get; }
 
-        IDbContext DbContext { get; }
+        IDbContextEngine DbContextEngine { get; }
 
         bool ElementPathHasUndefinedArrayIndex { get; }
 

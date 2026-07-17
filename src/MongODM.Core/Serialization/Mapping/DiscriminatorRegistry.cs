@@ -30,23 +30,23 @@ namespace Etherna.MongODM.Core.Serialization.Mapping
         private readonly ReaderWriterLockSlim configLock = new(LockRecursionPolicy.SupportsRecursion);
         private readonly Dictionary<Type, IDiscriminatorConvention> discriminatorConventions = new();
         private readonly Dictionary<BsonValue, HashSet<Type>> discriminators = new();
-        private readonly HashSet<Type> discriminatedTypes = new();
+        private readonly HashSet<Type> discriminatedTypes = [];
         
         private bool disposed;
-        private ILogger logger = default!;
-        private IDbContext dbContext = default!;
+        private ILogger logger = null!;
+        private IDbContextEngine dbContextEngine = null!;
 
         // Initializer.
-        public void Initialize(IDbContext dbContext, ILogger logger)
+        public void Initialize(IDbContextEngine dbContextEngine, ILogger logger)
         {
             if (IsInitialized)
                 throw new InvalidOperationException("Instance already initialized");
-            this.dbContext = dbContext ?? throw new ArgumentNullException(nameof(dbContext));
+            this.dbContextEngine = dbContextEngine ?? throw new ArgumentNullException(nameof(dbContextEngine));
             this.logger = logger ?? throw new ArgumentNullException(nameof(logger));
 
             IsInitialized = true;
 
-            this.logger.DiscriminatorRegistryInitialized(dbContext.Options.DbName);
+            this.logger.DiscriminatorRegistryInitialized(dbContextEngine.Options.DbName);
         }
         
         // Dispose.
@@ -187,7 +187,7 @@ namespace Etherna.MongODM.Core.Serialization.Mapping
                     if (type == typeof(object))
                     {
                         //if there is no convention registered for object register the default one
-                        convention = new HierarchicalProxyTolerantDiscriminatorConvention(dbContext, "_t");
+                        convention = new HierarchicalProxyTolerantDiscriminatorConvention(dbContextEngine, "_t");
                         AddDiscriminatorConvention(typeof(object), convention);
                     }
                     else if (typeInfo.IsInterface)

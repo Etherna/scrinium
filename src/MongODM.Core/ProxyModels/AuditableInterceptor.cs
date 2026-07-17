@@ -14,6 +14,8 @@
 
 using Castle.DynamicProxy;
 using Etherna.MongODM.Core.Attributes;
+using Etherna.MongODM.Core.Domain.Models;
+using Etherna.MongODM.Core.Utility;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -23,14 +25,29 @@ namespace Etherna.MongODM.Core.ProxyModels
 {
     public class AuditableInterceptor<TModel> : ModelInterceptorBase<TModel>
     {
+        // Static fields.
+        private static readonly PropertyInfo? idProperty = typeof(TModel).GetProperty(nameof(IEntityModel<object>.Id));
+
         // Fields.
-        private bool isAuditingEnabled;
         private readonly HashSet<MemberInfo> changedMembers = new();
+        private readonly IDbContext? dbContext;
+        private bool isAuditingEnabled;
 
         // Constructors.
-        public AuditableInterceptor(IEnumerable<Type> additionalInterfaces)
+        public AuditableInterceptor(
+            IEnumerable<Type> additionalInterfaces,
+            IDbContextEngine dbContextEngine)
             : base(additionalInterfaces)
-        { }
+        {
+            ArgumentNullException.ThrowIfNull(dbContextEngine);
+
+            /* Bind change registration to the db context scope running the current operation,
+             * if any. Models created outside of a scope stay unbound, and models deserialized
+             * with the no cache serializer modifier stay unbound too, keeping read only
+             * massive scans out of the unit of work. */
+            if (!dbContextEngine.SerializerModifierAccessor.IsNoCacheEnabled)
+                dbContext = DbExecutionContextHandler.TryGetCurrentDbContext(dbContextEngine.ExecutionContext);
+        }
 
         // Protected methods.
         protected override bool InterceptInterface(IInvocation invocation)
@@ -51,7 +68,11 @@ namespace Etherna.MongODM.Core.ProxyModels
                 else if (invocation.Method.Name == nameof(IAuditable.EnableAuditing))
                     isAuditingEnabled = true;
                 else if (invocation.Method.Name == nameof(IAuditable.ResetChangedMembers))
+                {
                     changedMembers.Clear();
+                    if (invocation.Proxy is IEntityModel entityModel)
+                        dbContext?.UnregisterChangedModel(entityModel);
+                }
                 else
                     throw new NotSupportedException();
 
@@ -68,6 +89,8 @@ namespace Etherna.MongODM.Core.ProxyModels
             // Filter sets.
             if (isAuditingEnabled)
             {
+                var wasChanged = changedMembers.Count != 0;
+
                 if (invocation.Method.Name.StartsWith("set_", StringComparison.InvariantCulture))
                 {
                     var propertyName = invocation.Method.Name.Substring(4);
@@ -90,6 +113,16 @@ namespace Etherna.MongODM.Core.ProxyModels
                     // Add properties to edited set.
                     foreach (var propertyInfo in propertiesInfo)
                         changedMembers.Add(propertyInfo);
+                }
+
+                // Register model into its scope at the first change.
+                /* Skip models without a valid Id: they can't be replaced by a changes save,
+                 * like they couldn't be tracked by loading in the past. */
+                if (!wasChanged && changedMembers.Count != 0 &&
+                    invocation.Proxy is IEntityModel entityModel &&
+                    idProperty?.GetValue(entityModel) is not null)
+                {
+                    dbContext?.RegisterChangedModel(entityModel);
                 }
             }
 

@@ -17,6 +17,7 @@ using Etherna.MongODM.Core.Attributes;
 using Etherna.MongODM.Core.Domain.Models;
 using Etherna.MongODM.Core.Extensions;
 using Etherna.MongODM.Core.Repositories;
+using Etherna.MongODM.Core.Utility;
 using Microsoft.Extensions.Logging;
 using System;
 using System.Collections.Generic;
@@ -31,7 +32,7 @@ namespace Etherna.MongODM.Core.ProxyModels
     {
         // Fields.
         private readonly ILogger<ReferenceableInterceptor<TModel, TKey>> logger;
-        private readonly IRepository repository;
+        private readonly IRepository? repository;
         private readonly Dictionary<string, bool> settedMemberNames = new(); //<memberName, isFromSummary>
 
         private bool isSummary;
@@ -39,13 +40,17 @@ namespace Etherna.MongODM.Core.ProxyModels
         // Constructors.
         public ReferenceableInterceptor(
             IEnumerable<Type> additionalInterfaces,
-            IDbContext dbContext,
+            IDbContextEngine dbContextEngine,
             ILogger<ReferenceableInterceptor<TModel, TKey>> logger)
             : base(additionalInterfaces)
         {
-            ArgumentNullException.ThrowIfNull(dbContext);
+            ArgumentNullException.ThrowIfNull(dbContextEngine);
 
-            repository = dbContext.RepositoryRegistry.GetRepositoryByHandledModelType(typeof(TModel));
+            /* Bind lazy loading to the db context scope running the current operation, if any.
+             * Models created outside of a scope (e.g. during schema registration) stay unbound,
+             * and can't lazy load. */
+            var currentDbContext = DbExecutionContextHandler.TryGetCurrentDbContext(dbContextEngine.ExecutionContext);
+            repository = currentDbContext?.RepositoryRegistry.TryGetRepositoryByHandledModelType(typeof(TModel));
             this.logger = logger;
         }
 
@@ -72,6 +77,10 @@ namespace Etherna.MongODM.Core.ProxyModels
                 else if (invocation.Method.Name == nameof(IReferenceable.MergeFullModel))
                 {
                     MergeFullModel((TModel)invocation.Proxy, invocation.GetArgumentValue(0) as TModel);
+                }
+                else if (invocation.Method.Name == nameof(IReferenceable.MergeSummaryModel))
+                {
+                    MergeSummaryModel((TModel)invocation.Proxy, invocation.GetArgumentValue(0) as TModel);
                 }
                 else if (invocation.Method.Name == nameof(IReferenceable.SetAsSummary))
                 {
@@ -154,6 +163,10 @@ namespace Etherna.MongODM.Core.ProxyModels
             if (model.Id is null)
                 throw new InvalidOperationException("model or id can't be null");
 
+            if (repository is null)
+                throw new InvalidOperationException(
+                    $"Model of type {typeof(TModel).Name} is not bound to a db context scope, and can't lazy load");
+
             if (isSummary)
             {
                 // Merge full object to current.
@@ -162,6 +175,35 @@ namespace Etherna.MongODM.Core.ProxyModels
 
                 logger.SummaryModelFullLoaded(typeof(TModel), model.Id.ToString()!);
             }
+        }
+
+        private void MergeSummaryModel(TModel model, TModel? summaryModel)
+        {
+            if (summaryModel is not IReferenceable summaryReferenceable)
+                return;
+
+            // Temporary disable auditing.
+            (model as IAuditable)?.DisableAuditing();
+
+            /* Merging two summaries is additive only: copy just the members that the current
+             * model doesn't have at all. Both models are denormalized copies coming from
+             * different origin documents, updated at different times: neither is authoritative,
+             * so an already loaded member is never overwritten, also keeping values stable for
+             * who already read them on this scope. A full model merge instead also refreshes
+             * the summary loaded members, because a full document read is authoritative. */
+            var summaryModelMemberNames = summaryReferenceable.SettedMemberNames.ToHashSet();
+            foreach (var member in ReflectionHelper.GetWritableInstanceProperties(typeof(TModel))
+                                   .Where(info => summaryModelMemberNames.Contains(info.Name) &&
+                                                  !settedMemberNames.ContainsKey(info.Name))
+                                   .ToArray())
+            {
+                var value = ReflectionHelper.GetValue(summaryModel, member);
+                ReflectionHelper.SetValue(model, member, value);
+                settedMemberNames[member.Name] = true; //from summary
+            }
+
+            // Reenable auditing.
+            (model as IAuditable)?.EnableAuditing();
         }
 
         private void MergeFullModel(TModel model, TModel? fullModel)

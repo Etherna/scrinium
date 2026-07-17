@@ -30,12 +30,12 @@ namespace Etherna.MongODM.Core.Serialization.Serializers
         private readonly Dictionary<Type, IModelMap> _modelMaps = new();
 
         private readonly Dictionary<Type, BsonElement> activeModelMapIdBsonElement = new();
-        private readonly IDbContext dbContext;
+        private readonly IDbContextEngine dbContextEngine;
 
         // Constructor.
-        internal ReferenceSerializerConfiguration(IDbContext dbContext)
+        internal ReferenceSerializerConfiguration(IDbContextEngine dbContextEngine)
         {
-            this.dbContext = dbContext;
+            this.dbContextEngine = dbContextEngine;
         }
 
         // Properties.
@@ -50,7 +50,7 @@ namespace Etherna.MongODM.Core.Serialization.Serializers
             ExecuteConfigAction(() =>
             {
                 // Register and return schema configuration.
-                var modelMap = new ModelMap<TModel>(dbContext);
+                var modelMap = new ModelMap<TModel>(dbContextEngine);
                 _modelMaps.Add(typeof(TModel), modelMap);
 
                 // Create model map and set it as active in schema.
@@ -118,12 +118,12 @@ namespace Etherna.MongODM.Core.Serialization.Serializers
                  * when we serialize a proxy model, we don't want that in the proxy's model map id
                  * will be reported on document, but we want to serialize its original type's id.
                  */
-                var notProxySchema = _modelMaps[dbContext.ProxyGenerator.PurgeProxyType(modelMap.ModelType)];
+                var notProxySchema = _modelMaps[dbContextEngine.ProxyGenerator.PurgeProxyType(modelMap.ModelType)];
 
                 activeModelMapIdBsonElement.Add(
                     modelMap.ModelType,
                     new BsonElement(
-                        dbContext.Options.ModelMapVersion.ElementName,
+                        dbContextEngine.Options.ModelMapVersion.ElementName,
                         new BsonString(notProxySchema.ActiveSchema.Id)));
             }
         }
@@ -137,7 +137,7 @@ namespace Etherna.MongODM.Core.Serialization.Serializers
 
             var modelSchema = (ModelMap)Activator.CreateInstance(
                 modelSchemaType,
-                dbContext)!;          //IDbContext dbContext
+                dbContextEngine)!;          //IDbContextEngine dbContextEngine
 
             //class map
             var classMapDefinition = typeof(BsonClassMap<>);
@@ -157,7 +157,7 @@ namespace Etherna.MongODM.Core.Serialization.Serializers
                     Guid.NewGuid().ToString(), //string id
                     classMap,                  //BsonClassMap<TModel> bsonClassMap
                     null!,                     //string? baseSchemaId
-                    null!,                     //Func<TModel, Task<TModel>>? fixDeserializedModelFunc
+                    null!,                     //Func<IDbContext, TModel, Task<TModel>>? fixDeserializedModelFunc
                     modelSchema                //IModelSchema schema
                 ],
                 CultureInfo.InvariantCulture)!;

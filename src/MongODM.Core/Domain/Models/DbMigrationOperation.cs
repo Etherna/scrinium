@@ -35,8 +35,8 @@ namespace Etherna.MongODM.Core.Domain.Models
         private List<MigrationLogBase> _logs = [];
 
         // Constructors.
-        public DbMigrationOperation(IDbContext dbContext)
-            : base(dbContext)
+        public DbMigrationOperation(IDbContextEngine dbContextEngine)
+            : base(dbContextEngine)
         {
             CurrentStatus = Status.New;
         }

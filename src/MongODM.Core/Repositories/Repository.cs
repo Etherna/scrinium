@@ -59,7 +59,7 @@ namespace Etherna.MongODM.Core.Repositories
 
             IsInitialized = true;
 
-            this.logger.RepositoryInitialized(Name, dbContext.Options.DbName);
+            this.logger.RepositoryInitialized(Name, dbContext.Engine.Options.DbName);
         }
 
         // Properties.
@@ -86,7 +86,7 @@ namespace Etherna.MongODM.Core.Repositories
             ArgumentNullException.ThrowIfNull(func);
 
             // Initialize collection cache.
-            _collection ??= DbContext.GetMongoCollection<TModel>(options.Name);
+            _collection ??= DbContext.Engine.GetMongoCollection<TModel>(options.Name);
 
             // Invoke func into optional implicit execution context.
             DbExecutionContextHandler? dbExecContextHandler = null;
@@ -97,7 +97,7 @@ namespace Etherna.MongODM.Core.Repositories
 
             dbExecContextHandler?.Dispose();
 
-            logger.RepositoryAccessedCollection(Name, DbContext.Options.DbName);
+            logger.RepositoryAccessedCollection(Name, DbContext.Engine.Options.DbName);
 
             return result;
         }
@@ -110,7 +110,7 @@ namespace Etherna.MongODM.Core.Repositories
                 await AccessToCollectionAsync(collection =>
                     collection.Indexes.CreateManyAsync(definedIndexes, cancellationToken)).ConfigureAwait(false);
             
-            logger.RepositoryBuiltIndexes(Name, DbContext.Options.DbName);
+            logger.RepositoryBuiltIndexes(Name, DbContext.Engine.Options.DbName);
         }
 
         public Task CreateAsync(object model, CancellationToken cancellationToken = default) =>
@@ -123,7 +123,7 @@ namespace Etherna.MongODM.Core.Repositories
         {
             await CreateOnDBAsync(models, cancellationToken).ConfigureAwait(false);
 
-            logger.RepositoryCreatedDocuments(Name, DbContext.Options.DbName, models.Select(m => m.Id!.ToString()!));
+            logger.RepositoryCreatedDocuments(Name, DbContext.Engine.Options.DbName, models.Select(m => m.Id!.ToString()!));
 
             await DbContext.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
         }
@@ -134,7 +134,7 @@ namespace Etherna.MongODM.Core.Repositories
 
             await CreateOnDBAsync(model, cancellationToken).ConfigureAwait(false);
 
-            logger.RepositoryCreatedDocument(Name, DbContext.Options.DbName, model.Id!.ToString()!);
+            logger.RepositoryCreatedDocument(Name, DbContext.Engine.Options.DbName, model.Id!.ToString()!);
 
             await DbContext.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
         }
@@ -159,11 +159,11 @@ namespace Etherna.MongODM.Core.Repositories
             // Delete model.
             await DeleteOnDBAsync(model, additionalFilters ?? [], cancellationToken).ConfigureAwait(false);
 
-            // Remove from cache.
-            if (DbContext.DbCache.LoadedModels.ContainsKey(model.Id!))
-                DbContext.DbCache.RemoveModel(model.Id!);
+            // Remove from pending changes and loaded models.
+            DbContext.UnregisterChangedModel(model);
+            DbContext.UnregisterLoadedModel(model.Id!, model);
 
-            logger.RepositoryDeletedDocument(Name, DbContext.Options.DbName, model.Id!.ToString()!);
+            logger.RepositoryDeletedDocument(Name, DbContext.Engine.Options.DbName, model.Id!.ToString()!);
         }
 
         public async Task DeleteAsync(IEntityModel model, CancellationToken cancellationToken = default)
@@ -210,7 +210,7 @@ namespace Etherna.MongODM.Core.Repositories
                 var resultCursor = await collection.FindAsync(filter, options, cancellationToken).ConfigureAwait(false);
                 var wrappedCursor = new AsyncCursorWrapper<TProjection>(resultCursor, dbExecContextHandler);
 
-                logger.RepositoryQueriedCollection(Name, DbContext.Options.DbName);
+                logger.RepositoryQueriedCollection(Name, DbContext.Engine.Options.DbName);
 
                 return wrappedCursor;
             }, false).ConfigureAwait(false);
@@ -219,18 +219,18 @@ namespace Etherna.MongODM.Core.Repositories
         public async Task<object> FindOneAsync(object id, CancellationToken cancellationToken = default) =>
             await FindOneAsync((TKey)id, cancellationToken).ConfigureAwait(false);
 
-        public virtual async Task<TModel> FindOneAsync(
+        public virtual Task<TModel> FindOneAsync(
             TKey id,
             CancellationToken cancellationToken = default)
         {
-            if (DbContext.DbCache.LoadedModels.ContainsKey(id!))
-            {
-                var cachedModel = DbContext.DbCache.LoadedModels[id!] as TModel;
-                if (cachedModel is IReferenceable { IsSummary: false })
-                    return cachedModel!;
-            }
+            /* Read through the loaded models of the current scope: a full instance already
+             * loaded satisfies the request without a db round trip. Summary instances still
+             * go to db, to be upgraded in place with the full document by deserialization. */
+            if (DbContext.TryGetLoadedModel(typeof(TModel), id!) is TModel loadedModel &&
+                loadedModel is IReferenceable { IsSummary: false })
+                return Task.FromResult(loadedModel);
 
-            return await FindOneOnDBAsync(id, cancellationToken).ConfigureAwait(false);
+            return FindOneOnDBAsync(id, cancellationToken);
         }
 
         public Task<TModel> FindOneAsync(
@@ -264,7 +264,7 @@ namespace Etherna.MongODM.Core.Repositories
                 }));
 
                 // By referenced documents.
-                var idMemberMaps = DbContext.MapRegistry.TryGetModelMap(typeof(TModel), out var modelMap) ?
+                var idMemberMaps = DbContext.Engine.MapRegistry.TryGetModelMap(typeof(TModel), out var modelMap) ?
                     modelMap.AllDescendingMemberMaps.Where(mm => mm is { IsEntityReferenceMember: true, IsIdMember: true }) :
                     [];
 
@@ -304,7 +304,7 @@ namespace Etherna.MongODM.Core.Repositories
 
                 var result = query(collection.AsQueryable(aggregateOptions));
 
-                logger.RepositoryQueriedCollection(Name, DbContext.Options.DbName);
+                logger.RepositoryQueriedCollection(Name, DbContext.Engine.Options.DbName);
 
                 return result;
             });
@@ -482,9 +482,9 @@ namespace Etherna.MongODM.Core.Repositories
             TModel onInsertModel,
             FieldDefinition<TModel>[] updatedFields,
             CancellationToken cancellationToken = default) =>
-            AccessToCollectionAsync(async collection =>
+            AccessToCollectionAsync<TModel?>(async collection =>
             {
-                var serializer = DbContext.MapRegistry.GetMappedSerializer(typeof(TModel));
+                var serializer = DbContext.Engine.MapRegistry.GetMappedSerializer(typeof(TModel));
                 
                 // Serialize model.
                 var modelBsonDoc = new BsonDocument();
@@ -499,7 +499,7 @@ namespace Etherna.MongODM.Core.Repositories
 
                 // Update "update" definition with OnInsert instructions.
                 var skipFieldsNames = updatedFields
-                    .Select(f => f.Render(new((IBsonSerializer<TModel>)serializer, DbContext.SerializerRegistry)))
+                    .Select(f => f.Render(new((IBsonSerializer<TModel>)serializer, DbContext.Engine.SerializerRegistry)))
                     .Select(f => f.FieldName.Split('.').First())
                     .ToArray();
                 var onInsertUpdate = modelBsonDoc[0].AsBsonDocument.Elements
@@ -509,14 +509,20 @@ namespace Etherna.MongODM.Core.Repositories
                 var upsertUpdate = Builders<TModel>.Update.Combine(onInsertUpdate.Append(updateDefinition));
 
                 // Exec on db.
-                var oldDocument = await collection.FindOneAndUpdateAsync(filter, upsertUpdate, new FindOneAndUpdateOptions<TModel>
+                TModel? oldDocument = await collection.FindOneAndUpdateAsync(filter, upsertUpdate, new FindOneAndUpdateOptions<TModel>
                 {
                     IsUpsert = true
                 }, cancellationToken).ConfigureAwait(false);
                 
-                // Remove old document from cache, if present.
+                // Detach old document, if present.
+                /* The returned old document is a snapshot replaced on db by the upsert: disable
+                 * its auditing and remove it from the loaded models, keeping it out of the unit
+                 * of work and of next loads deduplication. */
                 if (oldDocument is not null)
-                    DbContext.DbCache.RemoveModel(oldDocument.Id!);
+                {
+                    (oldDocument as IAuditable)?.DisableAuditing();
+                    DbContext.UnregisterLoadedModel(oldDocument.Id!, oldDocument);
+                }
 
                 return oldDocument;
             });
@@ -626,7 +632,7 @@ namespace Etherna.MongODM.Core.Repositories
                 if (model == null)
                     throw new MongodmEntityNotFoundException("Can't find element");
 
-                logger.RepositoryFoundDocument(Name, DbContext.Options.DbName, model.Id!.ToString()!);
+                logger.RepositoryFoundDocument(Name, DbContext.Engine.Options.DbName, model.Id!.ToString()!);
 
                 return model;
             });
@@ -659,12 +665,12 @@ namespace Etherna.MongODM.Core.Repositories
 
                 // Update dependent documents.
                 if (updateDependentDocuments)
-                    DbContext.DbMaintainer.OnUpdatedModel<TKey>((IAuditable)model);
+                    DbContext.Engine.DbMaintainer.OnUpdatedModel<TKey>((IAuditable)model, this);
 
                 // Reset changed members.
                 ((IAuditable)model).ResetChangedMembers();
 
-                logger.RepositoryReplacedDocument(Name, DbContext.Options.DbName, model.Id!.ToString()!);
+                logger.RepositoryReplacedDocument(Name, DbContext.Engine.Options.DbName, model.Id!.ToString()!);
             });
     }
 }

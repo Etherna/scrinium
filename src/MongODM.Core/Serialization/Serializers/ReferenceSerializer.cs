@@ -18,9 +18,9 @@ using Etherna.MongoDB.Bson.Serialization;
 using Etherna.MongoDB.Bson.Serialization.Conventions;
 using Etherna.MongoDB.Bson.Serialization.Serializers;
 using Etherna.MongODM.Core.Domain.Models;
-using Etherna.MongODM.Core.Extensions;
 using Etherna.MongODM.Core.ProxyModels;
 using Etherna.MongODM.Core.Serialization.Mapping;
+using Etherna.MongODM.Core.Utility;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -44,19 +44,19 @@ namespace Etherna.MongODM.Core.Serialization.Serializers
         private IDiscriminatorConvention _discriminatorConvention = default!;
 
         private readonly ReaderWriterLockSlim configLockAdapters = new(LockRecursionPolicy.SupportsRecursion);
-        private readonly IDbContext dbContext;
+        private readonly IDbContextEngine dbContextEngine;
         private bool disposed;
 
         // Constructor.
         public ReferenceSerializer(
-            IDbContext dbContext,
+            IDbContextEngine dbContextEngine,
             Action<ReferenceSerializerConfiguration> configure)
         {
             ArgumentNullException.ThrowIfNull(configure);
 
-            this.dbContext = dbContext ?? throw new ArgumentNullException(nameof(dbContext));
+            this.dbContextEngine = dbContextEngine ?? throw new ArgumentNullException(nameof(dbContextEngine));
 
-            _configuration = new ReferenceSerializerConfiguration(dbContext);
+            _configuration = new ReferenceSerializerConfiguration(dbContextEngine);
             configure(_configuration);
         }
 
@@ -97,7 +97,7 @@ namespace Etherna.MongODM.Core.Serialization.Serializers
         {
             get
             {
-                _discriminatorConvention ??= dbContext.DiscriminatorRegistry.LookupDiscriminatorConvention(typeof(TModelBase));
+                _discriminatorConvention ??= dbContextEngine.DiscriminatorRegistry.LookupDiscriminatorConvention(typeof(TModelBase));
                 return _discriminatorConvention;
             }
         }
@@ -130,7 +130,7 @@ namespace Etherna.MongODM.Core.Serialization.Serializers
 
             //get model map id
             string? modelMapId = null;
-            if (bsonDocument.TryGetElement(dbContext.Options.ModelMapVersion.ElementName, out BsonElement modelMapIdElement))
+            if (bsonDocument.TryGetElement(dbContextEngine.Options.ModelMapVersion.ElementName, out BsonElement modelMapIdElement))
             {
                 modelMapId = BsonValueToModelMapId(modelMapIdElement.Value);
                 bsonDocument.RemoveElement(modelMapIdElement); //don't report into extra elements
@@ -156,63 +156,46 @@ namespace Etherna.MongODM.Core.Serialization.Serializers
              * In this case, simply return the model as is.
              */
             if (model != null &&
-                dbContext.ProxyGenerator.IsProxyType(model.GetType()))
+                dbContextEngine.ProxyGenerator.IsProxyType(model.GetType()))
             {
                 var id = model.Id;
                 if (id == null) //ignore refered instances without id
                     return null!;
 
-                // Check if model as been loaded in cache.
-                if (dbContext.DbCache.LoadedModels.ContainsKey(id) &&
-                    !dbContext.SerializerModifierAccessor.IsNoCacheEnabled)
+                // Set model as summarizable.
+                if (dbContextEngine.SerializerModifierAccessor.IsReadOnlyReferencedIdEnabled)
                 {
-                    var cachedModel = (TModelBase)dbContext.DbCache.LoadedModels[id];
-
-                    if (((IReferenceable)cachedModel).IsSummary)
-                    {
-                        // Execute merging between summary models.
-                        var sourceMembers = ((IReferenceable)model).SettedMemberNames
-                            .Except(((IReferenceable)cachedModel).SettedMemberNames)
-                            .Select(memberName => cachedModel.GetType().GetMember(memberName).Single())
-                            .ToArray();
-
-                        //temporary disable auditing
-                        ((IAuditable)cachedModel).DisableAuditing();
-
-                        foreach (var member in sourceMembers)
-                        {
-                            var value = ReflectionHelper.GetValue(model, member);
-                            ReflectionHelper.SetValue(cachedModel, member, value);
-                        }
-
-                        //reenable auditing
-                        ((IAuditable)cachedModel).EnableAuditing();
-
-                        ((IReferenceable)cachedModel).SetAsSummary(sourceMembers.Select(m => m.Name));
-                    }
-
-                    // Return the cached model.
-                    model = cachedModel;
+                    ((IReferenceable)model).ClearSettedMembers();
+                    ((IReferenceable)model).SetAsSummary([nameof(model.Id)]);
                 }
                 else
                 {
-                    // Set model as summarizable.
-                    if (dbContext.SerializerModifierAccessor.IsReadOnlyReferencedIdEnabled)
-                    {
-                        ((IReferenceable)model).ClearSettedMembers();
-                        ((IReferenceable)model).SetAsSummary(new[] { nameof(model.Id) });
-                    }
-                    else
-                    {
-                        ((IReferenceable)model).SetAsSummary(((IReferenceable)model).SettedMemberNames);
-                    }
+                    ((IReferenceable)model).SetAsSummary(((IReferenceable)model).SettedMemberNames);
+                }
 
-                    // Enable auditing.
-                    ((IAuditable)model).EnableAuditing();
+                // Enable auditing.
+                ((IAuditable)model).EnableAuditing();
 
-                    // Add in cache.
-                    if (!dbContext.SerializerModifierAccessor.IsNoCacheEnabled)
-                        dbContext.DbCache.AddModel(model.Id!, model);
+                // Deduplicate model instance on the current db context scope.
+                /* A reference to an already loaded document returns the existing instance.
+                 * The first loaded instance becomes the canonical one for its document, but a
+                 * new summary can carry denormalized members that the loaded instance doesn't
+                 * have yet: merge them instead of discarding the fresh deserialization. */
+                if (!dbContextEngine.SerializerModifierAccessor.IsNoCacheEnabled)
+                {
+                    var currentDbContext = DbExecutionContextHandler.TryGetCurrentDbContext(dbContextEngine.ExecutionContext);
+                    if (currentDbContext is not null)
+                    {
+                        var loadedModel = currentDbContext.TryGetLoadedModel(typeof(TModelBase), id);
+                        if (loadedModel is null)
+                            currentDbContext.RegisterLoadedModel(id, model);
+                        else if (loadedModel is TModelBase typedLoadedModel)
+                        {
+                            if (typedLoadedModel is IReferenceable { IsSummary: true } referenceableModel)
+                                referenceableModel.MergeSummaryModel(model);
+                            model = typedLoadedModel;
+                        }
+                    }
                 }
             }
 
@@ -261,10 +244,10 @@ namespace Etherna.MongODM.Core.Serialization.Serializers
 
             // Add additional data.
             //add model map id
-            if (bsonDocument.Contains(dbContext.Options.ModelMapVersion.ElementName))
-                bsonDocument.Remove(dbContext.Options.ModelMapVersion.ElementName);
+            if (bsonDocument.Contains(dbContextEngine.Options.ModelMapVersion.ElementName))
+                bsonDocument.Remove(dbContextEngine.Options.ModelMapVersion.ElementName);
             var modelMapIdElement = Configuration.GetActiveModelMapIdBsonElement(
-                dbContext.ProxyGenerator.PurgeProxyType(value.GetType()));
+                dbContextEngine.ProxyGenerator.PurgeProxyType(value.GetType()));
             bsonDocument.InsertAt(0, modelMapIdElement);
 
             // Serialize document.

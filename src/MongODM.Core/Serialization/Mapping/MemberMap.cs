@@ -15,7 +15,6 @@
 using Etherna.MongoDB.Bson.Serialization;
 using Etherna.MongoDB.Bson.Serialization.Options;
 using Etherna.MongODM.Core.Extensions;
-using MoreLinq;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -50,7 +49,7 @@ namespace Etherna.MongODM.Core.Serialization.Mapping
 
         public IEnumerable<IMemberMap> ChildMemberMaps => _childMemberMaps;
 
-        public IDbContext DbContext => ModelMapSchema.ModelMap.DbContext;
+        public IDbContextEngine DbContextEngine => ModelMapSchema.ModelMap.DbContextEngine;
 
         public bool ElementPathHasUndefinedArrayIndex => MemberMapPath.Any(mm => mm.InternalElementPath.OfType<ArrayElementRepresentation>().Any(e => e.ItemIndex == null));
 
@@ -63,10 +62,9 @@ namespace Etherna.MongODM.Core.Serialization.Mapping
         /// <summary>
         /// True if member is contained into a referenced entity model
         /// </summary>
-        public bool IsEntityReferenceMember => MemberMapPath.Where(mm => mm.ModelMapSchema.IsEntity)
-                                                                   .Count() >= 2;
+        public bool IsEntityReferenceMember => MemberMapPath.Count(mm => mm.ModelMapSchema.IsEntity) >= 2;
 
-        public bool IsGeneratedByActiveSchemas => !MemberMapPath.Any(mm => !mm.ModelMapSchema.IsCurrentActive);
+        public bool IsGeneratedByActiveSchemas => MemberMapPath.All(mm => mm.ModelMapSchema.IsCurrentActive);
 
         /// <summary>
         /// True if member is an entity Id

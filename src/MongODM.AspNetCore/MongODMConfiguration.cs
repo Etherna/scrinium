@@ -16,6 +16,7 @@ using Etherna.MongoDB.Driver;
 using Etherna.MongoDB.Driver.Core.Configuration;
 using Etherna.MongODM.Core;
 using Etherna.MongODM.Core.Options;
+using Etherna.MongODM.Core.Repositories;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using System;
@@ -99,18 +100,17 @@ namespace Etherna.MongODM.AspNetCore
                 if (IsFrozen)
                     throw new InvalidOperationException("Configuration is frozen");
 
-                // Register dbContext.
-                services.AddSingleton(sp =>
+                // Build dbContext options.
+                var options = new DbContextOptions();
+                dbContextOptionsConfig?.Invoke(options);
+
+                // Register dbContext engine, keyed by its dbContext type.
+                services.AddKeyedSingleton<IDbContextEngine>(typeof(TDbContextImpl), (sp, _) =>
                 {
                     // Get dependencies.
                     var dependencies = sp.GetRequiredService<IDbDependencies>();
-                    var options = new DbContextOptions();
-                    dbContextOptionsConfig?.Invoke(options);
 
-                    // Get dbcontext.
-                    var dbContext = dbContextCreator(sp);
-
-                    // Initialize instance.
+                    // Build the engine from the definitions of a discardable db context instance.
                     var mongoClientSettings = MongoClientSettings.FromConnectionString(options.ConnectionString);
                     mongoClientSettings.ClusterConfigurator = cb =>
                     {
@@ -118,15 +118,26 @@ namespace Etherna.MongODM.AspNetCore
                         cb.ConfigureLoggingSettings(_ => new LoggingSettings(loggerFactory));
                     };
 
-                    dbContext.Initialize(
+                    return dbContextCreator(sp).BuildEngine(
                         dependencies,
                         new MongoClient(mongoClientSettings),
-                        options,
-                        options.ChildDbContextTypes.Select(dbContextType => (IDbContext)sp.GetRequiredService(dbContextType)));
+                        options);
+                });
+
+                // Register scoped dbContext instances, attached to the singleton engine.
+                services.AddScoped(sp =>
+                {
+                    var engine = sp.GetRequiredKeyedService<IDbContextEngine>(typeof(TDbContextImpl));
+
+                    var dbContext = dbContextCreator(sp);
+                    dbContext.AttachToEngine(
+                        engine,
+                        options.ChildDbContextTypes.Select(dbContextType => (IDbContext)sp.GetRequiredService(dbContextType)).ToArray(),
+                        sp.GetRequiredService<IRepositoryRegistry>());
 
                     return dbContext;
                 });
-                services.AddSingleton<TDbContext, TDbContextImpl>(sp => sp.GetRequiredService<TDbContextImpl>());
+                services.AddScoped<TDbContext, TDbContextImpl>(sp => sp.GetRequiredService<TDbContextImpl>());
 
                 // Add db context type.
                 dbContextTypes.Add(typeof(TDbContext));

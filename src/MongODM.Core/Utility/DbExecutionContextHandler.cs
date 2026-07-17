@@ -33,10 +33,17 @@ namespace Etherna.MongODM.Core.Utility
         // Constructors and dispose.
         public DbExecutionContextHandler(
             IDbContext dbContext)
+            : this(ExtractEngine(dbContext))
         {
-            DbContext = dbContext ?? throw new ArgumentNullException(nameof(dbContext));
+            DbContext = dbContext;
+        }
 
-            var executionContext = dbContext.ExecutionContext;
+        public DbExecutionContextHandler(
+            IDbContextEngine dbContextEngine)
+        {
+            DbContextEngine = dbContextEngine ?? throw new ArgumentNullException(nameof(dbContextEngine));
+
+            var executionContext = dbContextEngine.ExecutionContext;
 
             if (executionContext.Items is null) //if an execution context doesn't exist, create it
                 asyncLocalContextHandler = AsyncLocalContext.Instance.InitAsyncLocalContext();
@@ -59,10 +66,28 @@ namespace Etherna.MongODM.Core.Utility
         }
 
         // Properties.
-        public IDbContext DbContext { get; }
+        /// <summary>
+        /// The db context scope running the operation, when the operation has one.
+        /// Null when the handler covers engine level work, like schema registration.
+        /// </summary>
+        public IDbContext? DbContext { get; }
+        public IDbContextEngine DbContextEngine { get; }
 
         // Static methods.
-        public static IDbContext? TryGetCurrentDbContext(IExecutionContext context)
+        public static IDbContext? TryGetCurrentDbContext(IExecutionContext context) =>
+            TryGetCurrentHandler(context)?.DbContext;
+
+        public static IDbContextEngine? TryGetCurrentDbContextEngine(IExecutionContext context) =>
+            TryGetCurrentHandler(context)?.DbContextEngine;
+
+        // Helpers.
+        private static IDbContextEngine ExtractEngine(IDbContext dbContext)
+        {
+            ArgumentNullException.ThrowIfNull(dbContext);
+            return dbContext.Engine;
+        }
+
+        private static DbExecutionContextHandler? TryGetCurrentHandler(IExecutionContext context)
         {
             ArgumentNullException.ThrowIfNull(context);
 
@@ -73,7 +98,7 @@ namespace Etherna.MongODM.Core.Utility
 
             //get the last with a stack system, for recursing calls between different dbContexts
             lock (((ICollection)requests).SyncRoot)
-                return requests.Reverse().FirstOrDefault()?.DbContext;
+                return requests.Reverse().FirstOrDefault();
         }
     }
 }

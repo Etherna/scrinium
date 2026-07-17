@@ -1,4 +1,4 @@
-// Copyright 2020-present Etherna SA
+﻿// Copyright 2020-present Etherna SA
 // This file is part of MongODM.
 //
 // MongODM is free software: you can redistribute it and/or modify it under the terms of the
@@ -65,13 +65,13 @@ namespace Etherna.MongODM.AspNetCore.UI.Areas.MongODM.Pages
             var statuses = new List<object>();
             foreach (var dbContext in DbContexts)
             {
-                var runningOperation = await dbContext.DbMigrationManager.IsMigrationRunningAsync().ConfigureAwait(false);
-                var lastOperations = await dbContext.DbMigrationManager.GetLastMigrationsAsync(0, HistoryLength).ConfigureAwait(false);
+                var runningOperation = await dbContext.IsMigrationRunningAsync().ConfigureAwait(false);
+                var lastOperations = await dbContext.GetLastMigrationsAsync(0, HistoryLength).ConfigureAwait(false);
 
                 statuses.Add(new
                 {
-                    identifier = dbContext.Identifier,
-                    isLocked = runningOperation is not null || dbContext.IsExclusiveWriteEnabled,
+                    identifier = dbContext.Engine.Identifier,
+                    isLocked = runningOperation is not null || dbContext.Engine.IsExclusiveWriteEnabled,
                     runningOperation = runningOperation is null ? null : ProjectOperation(runningOperation),
                     lastOperations = lastOperations
                         .Where(op => op.Id != runningOperation?.Id)
@@ -86,7 +86,7 @@ namespace Etherna.MongODM.AspNetCore.UI.Areas.MongODM.Pages
         {
             InitializePage();
 
-            var dbContext = DbContexts.FirstOrDefault(dbc => dbc.Identifier == identifier);
+            var dbContext = DbContexts.FirstOrDefault(dbc => dbc.Engine.Identifier == identifier);
             if (dbContext is null)
                 return NotFound();
 

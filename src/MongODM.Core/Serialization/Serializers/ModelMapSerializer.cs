@@ -18,16 +18,16 @@ using Etherna.MongoDB.Bson.Serialization;
 using Etherna.MongoDB.Bson.Serialization.Conventions;
 using Etherna.MongoDB.Bson.Serialization.Serializers;
 using Etherna.MongODM.Core.Domain.Models;
-using Etherna.MongODM.Core.Extensions;
 using Etherna.MongODM.Core.ProxyModels;
 using Etherna.MongODM.Core.Serialization.Mapping;
+using Etherna.MongODM.Core.Utility;
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 
 namespace Etherna.MongODM.Core.Serialization.Serializers
 {
-    public class ModelMapSerializer<TModel>(IDbContext dbContext) :
+    public class ModelMapSerializer<TModel>(IDbContextEngine dbContextEngine) :
         SerializerBase<TModel>,
         IBsonDocumentSerializer,
         IBsonIdProvider,
@@ -38,12 +38,12 @@ namespace Etherna.MongODM.Core.Serialization.Serializers
 
         // Properties.
         public BsonClassMapSerializer<TModel> DefaultBsonClassMapSerializer =>
-            (BsonClassMapSerializer<TModel>)dbContext.MapRegistry.GetModelMap(typeof(TModel)).ActiveSchema.Serializer;
+            (BsonClassMapSerializer<TModel>)dbContextEngine.MapRegistry.GetModelMap(typeof(TModel)).ActiveSchema.Serializer;
 
         public IDiscriminatorConvention DiscriminatorConvention =>
-            _discriminatorConvention ??= dbContext.DiscriminatorRegistry.LookupDiscriminatorConvention(typeof(TModel));
+            _discriminatorConvention ??= dbContextEngine.DiscriminatorRegistry.LookupDiscriminatorConvention(typeof(TModel));
 
-        public IEnumerable<IModelMap> HandledModelMaps => [dbContext.MapRegistry.GetModelMap(typeof(TModel))];
+        public IEnumerable<IModelMap> HandledModelMaps => [dbContextEngine.MapRegistry.GetModelMap(typeof(TModel))];
 
         // Methods.
         public override TModel Deserialize(BsonDeserializationContext context, BsonDeserializationArgs args)
@@ -60,14 +60,14 @@ namespace Etherna.MongODM.Core.Serialization.Serializers
             // Find pre-deserialization information.
             //get actual type and schema
             var actualType = DiscriminatorConvention.GetActualType(context.Reader, args.NominalType);
-            var actualTypeModelMap = dbContext.MapRegistry.GetModelMap(actualType);
+            var actualTypeModelMap = dbContextEngine.MapRegistry.GetModelMap(actualType);
 
             //deserialize on document
             var bsonDocument = BsonDocumentSerializer.Instance.Deserialize(context, args);
 
             //get model map id
             string? modelMapId = null;
-            if (bsonDocument.TryGetElement(dbContext.Options.ModelMapVersion.ElementName, out BsonElement modelMapIdElement))
+            if (bsonDocument.TryGetElement(dbContextEngine.Options.ModelMapVersion.ElementName, out BsonElement modelMapIdElement))
             {
                 modelMapId = BsonValueToModelMapId(modelMapIdElement.Value);
                 bsonDocument.RemoveElement(modelMapIdElement); //don't report into extra elements
@@ -115,31 +115,32 @@ namespace Etherna.MongODM.Core.Serialization.Serializers
                 model = task.Result;
             }
 
-            // Add model to cache (if proxy).
-            /* Proxy models enable different features. Anyway, if the model as not been created as a proxy
-             * (for example for tests scope) these additional operations are not possible or required.
-             * In this case, don't add any not-proxy models in cache.
-             */
-            if (!dbContext.SerializerModifierAccessor.IsNoCacheEnabled &&
-                dbContext.ProxyGenerator.IsProxyType(model!.GetType()) &&
-                GetDocumentId(model, out var id, out _, out _) && id != null)
-            {
-                if (dbContext.DbCache.LoadedModels.ContainsKey(id))
-                {
-                    var fullModel = model;
-                    model = (TModel)dbContext.DbCache.LoadedModels[id];
-
-                    if (((IReferenceable)model!).IsSummary)
-                        ((IReferenceable)model).MergeFullModel(fullModel);
-                }
-                else
-                {
-                    dbContext.DbCache.AddModel(id, (IEntityModel)model);
-                }
-            }
-
             // Enable auditing.
             (model as IAuditable)?.EnableAuditing();
+
+            // Deduplicate model instance on the current db context scope (if proxy).
+            /* One document materializes one instance inside a scope: a full load of a document
+             * with an already loaded instance returns the existing one, upgrading it in place
+             * from summary with the fresh full model, if required. Models deserialized with the
+             * no cache serializer modifier, or outside of a scope, stay not deduplicated. */
+            if (!dbContextEngine.SerializerModifierAccessor.IsNoCacheEnabled &&
+                dbContextEngine.ProxyGenerator.IsProxyType(model!.GetType()) &&
+                GetDocumentId(model, out var id, out _, out _) && id != null)
+            {
+                var currentDbContext = DbExecutionContextHandler.TryGetCurrentDbContext(dbContextEngine.ExecutionContext);
+                if (currentDbContext is not null)
+                {
+                    var loadedModel = currentDbContext.TryGetLoadedModel(typeof(TModel), id);
+                    if (loadedModel is null)
+                        currentDbContext.RegisterLoadedModel(id, (IEntityModel)model);
+                    else if (loadedModel is TModel typedLoadedModel)
+                    {
+                        if (typedLoadedModel is IReferenceable { IsSummary: true } referenceableModel)
+                            referenceableModel.MergeFullModel(model);
+                        model = typedLoadedModel;
+                    }
+                }
+            }
 
             return model;
         }
@@ -174,7 +175,7 @@ namespace Etherna.MongODM.Core.Serialization.Serializers
 
             // Get default schema.
             var actualType = value.GetType();
-            var modelMap = dbContext.MapRegistry.GetModelMap(actualType);
+            var modelMap = dbContextEngine.MapRegistry.GetModelMap(actualType);
 
             // Serialize.
             modelMap.ActiveSchema.Serializer.Serialize(localContext, args, value);
@@ -187,8 +188,8 @@ namespace Etherna.MongODM.Core.Serialization.Serializers
              * from bson class map serializer. In that case, the right model map id is already be setted, and we
              * don't have to replace it with the one wrong of the basic collection model type.
              */
-            if (!bsonDocument.Contains(dbContext.Options.ModelMapVersion.ElementName))
-                bsonDocument.InsertAt(0, dbContext.MapRegistry.GetActiveModelMapIdBsonElement(actualType));
+            if (!bsonDocument.Contains(dbContextEngine.Options.ModelMapVersion.ElementName))
+                bsonDocument.InsertAt(0, dbContextEngine.MapRegistry.GetActiveModelMapIdBsonElement(actualType));
 
             // Serialize document.
             BsonDocumentSerializer.Instance.Serialize(context, args, bsonDocument);

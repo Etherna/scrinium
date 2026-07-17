@@ -24,17 +24,9 @@ namespace Etherna.MongODM.Core.Serialization.Serializers
     /// <summary>
     /// Utility serializer used for help into document migration scripts.
     /// </summary>
-    public class ExtraElementsSerializer : SerializerBase<object>
+    public class ExtraElementsSerializer(IDbContextEngine dbContextEngine)
+        : SerializerBase<object>
     {
-        // Fields.
-        private readonly IDbContext dbContext;
-
-        // Constructor.
-        public ExtraElementsSerializer(IDbContext dbContext)
-        {
-            this.dbContext = dbContext;
-        }
-
         // Methods.
         public override void Serialize(BsonSerializationContext context, BsonSerializationArgs args, object value)
         {
@@ -65,7 +57,7 @@ namespace Etherna.MongODM.Core.Serialization.Serializers
             }
             else
             {
-                var serializer = dbContext.SerializerRegistry.GetSerializer(value.GetType());
+                var serializer = dbContextEngine.SerializerRegistry.GetSerializer(value.GetType());
                 serializer.Serialize(context, value);
             }
         }
@@ -88,7 +80,7 @@ namespace Etherna.MongODM.Core.Serialization.Serializers
             serializationContext.Writer.WriteEndDocument();
 
             // Lookup for a serializer.
-            serializer ??= dbContext.SerializerRegistry.GetSerializer<TValue>();
+            serializer ??= dbContextEngine.SerializerRegistry.GetSerializer<TValue>();
 
             // Deserialize.
             using var documentReader = new BsonDocumentReader(document);

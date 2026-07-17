@@ -1,0 +1,238 @@
+﻿// Copyright 2020-present Etherna SA
+// This file is part of MongODM.
+//
+// MongODM is free software: you can redistribute it and/or modify it under the terms of the
+// GNU Lesser General Public License as published by the Free Software Foundation,
+// either version 3 of the License, or (at your option) any later version.
+//
+// MongODM is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
+// without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+// See the GNU Lesser General Public License for more details.
+//
+// You should have received a copy of the GNU Lesser General Public License along with MongODM.
+// If not, see <https://www.gnu.org/licenses/>.
+
+using Etherna.MongoDB.Bson.Serialization;
+using Etherna.MongoDB.Driver;
+using Etherna.MongODM.Core.Domain.ModelMaps;
+using Etherna.MongODM.Core.ExecContext;
+using Etherna.MongODM.Core.Extensions;
+using Etherna.MongODM.Core.Options;
+using Etherna.MongODM.Core.ProxyModels;
+using Etherna.MongODM.Core.Serialization;
+using Etherna.MongODM.Core.Serialization.Mapping;
+using Etherna.MongODM.Core.Serialization.Modifiers;
+using Etherna.MongODM.Core.Serialization.Providers;
+using Etherna.MongODM.Core.Utility;
+using Microsoft.Extensions.Logging;
+using System;
+using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Tasks;
+
+namespace Etherna.MongODM.Core
+{
+    /// <summary>
+    /// The scope independent engine of a <see cref="DbContext"/>: database connections,
+    /// schema registries, and infrastructure components built once at context initialization.
+    /// </summary>
+    public sealed class DbContextEngine(ILogger logger)
+        : IDbContextEngine, IDisposable
+    {
+        // Fields.
+        private volatile bool _isExclusiveReadEnabled;
+        private volatile bool _isExclusiveWriteEnabled;
+        private bool? _isSeededCache;
+        private BsonSerializerRegistry _serializerRegistry = null!;
+        private bool disposed;
+        private readonly SemaphoreSlim exclusiveAccessSemaphore = new(1, 1); //support async/await
+        private bool isInitialized;
+        private readonly ReaderWriterLockSlim isSeededCacheLock = new(); //support read/write locks
+
+        // Initializer.
+        public void Initialize(
+            IDbDependencies dependencies,
+            IMongoClient mongoClient,
+            IDbContextOptions options,
+            Type dbContextType,
+            IEnumerable<IModelMapsCollector> modelMapsCollectors)
+        {
+            if (isInitialized)
+                throw new InvalidOperationException("DbContext engine already initialized");
+            ArgumentNullException.ThrowIfNull(dependencies);
+            ArgumentNullException.ThrowIfNull(options);
+            ArgumentNullException.ThrowIfNull(dbContextType);
+            ArgumentNullException.ThrowIfNull(modelMapsCollectors);
+
+            // Set dependencies.
+            DbContextType = dbContextType;
+            DbMaintainer = dependencies.DbMaintainer;
+            DbMigrationManager = dependencies.DbMigrationManager;
+            DiscriminatorRegistry = dependencies.DiscriminatorRegistry;
+            ExecutionContext = dependencies.ExecutionContext;
+            MapRegistry = dependencies.MapRegistry;
+            Options = options;
+            ProxyGenerator = dependencies.ProxyGenerator;
+            SerializerModifierAccessor = dependencies.SerializerModifierAccessor;
+            _serializerRegistry = (BsonSerializerRegistry)dependencies.BsonSerializerRegistry;
+
+            // Execute initialization into execution context.
+            using var dbExecutionContext = new DbExecutionContextHandler(this);
+
+            // Initialize internal dependencies.
+            DbMaintainer.Initialize(this, logger);
+            DbMigrationManager.Initialize(this, logger);
+            DiscriminatorRegistry.Initialize(this, logger);
+            MapRegistry.Initialize(this, logger);
+            InitializeSerializerRegistry();
+
+            // Register model maps.
+            //internal maps
+            new DbMigrationOperationMap().Register(this);
+            new ModelBaseMap().Register(this);
+            new OperationBaseMap().Register(this);
+            new SeedOperationMap().Register(this);
+
+            //application maps
+            foreach (var maps in modelMapsCollectors)
+                maps.Register(this);
+
+            // Build and freeze map registry.
+            MapRegistry.Freeze();
+
+            // Initialize MongoDB database.
+            Client = mongoClient;
+            Database = Client.GetDatabase(options.DbName, new MongoDatabaseSettings
+            {
+                SerializerRegistry = _serializerRegistry
+            });
+
+            // Set as initialized.
+            isInitialized = true;
+
+            logger.DbContextInitialized(options.DbName);
+        }
+
+        // Dispose.
+        public void Dispose()
+        {
+            if (disposed) return;
+
+            // Dispose managed resources.
+            exclusiveAccessSemaphore.Dispose();
+            isSeededCacheLock.Dispose();
+
+            disposed = true;
+        }
+
+        // Properties.
+        public IMongoClient Client { get; private set; } = null!;
+        public IMongoDatabase Database { get; private set; } = null!;
+        public Type DbContextType { get; private set; } = null!;
+        public IDbMaintainer DbMaintainer { get; private set; } = null!;
+        public IDbMigrationManager DbMigrationManager { get; private set; } = null!;
+        public IDiscriminatorRegistry DiscriminatorRegistry { get; private set; } = null!;
+        public IExecutionContext ExecutionContext { get; private set; } = null!;
+        public string Identifier => Options.Identifier ?? DbContextType.Name;
+        public bool IsExclusiveReadEnabled
+        {
+            get => _isExclusiveReadEnabled;
+            private set => _isExclusiveReadEnabled = value;
+        }
+        public bool IsExclusiveWriteEnabled
+        {
+            get => _isExclusiveWriteEnabled;
+            private set => _isExclusiveWriteEnabled = value;
+        }
+        public bool? IsSeededCache
+        {
+            get
+            {
+                isSeededCacheLock.EnterReadLock();
+                try
+                {
+                    return _isSeededCache;
+                }
+                finally
+                {
+                    isSeededCacheLock.ExitReadLock();
+                }
+            }
+            set
+            {
+                isSeededCacheLock.EnterWriteLock();
+                try
+                {
+                    _isSeededCache = value;
+                }
+                finally
+                {
+                    isSeededCacheLock.ExitWriteLock();
+                }
+            }
+        }
+        public IMapRegistry MapRegistry { get; private set; } = null!;
+        public IDbContextOptions Options { get; private set; } = null!;
+        public IProxyGenerator ProxyGenerator { get; private set; } = null!;
+        public IBsonSerializerRegistry SerializerRegistry => _serializerRegistry;
+        public ISerializerModifierAccessor SerializerModifierAccessor { get; private set; } = null!;
+
+        // Methods.
+        public IMongoCollection<TDocument> GetMongoCollection<TDocument>(
+            string name,
+            MongoCollectionSettings? settings = null)
+        {
+            var mongoCollection = Database.GetCollection<TDocument>(name, settings);
+            return new LimitedAccessMongoCollection<TDocument>(this, mongoCollection, false);
+        }
+
+        public Task RunWithExclusiveAccessAsync(
+            Func<Task> action,
+            bool lockOnRead = true) =>
+            RunWithExclusiveAccessAsync(async () =>
+            {
+                await action().ConfigureAwait(false);
+                return 0;
+            }, lockOnRead);
+
+        public async Task<TResult> RunWithExclusiveAccessAsync<TResult>(
+            Func<Task<TResult>> func,
+            bool lockOnRead = true)
+        {
+            ArgumentNullException.ThrowIfNull(func);
+
+            await exclusiveAccessSemaphore.WaitAsync().ConfigureAwait(false);
+            try
+            {
+                IsExclusiveReadEnabled = lockOnRead;
+                IsExclusiveWriteEnabled = true;
+
+                using var _ = new ExclusiveAccessHandler(ExecutionContext);
+                return await func().ConfigureAwait(false);
+            }
+            finally
+            {
+                IsExclusiveWriteEnabled = false;
+                IsExclusiveReadEnabled = false;
+
+                exclusiveAccessSemaphore.Release();
+            }
+        }
+
+        public Task<IClientSessionHandle> StartSessionAsync(CancellationToken cancellationToken = default) =>
+            Client.StartSessionAsync(cancellationToken: cancellationToken);
+
+        // Helpers.
+        private void InitializeSerializerRegistry()
+        {
+            //order matters. It's in reverse order of how they'll get consumed
+            _serializerRegistry.RegisterSerializationProvider(new ModelMapSerializationProvider(this));
+            _serializerRegistry.RegisterSerializationProvider(new DiscriminatedInterfaceSerializationProvider());
+            _serializerRegistry.RegisterSerializationProvider(new CollectionsSerializationProvider());
+            _serializerRegistry.RegisterSerializationProvider(new PrimitiveSerializationProvider());
+            _serializerRegistry.RegisterSerializationProvider(new AttributedSerializationProvider());
+            _serializerRegistry.RegisterSerializationProvider(new TypeMappingSerializationProvider());
+            _serializerRegistry.RegisterSerializationProvider(new BsonObjectModelSerializationProvider());
+        }
+    }
+}

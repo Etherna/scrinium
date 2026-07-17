@@ -19,9 +19,9 @@ namespace Etherna.MongODM.Core.Domain.ModelMaps
 {
     internal sealed class SeedOperationMap : IModelMapsCollector
     {
-        public void Register(IDbContext dbContext)
+        public void Register(IDbContextEngine dbContextEngine)
         {
-            dbContext.MapRegistry.AddModelMap<SeedOperation>("f9bfe56e-8045-4559-b91b-4745c2fd9766");
+            dbContextEngine.MapRegistry.AddModelMap<SeedOperation>("f9bfe56e-8045-4559-b91b-4745c2fd9766");
         }
     }
 }

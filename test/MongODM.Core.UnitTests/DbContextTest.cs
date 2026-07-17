@@ -1,4 +1,4 @@
-// Copyright 2020-present Etherna SA
+﻿// Copyright 2020-present Etherna SA
 // This file is part of MongODM.
 // 
 // MongODM is free software: you can redistribute it and/or modify it under the terms of the
@@ -14,43 +14,38 @@
 
 using Etherna.MongoDB.Bson.Serialization;
 using Etherna.MongoDB.Driver;
-using Etherna.MongODM.Core.Domain.Models;
 using Etherna.MongODM.Core.ExecContext.AsyncLocal;
 using Etherna.MongODM.Core.Models;
 using Etherna.MongODM.Core.Options;
+using Etherna.MongODM.Core.ProxyModels;
 using Etherna.MongODM.Core.Repositories;
 using Etherna.MongODM.Core.Serialization.Mapping;
 using Etherna.MongODM.Core.Utility;
 using Moq;
 using System;
-using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Xunit;
 
 namespace Etherna.MongODM.Core
 {
-    public class DbContextTest
+    public class DbContextTest : IDisposable
     {
         // Fields.
         private readonly FakeDbContext dbContext;
+        private readonly IDbContextEngine engine;
 
         private readonly Mock<IMongoCollection<FakeModel>> collectionMock = new();
-        private readonly Mock<IDbCache> dbCacheMock = new();
         private readonly Mock<IDbDependencies> dependenciesMock = new();
         private readonly Mock<IMongoClient> mongoClientMock = new();
         private readonly Mock<IMongoDatabase> mongoDatabaseMock = new();
+        private readonly Mock<IProxyGenerator> proxyGeneratorMock = new();
         
         // Constructor.
         public DbContextTest()
         {
-            dbCacheMock.Setup(c => c.LoadedModels)
-                .Returns(new Dictionary<object, IEntityModel>());
-            
             dependenciesMock.Setup(d => d.BsonSerializerRegistry)
                 .Returns(new BsonSerializerRegistry());
-            dependenciesMock.Setup(d => d.DbCache)
-                .Returns(dbCacheMock.Object);
             dependenciesMock.Setup(d => d.DbMaintainer)
                 .Returns(new Mock<IDbMaintainer>().Object);
             dependenciesMock.Setup(d => d.DbMigrationManager)
@@ -61,6 +56,10 @@ namespace Etherna.MongODM.Core
                 .Returns(AsyncLocalContext.Instance);
             dependenciesMock.Setup(d => d.MapRegistry)
                 .Returns(new Mock<IMapRegistry>().Object);
+            proxyGeneratorMock.Setup(p => p.PurgeProxyType(It.IsAny<Type>()))
+                .Returns<Type>(t => t);
+            dependenciesMock.Setup(d => d.ProxyGenerator)
+                .Returns(proxyGeneratorMock.Object);
             dependenciesMock.Setup(d => d.RepositoryRegistry)
                 .Returns(new RepositoryRegistry());
 
@@ -80,14 +79,41 @@ namespace Etherna.MongODM.Core
                 .Returns(mongoDatabaseMock.Object);
             
             dbContext = new FakeDbContext();
-            dbContext.Initialize(
+            engine = dbContext.BuildEngine(
                 dependenciesMock.Object,
                 mongoClientMock.Object,
-                new DbContextOptions(),
-                []);
+                new DbContextOptions());
+            dbContext.AttachToEngine(engine, [], dependenciesMock.Object.RepositoryRegistry);
+        }
+
+        // Dispose.
+        public void Dispose()
+        {
+            (engine as IDisposable)?.Dispose();
+            GC.SuppressFinalize(this);
         }
         
         // Tests.
+        [Fact]
+        public void LoadedModelsAreRegisteredPerInstance()
+        {
+            // Setup.
+            var model = new FakeModel { Id = "id" };
+
+            // Action.
+            dbContext.RegisterLoadedModel("id", model);
+
+            // Assert.
+            Assert.Same(model, dbContext.TryGetLoadedModel(typeof(FakeModel), "id"));
+            Assert.Null(dbContext.TryGetLoadedModel(typeof(FakeModel), "otherId"));
+
+            // Action.
+            dbContext.UnregisterLoadedModel("id", model);
+
+            // Assert.
+            Assert.Null(dbContext.TryGetLoadedModel(typeof(FakeModel), "id"));
+        }
+
         [Theory]
         [InlineData(false)]
         [InlineData(true)]
@@ -129,7 +155,7 @@ namespace Etherna.MongODM.Core
                 await Task.Delay(250);
                 
                 //run exclusive access with allowed area
-                var result = await dbContext.RunWithExclusiveAccessAsync(async () =>
+                var result = await dbContext.Engine.RunWithExclusiveAccessAsync(async () =>
                 {
                     //succeed with exclusive access in allowed area
                     await dbContext.FakeModels.CreateAsync(fakeModel);

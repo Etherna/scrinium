@@ -37,21 +37,21 @@ namespace Etherna.MongODM.Core.Serialization.Mapping
 
         // Constructor.
         protected ModelMap(
-            IDbContext dbContext,
+            IDbContextEngine dbContextEngine,
             Type modelType)
             : base(modelType)
         {
             ArgumentNullException.ThrowIfNull(modelType);
             
-            DbContext = dbContext ?? throw new ArgumentNullException(nameof(dbContext));
+            DbContextEngine = dbContextEngine ?? throw new ArgumentNullException(nameof(dbContextEngine));
 
             // Verify if uses proxy model.
             if (modelType.IsClass &&
                 modelType != typeof(object) &&
                 !modelType.IsAbstract &&
-                !dbContext.ProxyGenerator.IsProxyType(modelType))
+                !dbContextEngine.ProxyGenerator.IsProxyType(modelType))
             {
-                ProxyModelType = dbContext.ProxyGenerator.CreateInstance(modelType, dbContext).GetType();
+                ProxyModelType = dbContextEngine.ProxyGenerator.CreateInstance(modelType).GetType();
             }
         }
 
@@ -62,12 +62,12 @@ namespace Etherna.MongODM.Core.Serialization.Mapping
             internal set
             {
                 _activeSchema = value;
-                _activeSchema.TryUseProxyGenerator(DbContext);
+                _activeSchema.TryUseProxyGenerator(DbContextEngine);
             }
         }
         public IEnumerable<IMemberMap> AllDescendingMemberMaps => DefinedMemberMaps.Concat(
                                                                   DefinedMemberMaps.SelectMany(mm => mm.AllDescendingMemberMaps));
-        public IDbContext DbContext { get; }
+        public IDbContextEngine DbContextEngine { get; }
         public IEnumerable<IMemberMap> DefinedMemberMaps
         {
             get
@@ -110,7 +110,7 @@ namespace Etherna.MongODM.Core.Serialization.Mapping
                 {
                     var modelMapSerializerDefinition = typeof(ModelMapSerializer<>);
                     var modelMapSerializerType = modelMapSerializerDefinition.MakeGenericType(ModelType);
-                    _serializer = (IBsonSerializer)Activator.CreateInstance(modelMapSerializerType, DbContext)!;
+                    _serializer = (IBsonSerializer)Activator.CreateInstance(modelMapSerializerType, DbContextEngine)!;
                 }
                 
                 return _serializer;
@@ -158,7 +158,7 @@ namespace Etherna.MongODM.Core.Serialization.Mapping
                 ArgumentNullException.ThrowIfNull(schema);
 
                 // Try to use proxy model generator.
-                schema.TryUseProxyGenerator(DbContext);
+                schema.TryUseProxyGenerator(DbContextEngine);
 
                 // Add schema.
                 _secondarySchemas.Add(schema);
@@ -190,7 +190,7 @@ namespace Etherna.MongODM.Core.Serialization.Mapping
                 if (memberSerializer is IModelMapsHandlingSerializer modelMapsContainerSerializer)
                 {
                     foreach (var modelMap in modelMapsContainerSerializer.HandledModelMaps
-                        .Where(mm => !DbContext.ProxyGenerator.IsProxyType(mm.ModelType))) //skip model maps on proxy types
+                        .Where(mm => !DbContextEngine.ProxyGenerator.IsProxyType(mm.ModelType))) //skip model maps on proxy types
                     {
                         foreach (var schema in modelMap.SchemasById.Values)
                         {
@@ -222,8 +222,8 @@ namespace Etherna.MongODM.Core.Serialization.Mapping
     }
 
     [SuppressMessage("Reliability", "CA2000:Dispose objects before losing scope")]
-    public sealed class ModelMap<TModel>(IDbContext dbContext)
-        : ModelMap(dbContext, typeof(TModel)), IModelMapBuilder<TModel>
+    public sealed class ModelMap<TModel>(IDbContextEngine dbContextEngine)
+        : ModelMap(dbContextEngine, typeof(TModel)), IModelMapBuilder<TModel>
     {
         // Methods.
         public IModelMapBuilder<TModel> AddFallbackCustomSerializer(IBsonSerializer<TModel> fallbackSerializer)
@@ -235,7 +235,7 @@ namespace Etherna.MongODM.Core.Serialization.Mapping
         public IModelMapBuilder<TModel> AddFallbackSchema(
             Action<BsonClassMap<TModel>>? modelMapSchemaInitializer = null,
             string? baseSchemaId = null,
-            Func<TModel, Task<TModel>>? fixDeserializedModelFunc = null)
+            Func<IDbContext, TModel, Task<TModel>>? fixDeserializedModelFunc = null)
         {
             AddFallbackModelMapSchemaHelper(new ModelMapSchema<TModel>(
                 "fallback",
@@ -250,7 +250,7 @@ namespace Etherna.MongODM.Core.Serialization.Mapping
             string id,
             Action<BsonClassMap<TModel>>? modelMapSchemaInitializer = null,
             string? baseSchemaId = null,
-            Func<TModel, Task<TModel>>? fixDeserializedModelFunc = null)
+            Func<IDbContext, TModel, Task<TModel>>? fixDeserializedModelFunc = null)
         {
             AddSecondarySchemaHelper(new ModelMapSchema<TModel>(
                 id,
@@ -265,7 +265,7 @@ namespace Etherna.MongODM.Core.Serialization.Mapping
             string id,
             Action<BsonClassMap<TOverrideNominal>>? modelMapSchemaInitializer = null,
             string? baseSchemaId = null,
-            Func<TOverrideNominal, Task<TOverrideNominal>>? fixDeserializedModelFunc = null)
+            Func<IDbContext, TOverrideNominal, Task<TOverrideNominal>>? fixDeserializedModelFunc = null)
             where TOverrideNominal : class, TModel
         {
             AddSecondarySchemaHelper(new ModelMapSchema<TModel, TOverrideNominal>(

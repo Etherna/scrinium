@@ -61,12 +61,12 @@ namespace Etherna.MongODM.Core.Tasks
             // Run with exclusive access allowance, if required.
             ExclusiveAccessHandler? exclusiveAccessHandler = null;
             if (withExclusiveAccessAllowance)
-                exclusiveAccessHandler = new ExclusiveAccessHandler(dbContext.ExecutionContext);
+                exclusiveAccessHandler = new ExclusiveAccessHandler(dbContext.Engine.ExecutionContext);
 
             // Get data.
             var referencedRepository = dbContext.RepositoryRegistry.Repositories.First(r => r.Name == referencedRepositoryName);
             var referencedModel = await referencedRepository.FindOneAsync(referencedModelId).ConfigureAwait(false);
-            var referencedModelType = dbContext.ProxyGenerator.PurgeProxyType(referencedModel.GetType());
+            var referencedModelType = dbContext.Engine.ProxyGenerator.PurgeProxyType(referencedModel.GetType());
 
             // Recover reference id member maps model's schemas, and all model maps.
             /*
@@ -77,7 +77,7 @@ namespace Etherna.MongODM.Core.Tasks
              * This could happen for example if the software is upgraded in the meanwhile.
              */
             var idMemberMaps = idMemberMapIdentifiers
-                .Select(idMemberMapIdentifier => dbContext.MapRegistry.MemberMapsById.TryGetValue(idMemberMapIdentifier, out var idmm) ? idmm : null!)
+                .Select(idMemberMapIdentifier => dbContext.Engine.MapRegistry.MemberMapsById.TryGetValue(idMemberMapIdentifier, out var idmm) ? idmm : null!)
                 .Where(idMemberMap => idMemberMap is not null && idMemberMap.ModelMapSchema.ModelMap.ModelType == referencedModelType);
 
             // Define mapping of serialized documents.

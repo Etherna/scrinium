@@ -33,12 +33,6 @@ namespace Etherna.MongODM.Core.Extensions
                 "Repository {RepositoryName} of DbContext {DbName} accessed collection");
 
         //*** DEBUG LOGS ***
-        private static readonly Action<ILogger, string, Exception> _dbCacheInitialized =
-            LoggerMessage.Define<string>(
-                LogLevel.Debug,
-                new EventId(7, nameof(DbCacheInitialized)),
-                "DbCache of DbContext {DbName} initialized");
-
         private static readonly Action<ILogger, string, string, string, Exception> _dbContextSavedChangedModelToRepository =
             LoggerMessage.Define<string, string, string>(
                 LogLevel.Debug,
@@ -167,9 +161,6 @@ namespace Etherna.MongODM.Core.Extensions
         //*** FATAL LOGS ***
 
         // Methods.
-        public static void DbCacheInitialized(this ILogger logger, string dbName) =>
-            _dbCacheInitialized(logger, dbName, null!);
-
         public static void DbContextInitialized(this ILogger logger, string dbName) =>
             _dbContextInitialized(logger, dbName, null!);
 

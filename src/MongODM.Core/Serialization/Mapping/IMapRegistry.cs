@@ -24,7 +24,7 @@ namespace Etherna.MongODM.Core.Serialization.Mapping
     /// <summary>
     /// Interface for <see cref="MapRegistry"/> implementation.
     /// </summary>
-    public interface IMapRegistry : IDbContextInitializable, IFreezableConfig
+    public interface IMapRegistry : IDbContextEngineInitializable, IFreezableConfig
     {
         // Properties.
         /// <summary>

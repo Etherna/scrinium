@@ -35,9 +35,10 @@ namespace Etherna.MongODM.AspNetCore.Extensions
             var serviceProvider = builder.ApplicationServices;
             var mongODMOptions = serviceProvider.GetRequiredService<IOptions<MongODMOptions>>();
 
-            // Get dbcontext instances.
+            // Get dbcontext instances from a dedicated scope.
+            using var serviceScope = serviceProvider.CreateScope();
             var dbContextTypes = mongODMOptions.Value.DbContextTypes;
-            var dbContexts = dbContextTypes.Select(type => (IDbContext)serviceProvider.GetRequiredService(type));
+            var dbContexts = dbContextTypes.Select(type => (IDbContext)serviceScope.ServiceProvider.GetRequiredService(type));
 
             // Create an execution context.
             using var execContext = AsyncLocalContext.Instance.InitAsyncLocalContext();

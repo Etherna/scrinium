@@ -22,7 +22,7 @@ namespace Etherna.MongODM.Core.Serialization.Mapping
         // Properties.
         IModelMapSchema ActiveSchema { get; }
         IEnumerable<IMemberMap> AllDescendingMemberMaps { get; }
-        IDbContext DbContext { get; }
+        IDbContextEngine DbContextEngine { get; }
         IEnumerable<IMemberMap> DefinedMemberMaps { get; }
         IModelMapSchema? FallbackSchema { get; }
         IBsonSerializer? FallbackSerializer { get; }

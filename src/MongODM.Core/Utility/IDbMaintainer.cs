@@ -13,13 +13,14 @@
 // If not, see <https://www.gnu.org/licenses/>.
 
 using Etherna.MongODM.Core.ProxyModels;
+using Etherna.MongODM.Core.Repositories;
 
 namespace Etherna.MongODM.Core.Utility
 {
     /// <summary>
     /// Interface for <see cref="DbMaintainer"/> implementation.
     /// </summary>
-    public interface IDbMaintainer : IDbContextInitializable
+    public interface IDbMaintainer : IDbContextEngineInitializable
     {
         // Methods.
         /// <summary>
@@ -27,6 +28,7 @@ namespace Etherna.MongODM.Core.Utility
         /// </summary>
         /// <typeparam name="TKey">Updated model Key type</typeparam>
         /// <param name="updatedModel">The updated model</param>
-        void OnUpdatedModel<TKey>(IAuditable updatedModel);
+        /// <param name="referenceRepository">The repository of the updated model</param>
+        void OnUpdatedModel<TKey>(IAuditable updatedModel, IRepository referenceRepository);
     }
 }

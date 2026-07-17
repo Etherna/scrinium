@@ -34,12 +34,12 @@ namespace Etherna.MongODM.Core.Serialization.Mapping
         /// </summary>
         /// <param name="modelMapSchemaInitializer">The model map inizializer</param>
         /// <param name="baseSchemaId">Id of the base model map for this model map</param>
-        /// <param name="fixDeserializedModelFunc">Migrate model after loaded</param>
+        /// <param name="fixDeserializedModelFunc">Migrate model after loaded, receiving the current db context scope</param>
         /// <returns>This same model map</returns>
         IModelMapBuilder<TModel> AddFallbackSchema(
             Action<BsonClassMap<TModel>>? modelMapSchemaInitializer = null,
             string? baseSchemaId = null,
-            Func<TModel, Task<TModel>>? fixDeserializedModelFunc = null);
+            Func<IDbContext, TModel, Task<TModel>>? fixDeserializedModelFunc = null);
 
         /// <summary>
         /// Register a secondary model map schema
@@ -47,19 +47,19 @@ namespace Etherna.MongODM.Core.Serialization.Mapping
         /// <param name="id">The map Id</param>
         /// <param name="modelMapSchemaInitializer">The model map schema inizializer</param>
         /// <param name="baseSchemaId">Id of the base model map schema for this model map schema</param>
-        /// <param name="fixDeserializedModelFunc">Migrate model after loaded</param>
+        /// <param name="fixDeserializedModelFunc">Migrate model after loaded, receiving the current db context scope</param>
         /// <returns>This same model map</returns>
         IModelMapBuilder<TModel> AddSecondarySchema(
             string id,
             Action<BsonClassMap<TModel>>? modelMapSchemaInitializer = null,
             string? baseSchemaId = null,
-            Func<TModel, Task<TModel>>? fixDeserializedModelFunc = null);
+            Func<IDbContext, TModel, Task<TModel>>? fixDeserializedModelFunc = null);
 
         IModelMapBuilder<TModel> AddSecondarySchema<TOverrideNominal>(
             string id,
             Action<BsonClassMap<TOverrideNominal>>? modelMapSchemaInitializer = null,
             string? baseSchemaId = null,
-            Func<TOverrideNominal, Task<TOverrideNominal>>? fixDeserializedModelFunc = null)
+            Func<IDbContext, TOverrideNominal, Task<TOverrideNominal>>? fixDeserializedModelFunc = null)
             where TOverrideNominal : class, TModel;
     }
 }

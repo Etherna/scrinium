@@ -22,12 +22,12 @@ namespace Etherna.MongODM.Core.Domain.ModelMaps
 {
     internal sealed class ModelBaseMap : IModelMapsCollector
     {
-        public void Register(IDbContext dbContext)
+        public void Register(IDbContextEngine dbContextEngine)
         {
             // Register class maps.
-            dbContext.MapRegistry.AddModelMap<ModelBase>("bff55d53-0517-4a93-8fda-7bd448181449");
+            dbContextEngine.MapRegistry.AddModelMap<ModelBase>("bff55d53-0517-4a93-8fda-7bd448181449");
 
-            dbContext.MapRegistry.AddModelMap<EntityModelBase<string>>("586b48f5-ba1f-45e3-a812-744f88c1c969",
+            dbContextEngine.MapRegistry.AddModelMap<EntityModelBase<string>>("586b48f5-ba1f-45e3-a812-744f88c1c969",
                 schema =>
                 {
                     schema.AutoMap();
