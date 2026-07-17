@@ -118,6 +118,38 @@ namespace Etherna.MongODM.Core.Repositories
             FilterDefinition<TModel>[]? additionalFilters = null,
             CancellationToken cancellationToken = default);
 
+        /// <summary>
+        /// Delete from the collection all the documents matching a filter, without resolving
+        /// their ids. This is a raw bulk operation: it skips the domain level cleanup of the
+        /// model delete, and doesn't touch the changed or loaded models of any db context
+        /// scope. Instances already loaded that match the filter stay on their scope, so
+        /// finds by id on the same scope keep returning them instead of failing as not found
+        /// (remove them explicitly with UnregisterLoadedModel when this matters), but saving
+        /// their changes doesn't recreate the deleted documents.
+        /// </summary>
+        /// <param name="filter">The documents filter</param>
+        /// <param name="cancellationToken">Cancellation token</param>
+        /// <returns>The number of deleted documents</returns>
+        Task<long> DeleteManyAsync(
+            Expression<Func<TModel, bool>> filter,
+            CancellationToken cancellationToken = default);
+
+        /// <summary>
+        /// Delete from the collection all the documents matching a filter, without resolving
+        /// their ids. This is a raw bulk operation: it skips the domain level cleanup of the
+        /// model delete, and doesn't touch the changed or loaded models of any db context
+        /// scope. Instances already loaded that match the filter stay on their scope, so
+        /// finds by id on the same scope keep returning them instead of failing as not found
+        /// (remove them explicitly with UnregisterLoadedModel when this matters), but saving
+        /// their changes doesn't recreate the deleted documents.
+        /// </summary>
+        /// <param name="filter">The documents filter</param>
+        /// <param name="cancellationToken">Cancellation token</param>
+        /// <returns>The number of deleted documents</returns>
+        Task<long> DeleteManyAsync(
+            FilterDefinition<TModel> filter,
+            CancellationToken cancellationToken = default);
+
         Task<CreateIndexModel<TModel>[]> GetDefinedIndexModelsAsync();
 
         Task<TResult> QueryElementsAsync<TResult>(
