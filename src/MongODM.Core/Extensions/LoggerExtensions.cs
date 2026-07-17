@@ -20,12 +20,18 @@ namespace Etherna.MongODM.Core.Extensions
 {
     /*
      * Always group similar log delegates by type, always use incremental event ids.
-     * Last event id is: 23
+     * Last event id is: 38
      */
     public static class LoggerExtensions
     {
         // Fields.
         //*** TRACE LOGS ***
+        private static readonly Action<ILogger, Type, Type, Exception> _proxyModelTypeCreated =
+            LoggerMessage.Define<Type, Type>(
+                LogLevel.Trace,
+                new EventId(32, nameof(ProxyModelTypeCreated)),
+                "ProxyGenerator created proxy type for model type {ModelType}: {ProxyModelType}");
+
         private static readonly Action<ILogger, string, string, Exception> _repositoryAccessedCollection =
             LoggerMessage.Define<string, string>(
                 LogLevel.Trace,
@@ -33,11 +39,47 @@ namespace Etherna.MongODM.Core.Extensions
                 "Repository {RepositoryName} of DbContext {DbName} accessed collection");
 
         //*** DEBUG LOGS ***
+        private static readonly Action<ILogger, string, string, string, Exception> _dbContextRegisteredChangedModel =
+            LoggerMessage.Define<string, string, string>(
+                LogLevel.Trace,
+                new EventId(25, nameof(DbContextRegisteredChangedModel)),
+                "DbContext {DbName} registered changed model with Id {ModelId} of repository {RepositoryName}");
+
+        private static readonly Action<ILogger, string, string, string, Exception> _dbContextRegisteredLoadedModel =
+            LoggerMessage.Define<string, string, string>(
+                LogLevel.Trace,
+                new EventId(26, nameof(DbContextRegisteredLoadedModel)),
+                "DbContext {DbName} registered loaded model with Id {ModelId} of repository {RepositoryName}");
+
+        private static readonly Action<ILogger, string, string, string, Exception> _dbContextReturnedLoadedModel =
+            LoggerMessage.Define<string, string, string>(
+                LogLevel.Trace,
+                new EventId(27, nameof(DbContextReturnedLoadedModel)),
+                "DbContext {DbName} returned already loaded model with Id {ModelId} of repository {RepositoryName}");
+
         private static readonly Action<ILogger, string, string, string, Exception> _dbContextSavedChangedModelToRepository =
             LoggerMessage.Define<string, string, string>(
                 LogLevel.Debug,
                 new EventId(3, nameof(DbContextSavedChangedModelToRepository)),
                 "DbContext {DbName} saved changed model with Id {ModelId} on repository {RepositoryName}");
+
+        private static readonly Action<ILogger, string, string, string, Exception> _dbContextUnregisteredChangedModel =
+            LoggerMessage.Define<string, string, string>(
+                LogLevel.Trace,
+                new EventId(29, nameof(DbContextUnregisteredChangedModel)),
+                "DbContext {DbName} unregistered changed model with Id {ModelId} of repository {RepositoryName}");
+
+        private static readonly Action<ILogger, string, string, string, Exception> _dbContextUnregisteredLoadedModel =
+            LoggerMessage.Define<string, string, string>(
+                LogLevel.Trace,
+                new EventId(30, nameof(DbContextUnregisteredLoadedModel)),
+                "DbContext {DbName} unregistered loaded model with Id {ModelId} of repository {RepositoryName}");
+
+        private static readonly Action<ILogger, string, Type, string, int, Exception> _dbMaintainerEnqueuedDependenciesUpdateTask =
+            LoggerMessage.Define<string, Type, string, int>(
+                LogLevel.Trace,
+                new EventId(31, nameof(DbMaintainerEnqueuedDependenciesUpdateTask)),
+                "DbMaintainer of DbContext {DbName} enqueued dependencies update task for model {ModelType} with Id {ModelId} on {IdMemberMapsCount} id member maps");
 
         private static readonly Action<ILogger, string, Exception> _dbMaintainerInitialized =
             LoggerMessage.Define<string>(
@@ -69,6 +111,24 @@ namespace Etherna.MongODM.Core.Extensions
                 new EventId(5, nameof(RepositoryRegistryInitialized)),
                 "RepositoryRegistry of DbContext {DbName} initialized");
 
+        private static readonly Action<ILogger, string, string, string, string, Exception> _repositorySaveFellBackToDocumentReplace =
+            LoggerMessage.Define<string, string, string, string>(
+                LogLevel.Trace,
+                new EventId(34, nameof(RepositorySaveFellBackToDocumentReplace)),
+                "Repository {RepositoryName} of DbContext {DbName} saving changes of document with Id: {ModelId} fell back to document replace: {Reason}");
+
+        private static readonly Action<ILogger, string, string, string, Exception> _repositorySkippedDependenciesUpdate =
+            LoggerMessage.Define<string, string, string>(
+                LogLevel.Trace,
+                new EventId(35, nameof(RepositorySkippedDependenciesUpdate)),
+                "Repository {RepositoryName} of DbContext {DbName} skipped dependencies update of not found document with Id: {ModelId}");
+
+        private static readonly Action<ILogger, string, string, bool, Exception> _repositoryUpsertedDocument =
+            LoggerMessage.Define<string, string, bool>(
+                LogLevel.Trace,
+                new EventId(36, nameof(RepositoryUpsertedDocument)),
+                "Repository {RepositoryName} of DbContext {DbName} upserted document, inserted: {Inserted}");
+
         private static readonly Action<ILogger, string, Exception> _schemaRegistryInitialized =
             LoggerMessage.Define<string>(
                 LogLevel.Debug,
@@ -82,6 +142,12 @@ namespace Etherna.MongODM.Core.Extensions
                 "Summary model of type {ModelType} with id {ModelId} full loaded");
 
         //*** INFORMATION LOGS ***
+        private static readonly Action<ILogger, string, Exception> _dbContextAttachedToEngine =
+            LoggerMessage.Define<string>(
+                LogLevel.Trace,
+                new EventId(24, nameof(DbContextAttachedToEngine)),
+                "DbContext {DbName} attached a new instance to its engine");
+
         private static readonly Action<ILogger, string, Exception> _dbContextInitialized =
             LoggerMessage.Define<string>(
                 LogLevel.Information,
@@ -93,6 +159,12 @@ namespace Etherna.MongODM.Core.Extensions
                 LogLevel.Information,
                 new EventId(1, nameof(DbContextSavedChanges)),
                 "DbContext {DbName} saved changes");
+
+        private static readonly Action<ILogger, string, int, Exception> _dbContextSavingChanges =
+            LoggerMessage.Define<string, int>(
+                LogLevel.Trace,
+                new EventId(28, nameof(DbContextSavingChanges)),
+                "DbContext {DbName} saving changes of {ChangedModelsCount} models");
 
         private static readonly Action<ILogger, string, Exception> _dbContextSeeded =
             LoggerMessage.Define<string>(
@@ -130,6 +202,12 @@ namespace Etherna.MongODM.Core.Extensions
                 new EventId(22, nameof(RepositoryDeletedDocuments)),
                 "Repository {RepositoryName} of DbContext {DbName} deleted {DeletedCount} documents with filter");
 
+        private static readonly Action<ILogger, string, string, bool, Exception> _repositoryFoundAndUpdatedDocument =
+            LoggerMessage.Define<string, string, bool>(
+                LogLevel.Trace,
+                new EventId(33, nameof(RepositoryFoundAndUpdatedDocument)),
+                "Repository {RepositoryName} of DbContext {DbName} executed find and update on a document, matched: {Matched}");
+
         private static readonly Action<ILogger, string, string, string, Exception> _repositoryFoundDocument =
             LoggerMessage.Define<string, string, string>(
                 LogLevel.Information,
@@ -154,6 +232,18 @@ namespace Etherna.MongODM.Core.Extensions
                 new EventId(23, nameof(RepositorySavedModelChanges)),
                 "Repository {RepositoryName} of DbContext {DbName} saved changed members of document with Id: {ModelId}");
 
+        private static readonly Action<ILogger, Type, string, Exception> _summaryModelMergedFullModel =
+            LoggerMessage.Define<Type, string>(
+                LogLevel.Trace,
+                new EventId(37, nameof(SummaryModelMergedFullModel)),
+                "Summary model {ModelType} with Id {ModelId} merged with its full model");
+
+        private static readonly Action<ILogger, Type, string, Exception> _summaryModelMergedSummaryModel =
+            LoggerMessage.Define<Type, string>(
+                LogLevel.Trace,
+                new EventId(38, nameof(SummaryModelMergedSummaryModel)),
+                "Summary model {ModelType} with Id {ModelId} merged with another summary model");
+
         private static readonly Action<ILogger, Type, string, string, Exception> _updateDocDependenciesTaskEnded =
             LoggerMessage.Define<Type, string, string>(
                 LogLevel.Information,
@@ -173,8 +263,20 @@ namespace Etherna.MongODM.Core.Extensions
         //*** FATAL LOGS ***
 
         // Methods.
+        public static void DbContextAttachedToEngine(this ILogger logger, string dbName) =>
+            _dbContextAttachedToEngine(logger, dbName, null!);
+
         public static void DbContextInitialized(this ILogger logger, string dbName) =>
             _dbContextInitialized(logger, dbName, null!);
+
+        public static void DbContextRegisteredChangedModel(this ILogger logger, string dbName, string modelId, string repositoryName) =>
+            _dbContextRegisteredChangedModel(logger, dbName, modelId, repositoryName, null!);
+
+        public static void DbContextRegisteredLoadedModel(this ILogger logger, string dbName, string modelId, string repositoryName) =>
+            _dbContextRegisteredLoadedModel(logger, dbName, modelId, repositoryName, null!);
+
+        public static void DbContextReturnedLoadedModel(this ILogger logger, string dbName, string modelId, string repositoryName) =>
+            _dbContextReturnedLoadedModel(logger, dbName, modelId, repositoryName, null!);
 
         public static void DbContextSavedChangedModelToRepository(this ILogger logger, string dbName, string modelId, string repositoryName) =>
             _dbContextSavedChangedModelToRepository(logger, dbName, modelId, repositoryName, null!);
@@ -182,8 +284,20 @@ namespace Etherna.MongODM.Core.Extensions
         public static void DbContextSavedChanges(this ILogger logger, string dbName) =>
             _dbContextSavedChanges(logger, dbName, null!);
 
+        public static void DbContextSavingChanges(this ILogger logger, string dbName, int changedModelsCount) =>
+            _dbContextSavingChanges(logger, dbName, changedModelsCount, null!);
+
         public static void DbContextSeeded(this ILogger logger, string dbName) =>
             _dbContextSeeded(logger, dbName, null!);
+
+        public static void DbContextUnregisteredChangedModel(this ILogger logger, string dbName, string modelId, string repositoryName) =>
+            _dbContextUnregisteredChangedModel(logger, dbName, modelId, repositoryName, null!);
+
+        public static void DbContextUnregisteredLoadedModel(this ILogger logger, string dbName, string modelId, string repositoryName) =>
+            _dbContextUnregisteredLoadedModel(logger, dbName, modelId, repositoryName, null!);
+
+        public static void DbMaintainerEnqueuedDependenciesUpdateTask(this ILogger logger, string dbName, Type modelType, string modelId, int idMemberMapsCount) =>
+            _dbMaintainerEnqueuedDependenciesUpdateTask(logger, dbName, modelType, modelId, idMemberMapsCount, null!);
 
         public static void DbMaintainerInitialized(this ILogger logger, string dbName) =>
             _dbMaintainerInitialized(logger, dbName, null!);
@@ -193,6 +307,9 @@ namespace Etherna.MongODM.Core.Extensions
 
         public static void DiscriminatorRegistryInitialized(this ILogger logger, string dbName) =>
             _discriminatorRegistryInitialized(logger, dbName, null!);
+
+        public static void ProxyModelTypeCreated(this ILogger logger, Type modelType, Type proxyModelType) =>
+            _proxyModelTypeCreated(logger, modelType, proxyModelType, null!);
 
         public static void RepositoryAccessedCollection(this ILogger logger, string repositoryName, string dbName) =>
             _repositoryAccessedCollection(logger, repositoryName, dbName, null!);
@@ -212,6 +329,9 @@ namespace Etherna.MongODM.Core.Extensions
         public static void RepositoryDeletedDocuments(this ILogger logger, string repositoryName, string dbName, long deletedCount) =>
             _repositoryDeletedDocuments(logger, repositoryName, dbName, deletedCount, null!);
 
+        public static void RepositoryFoundAndUpdatedDocument(this ILogger logger, string repositoryName, string dbName, bool matched) =>
+            _repositoryFoundAndUpdatedDocument(logger, repositoryName, dbName, matched, null!);
+
         public static void RepositoryFoundDocument(this ILogger logger, string repositoryName, string dbName, string modelId) =>
             _repositoryFoundDocument(logger, repositoryName, dbName, modelId, null!);
 
@@ -230,11 +350,26 @@ namespace Etherna.MongODM.Core.Extensions
         public static void RepositorySavedModelChanges(this ILogger logger, string repositoryName, string dbName, string modelId) =>
             _repositorySavedModelChanges(logger, repositoryName, dbName, modelId, null!);
 
+        public static void RepositorySaveFellBackToDocumentReplace(this ILogger logger, string repositoryName, string dbName, string modelId, string reason) =>
+            _repositorySaveFellBackToDocumentReplace(logger, repositoryName, dbName, modelId, reason, null!);
+
+        public static void RepositorySkippedDependenciesUpdate(this ILogger logger, string repositoryName, string dbName, string modelId) =>
+            _repositorySkippedDependenciesUpdate(logger, repositoryName, dbName, modelId, null!);
+
+        public static void RepositoryUpsertedDocument(this ILogger logger, string repositoryName, string dbName, bool inserted) =>
+            _repositoryUpsertedDocument(logger, repositoryName, dbName, inserted, null!);
+
         public static void SchemaRegistryInitialized(this ILogger logger, string dbName) =>
             _schemaRegistryInitialized(logger, dbName, null!);
 
         public static void SummaryModelFullLoaded(this ILogger logger, Type modelType, string modelId) =>
             _summaryModelFullLoaded(logger, modelType, modelId, null!);
+
+        public static void SummaryModelMergedFullModel(this ILogger logger, Type modelType, string modelId) =>
+            _summaryModelMergedFullModel(logger, modelType, modelId, null!);
+
+        public static void SummaryModelMergedSummaryModel(this ILogger logger, Type modelType, string modelId) =>
+            _summaryModelMergedSummaryModel(logger, modelType, modelId, null!);
 
         public static void UpdateDocDependenciesTaskEnded(this ILogger logger, Type dbContextType, string referencedRepositoryName, string modelId) =>
             _updateDocDependenciesTaskEnded(logger, dbContextType, referencedRepositoryName, modelId, null!);

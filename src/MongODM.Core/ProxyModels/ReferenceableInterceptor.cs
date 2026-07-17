@@ -204,6 +204,8 @@ namespace Etherna.MongODM.Core.ProxyModels
 
             // Reenable auditing.
             (model as IAuditable)?.EnableAuditing();
+
+            logger.SummaryModelMergedSummaryModel(typeof(TModel), model.Id?.ToString() ?? string.Empty);
         }
 
         private void MergeFullModel(TModel model, TModel? fullModel)
@@ -224,6 +226,8 @@ namespace Etherna.MongODM.Core.ProxyModels
 
                 // Reenable auditing.
                 (model as IAuditable)?.EnableAuditing();
+
+                logger.SummaryModelMergedFullModel(typeof(TModel), model.Id?.ToString() ?? string.Empty);
             }
 
             isSummary = false;
