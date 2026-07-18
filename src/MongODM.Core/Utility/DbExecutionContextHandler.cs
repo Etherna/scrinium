@@ -14,6 +14,7 @@
 
 using Etherna.MongODM.Core.ExecContext;
 using Etherna.MongODM.Core.ExecContext.AsyncLocal;
+using Etherna.MongODM.Core.Repositories;
 using System;
 using System.Collections;
 using System.Collections.Generic;
@@ -32,16 +33,19 @@ namespace Etherna.MongODM.Core.Utility
 
         // Constructors and dispose.
         public DbExecutionContextHandler(
-            IDbContext dbContext)
-            : this(ExtractEngine(dbContext))
+            IDbContext dbContext,
+            IRepository? repository = null)
+            : this(ExtractEngine(dbContext), repository)
         {
             DbContext = dbContext;
         }
 
         public DbExecutionContextHandler(
-            IDbContextEngine dbContextEngine)
+            IDbContextEngine dbContextEngine,
+            IRepository? repository = null)
         {
             DbContextEngine = dbContextEngine ?? throw new ArgumentNullException(nameof(dbContextEngine));
+            Repository = repository;
 
             var executionContext = dbContextEngine.ExecutionContext;
 
@@ -73,12 +77,22 @@ namespace Etherna.MongODM.Core.Utility
         public IDbContext? DbContext { get; }
         public IDbContextEngine DbContextEngine { get; }
 
+        /// <summary>
+        /// The origin repository of the models materialized by the current operation:
+        /// the repository accessing its collection, or the one configured on the
+        /// reference member in deserialization. Null when not identified.
+        /// </summary>
+        public IRepository? Repository { get; }
+
         // Static methods.
         public static IDbContext? TryGetCurrentDbContext(IExecutionContext context) =>
             TryGetCurrentHandler(context)?.DbContext;
 
         public static IDbContextEngine? TryGetCurrentDbContextEngine(IExecutionContext context) =>
             TryGetCurrentHandler(context)?.DbContextEngine;
+
+        public static IRepository? TryGetCurrentRepository(IExecutionContext context) =>
+            TryGetCurrentHandler(context)?.Repository;
 
         // Helpers.
         private static IDbContextEngine ExtractEngine(IDbContext dbContext)

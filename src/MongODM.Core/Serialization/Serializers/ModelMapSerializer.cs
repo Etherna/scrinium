@@ -34,7 +34,7 @@ namespace Etherna.MongODM.Core.Serialization.Serializers
         IModelMapsHandlingSerializer
     {
         // Fields.
-        private IDiscriminatorConvention _discriminatorConvention = default!;
+        private IDiscriminatorConvention _discriminatorConvention = null!;
 
         // Properties.
         public BsonClassMapSerializer<TModel> DefaultBsonClassMapSerializer =>
@@ -130,7 +130,11 @@ namespace Etherna.MongODM.Core.Serialization.Serializers
                 var currentDbContext = DbExecutionContextHandler.TryGetCurrentDbContext(dbContextEngine.ExecutionContext);
                 if (currentDbContext is not null)
                 {
-                    var loadedModel = currentDbContext.TryGetLoadedModel(typeof(TModel), id);
+                    var ambientRepository = DbExecutionContextHandler.TryGetCurrentRepository(dbContextEngine.ExecutionContext);
+                    var loadedModel = ambientRepository is not null &&
+                        ambientRepository.ModelType.IsAssignableFrom(typeof(TModel)) ?
+                        currentDbContext.TryGetLoadedModel(ambientRepository, id) :
+                        currentDbContext.TryGetLoadedModel(typeof(TModel), id);
                     if (loadedModel is null)
                         currentDbContext.RegisterLoadedModel(id, (IEntityModel)model);
                     else if (loadedModel is TModel typedLoadedModel)

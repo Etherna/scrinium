@@ -105,7 +105,17 @@ namespace Etherna.MongODM.Core
 
         /// <summary>
         /// Try to get the model instance already loaded on this db context instance for a
-        /// document. The model type is resolved to the root type handled by its repository.
+        /// document of a repository.
+        /// </summary>
+        /// <param name="repository">The repository hosting the document</param>
+        /// <param name="modelId">The model document id</param>
+        /// <returns>The loaded model instance, or null when absent</returns>
+        IEntityModel? TryGetLoadedModel(IRepository repository, object modelId);
+
+        /// <summary>
+        /// Try to get the model instance already loaded on this db context instance for a
+        /// document. The model type is resolved to the repository handling it, and can't
+        /// be ambiguous.
         /// </summary>
         /// <param name="modelType">The model type</param>
         /// <param name="modelId">The model document id</param>

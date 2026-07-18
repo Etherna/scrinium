@@ -31,15 +31,18 @@ namespace Etherna.MongODM.IntegrationTests.Fixtures
     {
         // Fields.
         private readonly MongoDbFixture mongoDb = new();
-        private ServiceProvider serviceProvider = default!;
+        private ServiceProvider serviceProvider = null!;
 
         // Properties.
+        public IImplicitSourceDbContext ImplicitSourceDbContext { get; private set; } = null!;
+        public string ImplicitSourceDbName { get; } = "mongodm-it-implicit-" + Guid.NewGuid().ToString("N");
+        public string MongoDbUrl => mongoDb.DbUrl;
         public string ParentDbName { get; } = "mongodm-it-parent-" + Guid.NewGuid().ToString("N");
-        public ISecondDbContext SecondDbContext { get; private set; } = default!;
+        public ISecondDbContext SecondDbContext { get; private set; } = null!;
         public string SecondDbName { get; } = "mongodm-it-second-" + Guid.NewGuid().ToString("N");
         public IServiceProvider ServiceProvider => serviceProvider;
-        internal InlineTaskRunner TaskRunner { get; private set; } = default!;
-        public ITestDbContext TestDbContext { get; private set; } = default!;
+        internal InlineTaskRunner TaskRunner { get; private set; } = null!;
+        public ITestDbContext TestDbContext { get; private set; } = null!;
         public string TestDbName { get; } = "mongodm-it-test-" + Guid.NewGuid().ToString("N");
 
         // Methods.
@@ -47,6 +50,7 @@ namespace Etherna.MongODM.IntegrationTests.Fixtures
         {
             if (TestDbContext is not null)
             {
+                await TestDbContext.Engine.Client.DropDatabaseAsync(ImplicitSourceDbName);
                 await TestDbContext.Engine.Client.DropDatabaseAsync(ParentDbName);
                 await TestDbContext.Engine.Client.DropDatabaseAsync(TestDbName);
                 await TestDbContext.Engine.Client.DropDatabaseAsync(SecondDbName);
@@ -82,10 +86,17 @@ namespace Etherna.MongODM.IntegrationTests.Fixtures
                     {
                         options.ConnectionString = $"{mongoDb.DbUrl}/{ParentDbName}";
                         options.ParentFor<ISecondDbContext>();
+                    })
+                .AddDbContext<IImplicitSourceDbContext, ImplicitSourceDbContext>(
+                    _ => new ImplicitSourceDbContext(),
+                    options =>
+                    {
+                        options.ConnectionString = $"{mongoDb.DbUrl}/{ImplicitSourceDbName}";
                     });
 
             serviceProvider = services.BuildServiceProvider();
 
+            ImplicitSourceDbContext = serviceProvider.GetRequiredService<IImplicitSourceDbContext>();
             TaskRunner = (InlineTaskRunner)serviceProvider.GetRequiredService<ITaskRunner>();
             TestDbContext = serviceProvider.GetRequiredService<ITestDbContext>();
             SecondDbContext = serviceProvider.GetRequiredService<ISecondDbContext>();

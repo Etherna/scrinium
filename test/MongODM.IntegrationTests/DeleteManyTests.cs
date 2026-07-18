@@ -100,7 +100,7 @@ namespace Etherna.MongODM.IntegrationTests
 
             //raw semantics: the loaded instance stays on the scope, and a find by id
             //keeps returning it through the identity map instead of failing as not found
-            Assert.Same(loadedPost, dbContext.TryGetLoadedModel(typeof(Post), post.Id!));
+            Assert.Same(loadedPost, dbContext.TryGetLoadedModel(dbContext.Posts, post.Id!));
             Assert.Same(loadedPost, await dbContext.Posts.FindOneAsync(post.Id));
             Assert.Single(dbContext.ChangedModelsList);
 

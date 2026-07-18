@@ -58,7 +58,13 @@ namespace Etherna.MongODM.Core.Extensions
             ArgumentNullException.ThrowIfNull(serializer);
 
             if (typeof(TMember) == typeof(TSerializer))
-                return classMap.SetMemberSerializer(memberLambda, (IBsonSerializer<TMember>)serializer);
+            {
+                /* The runtime type equality guaranteed by this branch can't be expressed to
+                 * the type system: with the sealed serializer the direct interface cast is
+                 * rejected at compile time, so hop through object to defer it to runtime,
+                 * where it always succeeds. */
+                return classMap.SetMemberSerializer(memberLambda, (IBsonSerializer<TMember>)(object)serializer);
+            }
             else
                 return classMap.SetMemberSerializer(memberLambda, new EntityModelSerializerAdapter<TMember, TSerializer, TKey>(serializer));
         }

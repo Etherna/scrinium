@@ -92,7 +92,11 @@ namespace Etherna.MongODM.Core.Tasks
              */
             var serializedDocumentsCache = new Dictionary<IBsonSerializer, BsonDocument>();
             var repositoryDictionary = idMemberMaps
-                .GroupBy(idmm => dbContext.RepositoryRegistry.GetRepositoryByHandledModelType(idmm.MemberMapPath.First().ModelMapSchema.ModelMap.ModelType))
+                .SelectMany(idmm => dbContext.RepositoryRegistry.Repositories
+                    .Where(repository => repository.ModelType.IsAssignableFrom(
+                        idmm.MemberMapPath.First().ModelMapSchema.ModelMap.ModelType))
+                    .Select(repository => (repository, idmm)))
+                .GroupBy(pair => pair.repository, pair => pair.idmm)
                 .ToDictionary(repoGroup => repoGroup.Key,
                               repoGroup => repoGroup
                     .Select(idmm =>

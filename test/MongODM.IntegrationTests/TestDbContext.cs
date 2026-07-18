@@ -1,4 +1,4 @@
-// Copyright 2020-present Etherna SA
+﻿// Copyright 2020-present Etherna SA
 // This file is part of MongODM.
 //
 // MongODM is free software: you can redistribute it and/or modify it under the terms of the
@@ -23,6 +23,8 @@ namespace Etherna.MongODM.IntegrationTests
 {
     public interface ITestDbContext : IDbContext
     {
+        IRepository<Blog, string> ArchivedBlogs { get; }
+        IRepository<Post, string> ArchivedPosts { get; }
         IRepository<Blog, string> Blogs { get; }
         IRepository<Post, string> Posts { get; }
     }
@@ -31,6 +33,8 @@ namespace Etherna.MongODM.IntegrationTests
     {
         // Properties.
         //repositories
+        public IRepository<Blog, string> ArchivedBlogs { get; } = new Repository<Blog, string>("archivedBlogs");
+        public IRepository<Post, string> ArchivedPosts { get; } = new Repository<Post, string>("archivedPosts");
         public IRepository<Blog, string> Blogs { get; } = new Repository<Blog, string>("blogs");
         public IRepository<Post, string> Posts { get; } = new Repository<Post, string>("posts");
 

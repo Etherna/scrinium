@@ -13,6 +13,8 @@
 // If not, see <https://www.gnu.org/licenses/>.
 
 using Etherna.MongoDB.Bson.Serialization;
+using Etherna.MongODM.Core.Repositories;
+using System;
 
 namespace Etherna.MongODM.Core.Serialization.Serializers
 {
@@ -21,6 +23,17 @@ namespace Etherna.MongODM.Core.Serialization.Serializers
         IBsonIdProvider,
         IModelMapsHandlingSerializer
     {
+        // Properties.
         ReferenceSerializerConfiguration Configuration { get; }
+
+        // Internal properties.
+        internal Type ReferenceKeyType { get; }
+        internal Type ReferenceModelType { get; }
+
+        /// <summary>
+        /// The source repository selector: declared on construction, or resolved by the
+        /// map registry at engine build. Null for references to models of another db context.
+        /// </summary>
+        internal Func<IDbContext, IRepository>? SourceRepositorySelector { get; set; }
     }
 }

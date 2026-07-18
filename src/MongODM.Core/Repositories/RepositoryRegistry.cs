@@ -13,6 +13,7 @@
 // If not, see <https://www.gnu.org/licenses/>.
 
 using Etherna.MongODM.Core.Domain.Models;
+using Etherna.MongODM.Core.Exceptions;
 using Etherna.MongODM.Core.Extensions;
 using Microsoft.Extensions.Logging;
 using System;
@@ -26,7 +27,7 @@ namespace Etherna.MongODM.Core.Repositories
     {
         // Fields.
         private ILogger logger = null!;
-        private Dictionary<Type, IRepository> _repositoriesByModelType = null!;
+        private Dictionary<Type, IRepository[]> _repositoriesByModelType = null!;
 
         // Initializer.
         public void Initialize(IDbContext dbContext, ILogger logger)
@@ -59,9 +60,12 @@ namespace Etherna.MongODM.Core.Repositories
                 });
 
             //initialize registry
-            _repositoriesByModelType = repos.ToDictionary(
-                prop => ((IRepository)prop.GetValue(dbContext)!).ModelType,
-                prop => (IRepository)prop.GetValue(dbContext)!);
+            _repositoriesByModelType = repos
+                .Select(prop => (IRepository)prop.GetValue(dbContext)!)
+                .GroupBy(repository => repository.ModelType)
+                .ToDictionary(
+                    group => group.Key,
+                    group => group.ToArray());
 
             IsInitialized = true;
 
@@ -70,12 +74,12 @@ namespace Etherna.MongODM.Core.Repositories
 
         // Properties.
         public bool IsInitialized { get; private set; }
-        public IEnumerable<IRepository> Repositories => _repositoriesByModelType.Values;
+        public IEnumerable<IRepository> Repositories => _repositoriesByModelType.Values.SelectMany(repositories => repositories);
 
         // Methods.
         public IRepository<TModel, TKey> GetRepositoryByBaseModelType<TModel, TKey>()
             where TModel : class, IEntityModel<TKey> =>
-            (IRepository<TModel, TKey>)_repositoriesByModelType[typeof(TModel)];
+            (IRepository<TModel, TKey>)GetRepositoryByHandledModelType(typeof(TModel));
 
         public IRepository GetRepositoryByHandledModelType(Type modelType)
         {
@@ -88,7 +92,12 @@ namespace Etherna.MongODM.Core.Repositories
                 modelType = modelType.BaseType!;
             }
 
-            return _repositoriesByModelType[modelType];
+            var repositories = _repositoriesByModelType[modelType];
+            if (repositories.Length > 1)
+                throw new MongodmAmbiguousRepositoryException(
+                    $"Multiple repositories handle model type {modelType}: identify the origin repository explicitly");
+
+            return repositories[0];
         }
 
         public IRepository? TryGetRepositoryByHandledModelType(Type modelType)
