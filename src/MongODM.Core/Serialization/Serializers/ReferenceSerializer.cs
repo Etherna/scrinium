@@ -30,6 +30,44 @@ using System.Threading;
 namespace Etherna.MongODM.Core.Serialization.Serializers
 {
     /// <summary>
+    /// Typed factory of <see cref="ReferenceSerializer{TModelBase, TKey}"/> instances.
+    /// </summary>
+    public static class ReferenceSerializer
+    {
+        // Methods.
+        /// <summary>
+        /// Create a reference serializer declaring its source repository with a typed selector:
+        /// generic arguments are inferred from the selector, and the source compatibility with
+        /// the reference model and key types is verified at compile time.
+        /// </summary>
+        /// <typeparam name="TDbContext">Db context type hosting the source repository</typeparam>
+        /// <typeparam name="TModelBase">Nominal model type</typeparam>
+        /// <typeparam name="TKey">Model Id type</typeparam>
+        public static ReferenceSerializer<TModelBase, TKey> Create<TDbContext, TModelBase, TKey>(
+            IDbContextEngine dbContextEngine,
+            Action<ReferenceSerializerConfiguration> configure,
+            Func<TDbContext, IRepository<TModelBase, TKey>> sourceRepository)
+            where TDbContext : class, IDbContext
+            where TModelBase : class, IEntityModel<TKey>
+        {
+            ArgumentNullException.ThrowIfNull(sourceRepository);
+
+            /* The typed selector requires the current scope db context as TDbContext: cast it
+             * once here, failing with a detailed exception when the scope is a different db
+             * context type. The engine build validation invokes the selector on the builder
+             * db context instance, so a mismatching declared type still fails fast at startup.
+             * Cross db context references will replace this cast with a db context locator
+             * resolving the declared type (MODM-101). */
+            return new(dbContextEngine, configure,
+                sourceRepository: dbContext => sourceRepository(
+                    dbContext as TDbContext ?? throw new InvalidOperationException(
+                        $"Reference serializer of model type {typeof(TModelBase).Name} declares " +
+                        $"its source repository on db context type {typeof(TDbContext).Name}, " +
+                        $"not implemented by the current db context {dbContext.GetType().Name}")));
+        }
+    }
+
+    /// <summary>
     /// Use ActiveModelMap.BsonClassMap definition in specific configuration to serialize reference documents.
     /// </summary>
     /// <typeparam name="TModelBase">Nominal model type</typeparam>
