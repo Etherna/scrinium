@@ -99,11 +99,13 @@ namespace Etherna.MongODM.Core.Serialization.Serializers
             /* Report the source declaration to the map registry for initialization
              * validation and resolution: implicit sources resolve at engine build to the
              * single compatible db context repository (ambiguity fails fast), declared
-             * repositories are validated for compatibility at engine build. */
+             * repositories are validated for compatibility at engine build.
+             * Source references require the library map registry: a replaced registry
+             * fails the cast loudly here, instead of silently skipping registration. */
             if (sourceRepository is null)
-                (dbContextEngine.MapRegistry as MapRegistry)?.AddImplicitSourceReference(this);
+                ((MapRegistry)dbContextEngine.MapRegistry).AddImplicitSourceReference(this);
             else
-                (dbContextEngine.MapRegistry as MapRegistry)?.AddDeclaredSourceReference(typeof(TModelBase), typeof(TKey), sourceRepository);
+                ((MapRegistry)dbContextEngine.MapRegistry).AddDeclaredSourceReference(typeof(TModelBase), typeof(TKey), sourceRepository);
 
             _configuration = new ReferenceSerializerConfiguration(dbContextEngine);
             configure(_configuration);
