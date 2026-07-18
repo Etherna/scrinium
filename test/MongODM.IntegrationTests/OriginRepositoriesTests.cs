@@ -88,6 +88,29 @@ namespace Etherna.MongODM.IntegrationTests
         }
 
         [Fact]
+        public void MismatchedSourceDbContextTypeFailsAtInitialization()
+        {
+            /* A reference serializer declaring its typed source repository on a db context
+             * type not implemented by the hosting db context is a configuration error: it
+             * must fail fast at engine initialization, detailing the type mismatch. */
+
+            // Setup.
+            var dbContext = new InvalidTypedSourceDbContext();
+            var dependencies = fixture.ServiceProvider.GetRequiredService<IDbDependencies>();
+            var options = new DbContextOptions
+            {
+                ConnectionString = $"{fixture.MongoDbUrl}/mongodm-it-invalid-typed-source"
+            };
+
+            // Action & assert.
+            var exception = Assert.Throws<InvalidOperationException>(
+                () => dbContext.BuildEngine(dependencies, new MongoClient(fixture.MongoDbUrl), options));
+            Assert.Contains(nameof(Post), exception.Message, StringComparison.Ordinal);
+            Assert.Contains(nameof(ITestDbContext), exception.Message, StringComparison.Ordinal);
+            Assert.Contains(nameof(InvalidTypedSourceDbContext), exception.Message, StringComparison.Ordinal);
+        }
+
+        [Fact]
         public async Task IdentityMapKeysByRepository()
         {
             /* The same document id on two collections identifies two different documents:

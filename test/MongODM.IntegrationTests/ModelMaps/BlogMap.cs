@@ -34,7 +34,7 @@ namespace Etherna.MongODM.IntegrationTests.ModelMaps
                     mm.SetMemberSerializer(b => b.LastPost!, PostMap.PreviewInfoSerializer(dbContextEngine));
                     mm.SetMemberSerializer(b => b.Posts,
                         new EnumerableSerializer<Post>(
-                            PostMap.ReferenceSerializer(dbContextEngine)));
+                            PostMap.MinimalReferenceSerializer(dbContextEngine)));
                 });
         }
     }
