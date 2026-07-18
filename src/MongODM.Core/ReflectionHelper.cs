@@ -26,47 +26,6 @@ namespace Etherna.MongODM.Core
         private static readonly Dictionary<Type, IEnumerable<PropertyInfo>> propertyRegistry = new();
         private static readonly ReaderWriterLockSlim propertyRegistryLock = new();
 
-        public static MemberInfo FindProperty(LambdaExpression lambdaExpression)
-        {
-            ArgumentNullException.ThrowIfNull(lambdaExpression);
-
-            Expression expressionToCheck = lambdaExpression;
-
-            bool done = false;
-
-            while (!done)
-            {
-                switch (expressionToCheck.NodeType)
-                {
-                    case ExpressionType.Convert:
-                        expressionToCheck = ((UnaryExpression)expressionToCheck).Operand;
-                        break;
-                    case ExpressionType.Lambda:
-                        expressionToCheck = ((LambdaExpression)expressionToCheck).Body;
-                        break;
-                    case ExpressionType.MemberAccess:
-                        var memberExpression = (MemberExpression)expressionToCheck;
-
-                        if (memberExpression.Expression!.NodeType != ExpressionType.Parameter &&
-                            memberExpression.Expression.NodeType != ExpressionType.Convert)
-                        {
-                            throw new ArgumentException(
-                                $"Expression '{lambdaExpression}' must resolve to top-level member and not any child object's properties. Use a custom resolver on the child type or the AfterMap option instead.",
-                                nameof(lambdaExpression));
-                        }
-
-                        MemberInfo member = memberExpression.Member;
-
-                        return member;
-                    default:
-                        done = true;
-                        break;
-                }
-            }
-
-            throw new InvalidOperationException();
-        }
-
         public static PropertyInfo FindPropertyImplementation(PropertyInfo interfacePropertyInfo, Type actualType)
         {
             ArgumentNullException.ThrowIfNull(interfacePropertyInfo);
@@ -153,15 +112,6 @@ namespace Etherna.MongODM.Core
             return null;
         }
 
-        public static TMember GetValueFromLambda<TModel, TMember>(TModel source, Expression<Func<TModel, TMember>> memberLambda)
-        {
-            if (source is null)
-                throw new ArgumentNullException(nameof(source));
-
-            var memberInfo = GetMemberInfoFromLambda(memberLambda, source.GetType());
-            return (TMember)GetValue(source, memberInfo)!;
-        }
-
         /// <summary>
         /// Return the list of writable instance property of a type
         /// </summary>
@@ -218,15 +168,6 @@ namespace Etherna.MongODM.Core
 
             if (memberInfo is PropertyInfo propertyInfo && propertyInfo.CanWrite)
                 propertyInfo.SetValue(destination, value);
-        }
-
-        public static void SetValue<TModel, TMember>(TModel destination, Expression<Func<TModel, TMember>> memberLambda, TMember value)
-        {
-            if (destination is null)
-                throw new ArgumentNullException(nameof(destination));
-
-            var memberInfo = GetMemberInfoFromLambda(memberLambda, destination.GetType());
-            SetValue(destination, memberInfo, value);
         }
     }
 }
