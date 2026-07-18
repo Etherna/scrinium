@@ -19,6 +19,7 @@ using Etherna.MongoDB.Bson.Serialization.Conventions;
 using Etherna.MongoDB.Bson.Serialization.Serializers;
 using Etherna.MongODM.Core.Domain.Models;
 using Etherna.MongODM.Core.ProxyModels;
+using Etherna.MongODM.Core.Repositories;
 using Etherna.MongODM.Core.Serialization.Mapping;
 using Etherna.MongODM.Core.Utility;
 using System;
@@ -33,7 +34,7 @@ namespace Etherna.MongODM.Core.Serialization.Serializers
     /// </summary>
     /// <typeparam name="TModelBase">Nominal model type</typeparam>
     /// <typeparam name="TKey">Model Id type</typeparam>
-    public class ReferenceSerializer<TModelBase, TKey> :
+    public sealed class ReferenceSerializer<TModelBase, TKey> :
         SerializerBase<TModelBase>,
         IDisposable,
         IReferenceSerializer
@@ -41,43 +42,53 @@ namespace Etherna.MongODM.Core.Serialization.Serializers
     {
         // Fields.
         private readonly ReferenceSerializerConfiguration _configuration;
-        private IDiscriminatorConvention _discriminatorConvention = default!;
+        private IDiscriminatorConvention _discriminatorConvention = null!;
 
         private readonly ReaderWriterLockSlim configLockAdapters = new(LockRecursionPolicy.SupportsRecursion);
         private readonly IDbContextEngine dbContextEngine;
+        private Func<IDbContext, IRepository>? sourceRepositorySelector;
         private bool disposed;
 
         // Constructor.
         public ReferenceSerializer(
             IDbContextEngine dbContextEngine,
-            Action<ReferenceSerializerConfiguration> configure)
+            Action<ReferenceSerializerConfiguration> configure,
+            Func<IDbContext, IRepository>? sourceRepository = null)
         {
             ArgumentNullException.ThrowIfNull(configure);
 
             this.dbContextEngine = dbContextEngine ?? throw new ArgumentNullException(nameof(dbContextEngine));
+            sourceRepositorySelector = sourceRepository;
+
+            /* Report the source declaration to the map registry for initialization
+             * validation and resolution: implicit sources resolve at engine build to the
+             * single compatible db context repository (ambiguity fails fast), declared
+             * repositories are validated for compatibility at engine build. */
+            if (sourceRepository is null)
+                (dbContextEngine.MapRegistry as MapRegistry)?.AddImplicitSourceReference(this);
+            else
+                (dbContextEngine.MapRegistry as MapRegistry)?.AddDeclaredSourceReference(typeof(TModelBase), typeof(TKey), sourceRepository);
 
             _configuration = new ReferenceSerializerConfiguration(dbContextEngine);
             configure(_configuration);
         }
 
+        // Internal properties.
+        Type IReferenceSerializer.ReferenceKeyType => typeof(TKey);
+        Type IReferenceSerializer.ReferenceModelType => typeof(TModelBase);
+        Func<IDbContext, IRepository>? IReferenceSerializer.SourceRepositorySelector
+        {
+            get => sourceRepositorySelector;
+            set => sourceRepositorySelector = value;
+        }
+
         // Dispose.
         public void Dispose()
         {
-            Dispose(true);
-            GC.SuppressFinalize(this);
-        }
-
-        protected virtual void Dispose(bool disposing)
-        {
             if (disposed) return;
 
-            // Dispose managed resources.
-            if (disposing)
-            {
-                configLockAdapters.Dispose();
-                _configuration.Dispose();
-            }
-
+            configLockAdapters.Dispose();
+            _configuration.Dispose();
             disposed = true;
         }
 
@@ -146,9 +157,25 @@ namespace Etherna.MongODM.Core.Serialization.Serializers
             });
 
             // Deserialize.
+            /* Push the source repository resolved for this reference member, when the
+             * operation runs inside a db context scope: the created proxy binds to it.
+             * Members without a resolvable source (references to models of another db
+             * context) push a null repository, shadowing the outer operation one. */
+            DbExecutionContextHandler? originDbExecContextHandler = null;
+            if (DbExecutionContextHandler.TryGetCurrentDbContext(dbContextEngine.ExecutionContext) is { } originDbContext)
+                originDbExecContextHandler = new DbExecutionContextHandler(originDbContext, sourceRepositorySelector?.Invoke(originDbContext));
+
             //get serializer
-            var serializer = Configuration.GetSerializer(actualType, modelMapId);
-            var model = serializer.Deserialize(localContext, args) as TModelBase;
+            TModelBase? model;
+            try
+            {
+                var serializer = Configuration.GetSerializer(actualType, modelMapId);
+                model = serializer.Deserialize(localContext, args) as TModelBase;
+            }
+            finally
+            {
+                originDbExecContextHandler?.Dispose();
+            }
 
             // Process model (if proxy).
             /* Proxy models enable different features. Anyway, if the model as not been created as a proxy
@@ -186,7 +213,9 @@ namespace Etherna.MongODM.Core.Serialization.Serializers
                     var currentDbContext = DbExecutionContextHandler.TryGetCurrentDbContext(dbContextEngine.ExecutionContext);
                     if (currentDbContext is not null)
                     {
-                        var loadedModel = currentDbContext.TryGetLoadedModel(typeof(TModelBase), id);
+                        var loadedModel = sourceRepositorySelector is not null ?
+                            currentDbContext.TryGetLoadedModel(sourceRepositorySelector(currentDbContext), id) :
+                            currentDbContext.TryGetLoadedModel(typeof(TModelBase), id);
                         if (loadedModel is null)
                             currentDbContext.RegisterLoadedModel(id, model);
                         else if (loadedModel is TModelBase typedLoadedModel)

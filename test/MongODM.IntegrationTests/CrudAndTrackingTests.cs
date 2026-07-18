@@ -208,7 +208,7 @@ namespace Etherna.MongODM.IntegrationTests
                 var secondNoCachePost = await dbContext.Posts.FindOneAsync(post2.Id);
                 Assert.NotSame(firstNoCachePost, secondNoCachePost);
             }
-            Assert.Null(dbContext.TryGetLoadedModel(typeof(Post), post2.Id!));
+            Assert.Null(dbContext.TryGetLoadedModel(dbContext.Posts, post2.Id!));
         }
 
         [Fact]
@@ -226,7 +226,7 @@ namespace Etherna.MongODM.IntegrationTests
             // Assert.
             //identity map: one document, one instance inside the scope
             Assert.Same(firstLoadedPost, secondLoadedPost);
-            Assert.Same(firstLoadedPost, dbContext.TryGetLoadedModel(typeof(Post), post.Id!));
+            Assert.Same(firstLoadedPost, dbContext.TryGetLoadedModel(dbContext.Posts, post.Id!));
         }
     }
 }

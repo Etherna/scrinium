@@ -46,11 +46,12 @@ namespace Etherna.MongODM.Core.ProxyModels
         {
             ArgumentNullException.ThrowIfNull(dbContextEngine);
 
-            /* Bind lazy loading to the db context scope running the current operation, if any.
-             * Models created outside of a scope (e.g. during schema registration) stay unbound,
-             * and can't lazy load. */
-            var currentDbContext = DbExecutionContextHandler.TryGetCurrentDbContext(dbContextEngine.ExecutionContext);
-            repository = currentDbContext?.RepositoryRegistry.TryGetRepositoryByHandledModelType(typeof(TModel));
+            /* Bind the model to the source repository identified by the current operation:
+             * the repository reading root documents, or the one resolved at engine build for
+             * the reference member (declared or deduced). References to models of another db
+             * context stay unbound, and can't lazy load; proxy models created during the
+             * schema discovery bind the internal decoy repository. */
+            repository = DbExecutionContextHandler.TryGetCurrentRepository(dbContextEngine.ExecutionContext);
             this.logger = logger;
         }
 
@@ -65,6 +66,10 @@ namespace Etherna.MongODM.Core.ProxyModels
                 if (invocation.Method.Name == $"get_{nameof(IReferenceable.IsSummary)}")
                 {
                     invocation.ReturnValue = isSummary;
+                }
+                else if (invocation.Method.Name == $"get_{nameof(IReferenceable.SourceRepository)}")
+                {
+                    invocation.ReturnValue = repository;
                 }
                 else if (invocation.Method.Name == $"get_{nameof(IReferenceable.SettedMemberNames)}")
                 {

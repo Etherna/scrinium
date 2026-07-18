@@ -1,4 +1,4 @@
-﻿// Copyright 2020-present Etherna SA
+// Copyright 2020-present Etherna SA
 // This file is part of MongODM.
 // 
 // MongODM is free software: you can redistribute it and/or modify it under the terms of the
@@ -12,24 +12,20 @@
 // You should have received a copy of the GNU Lesser General Public License along with MongODM.
 // If not, see <https://www.gnu.org/licenses/>.
 
-namespace Etherna.MongODM.Core.Domain.Models.DbMigrationOpAgg
+using System;
+
+namespace Etherna.MongODM.Core.Exceptions
 {
-    public class DocumentMigrationLog : MigrationLogBase
+    public class MongodmAmbiguousRepositoryException : Exception
     {
         // Constructors.
-        public DocumentMigrationLog(
-            string collectionName,
-            ExecutionState state,
-            long totMigratedDocs)
-            : base(state)
-        {
-            CollectionName = collectionName;
-            TotMigratedDocs = totMigratedDocs;
-        }
-        protected DocumentMigrationLog() { }
+        public MongodmAmbiguousRepositoryException()
+        { }
 
-        // Properties.
-        public virtual string CollectionName { get; protected set; } = null!;
-        public virtual long TotMigratedDocs { get; protected set; }
+        public MongodmAmbiguousRepositoryException(string message) : base(message)
+        { }
+
+        public MongodmAmbiguousRepositoryException(string message, Exception innerException) : base(message, innerException)
+        { }
     }
 }

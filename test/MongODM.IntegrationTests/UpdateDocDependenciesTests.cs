@@ -85,5 +85,45 @@ namespace Etherna.MongODM.IntegrationTests
             rawBlog = await blogsCollection.Find(blogFilter).SingleAsync();
             Assert.Equal("updated title", rawBlog["LastPost"]["Title"].AsString);
         }
+
+        [Fact]
+        public async Task ChangedReferencedModelUpdatesSummariesOnEveryHostingCollection()
+        {
+            /* Two repositories of the db context host the dependent model type: the update
+             * task fans out to every collection that can host referencing documents,
+             * refreshing the denormalized summaries on each of them. */
+
+            // Setup.
+            using var contextHandler = AsyncLocalContext.Instance.InitAsyncLocalContext();
+            fixture.TaskRunner.ClearPending();
+
+            var post = new Post("original title", "content");
+            await dbContext.Posts.CreateAsync(post);
+
+            var blog = new Blog("my blog");
+            blog.AddPost(post);
+            await dbContext.Blogs.CreateAsync(blog);
+
+            //copy the raw blog document into the archived collection, with the same id
+            var blogsCollection = dbContext.Engine.Database.GetCollection<BsonDocument>("blogs");
+            var archivedBlogsCollection = dbContext.Engine.Database.GetCollection<BsonDocument>("archivedBlogs");
+            var blogFilter = Builders<BsonDocument>.Filter.Eq("_id", ObjectId.Parse(blog.Id));
+            var rawBlog = await blogsCollection.Find(blogFilter).SingleAsync();
+            await archivedBlogsCollection.InsertOneAsync(rawBlog);
+
+            // Action: update the referenced post, and execute the enqueued task.
+            var loadedPost = await dbContext.Posts.FindOneAsync(post.Id);
+            loadedPost.Title = "updated title";
+            await dbContext.SaveChangesAsync();
+
+            await fixture.TaskRunner.ExecutePendingAsync(fixture.ServiceProvider);
+
+            // Assert: the summaries are refreshed on both hosting collections.
+            rawBlog = await blogsCollection.Find(blogFilter).SingleAsync();
+            Assert.Equal("updated title", rawBlog["LastPost"]["Title"].AsString);
+
+            var rawArchivedBlog = await archivedBlogsCollection.Find(blogFilter).SingleAsync();
+            Assert.Equal("updated title", rawArchivedBlog["LastPost"]["Title"].AsString);
+        }
     }
 }

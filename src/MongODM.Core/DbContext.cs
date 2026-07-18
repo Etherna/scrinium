@@ -22,6 +22,7 @@ using Etherna.MongODM.Core.Options;
 using Etherna.MongODM.Core.ProxyModels;
 using Etherna.MongODM.Core.Repositories;
 using Etherna.MongODM.Core.Serialization;
+using Etherna.MongODM.Core.Serialization.Mapping;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using System;
@@ -82,6 +83,16 @@ namespace Etherna.MongODM.Core
                 options,
                 GetType(),
                 ModelMapsCollectors);
+
+            /* Resolve the implicit source repositories of reference serializers, and
+             * validate the declared ones, accessing the repository properties of this
+             * builder instance. */
+            if (newEngine.MapRegistry is MapRegistry mapRegistry)
+            {
+                mapRegistry.ResolveImplicitSourceReferences(this);
+                mapRegistry.ValidateDeclaredSourceReferences(this);
+            }
+
             return newEngine;
         }
 
@@ -145,7 +156,7 @@ namespace Etherna.MongODM.Core
                 registered = changedModels.Add(model);
 
             if (registered &&
-                TryGetRepositoryForModelType(engine.ProxyGenerator.PurgeProxyType(model.GetType())) is { } repository)
+                TryGetSourceRepository(model) is { } repository)
                 logger.DbContextRegisteredChangedModel(engine.Options.DbName, repository.ModelIdToString(model), repository.Name);
         }
 
@@ -154,7 +165,7 @@ namespace Etherna.MongODM.Core
             ArgumentNullException.ThrowIfNull(modelId);
             ArgumentNullException.ThrowIfNull(model);
 
-            var repository = TryGetRepositoryForModelType(engine.ProxyGenerator.PurgeProxyType(model.GetType()));
+            var repository = TryGetSourceRepository(model);
             if (repository is null) //identity is meaningless without a repository
                 return;
 
@@ -202,9 +213,7 @@ namespace Etherna.MongODM.Core
 
             foreach (var model in changedModelsList)
             {
-                var modelType = engine.ProxyGenerator.PurgeProxyType(model.GetType());
-
-                var repository = RepositoryRegistry.TryGetRepositoryByHandledModelType(modelType);
+                var repository = TryGetSourceRepository(model);
                 if (repository != null)
                 {
                     await repository.SaveChangesAsync(model, cancellationToken).ConfigureAwait(false);
@@ -257,14 +266,10 @@ namespace Etherna.MongODM.Core
             }).ConfigureAwait(false);
         }
 
-        public IEntityModel? TryGetLoadedModel(Type modelType, object modelId)
+        public IEntityModel? TryGetLoadedModel(IRepository repository, object modelId)
         {
-            ArgumentNullException.ThrowIfNull(modelType);
+            ArgumentNullException.ThrowIfNull(repository);
             ArgumentNullException.ThrowIfNull(modelId);
-
-            var repository = TryGetRepositoryForModelType(modelType);
-            if (repository is null)
-                return null;
 
             IEntityModel? model;
             lock (loadedModels)
@@ -274,6 +279,18 @@ namespace Etherna.MongODM.Core
                 logger.DbContextReturnedLoadedModel(engine.Options.DbName, modelId.ToString()!, repository.Name);
 
             return model;
+        }
+
+        public IEntityModel? TryGetLoadedModel(Type modelType, object modelId)
+        {
+            ArgumentNullException.ThrowIfNull(modelType);
+            ArgumentNullException.ThrowIfNull(modelId);
+
+            var repository = TryGetRepositoryForModelType(modelType);
+            if (repository is null)
+                return null;
+
+            return TryGetLoadedModel(repository, modelId);
         }
 
         public Task<DbMigrationOperation?> TryStartMigrationAsync() =>
@@ -288,7 +305,7 @@ namespace Etherna.MongODM.Core
                 unregistered = changedModels.Remove(model);
 
             if (unregistered &&
-                TryGetRepositoryForModelType(engine.ProxyGenerator.PurgeProxyType(model.GetType())) is { } repository)
+                TryGetSourceRepository(model) is { } repository)
                 logger.DbContextUnregisteredChangedModel(engine.Options.DbName, repository.ModelIdToString(model), repository.Name);
         }
 
@@ -297,7 +314,7 @@ namespace Etherna.MongODM.Core
             ArgumentNullException.ThrowIfNull(modelId);
             ArgumentNullException.ThrowIfNull(model);
 
-            var repository = TryGetRepositoryForModelType(engine.ProxyGenerator.PurgeProxyType(model.GetType()));
+            var repository = TryGetSourceRepository(model);
             if (repository is null)
                 return;
 
@@ -319,6 +336,10 @@ namespace Etherna.MongODM.Core
             Task.CompletedTask;
 
         // Helpers.
+        private IRepository? TryGetSourceRepository(IEntityModel model) =>
+            (model as IReferenceable)?.SourceRepository
+                ?? TryGetRepositoryForModelType(engine.ProxyGenerator.PurgeProxyType(model.GetType()));
+
         private IRepository? TryGetRepositoryForModelType(Type modelType) =>
             scopedRepositoryRegistry?.TryGetRepositoryByHandledModelType(modelType);
     }

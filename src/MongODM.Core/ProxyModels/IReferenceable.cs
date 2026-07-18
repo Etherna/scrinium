@@ -12,6 +12,7 @@
 // You should have received a copy of the GNU Lesser General Public License along with MongODM.
 // If not, see <https://www.gnu.org/licenses/>.
 
+using Etherna.MongODM.Core.Repositories;
 using System.Collections.Generic;
 
 namespace Etherna.MongODM.Core.ProxyModels
@@ -28,6 +29,13 @@ namespace Etherna.MongODM.Core.ProxyModels
         /// Name list of current setted members
         /// </summary>
         IEnumerable<string> SettedMemberNames { get; }
+
+        /// <summary>
+        /// The source repository hosting the model document, bound at deserialization:
+        /// the repository reading root documents, or the one configured on the reference
+        /// member. Null when the model is not bound to a repository.
+        /// </summary>
+        IRepository? SourceRepository { get; }
 
         // Methods.
         /// <summary>

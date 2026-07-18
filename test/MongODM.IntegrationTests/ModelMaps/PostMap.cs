@@ -46,7 +46,8 @@ namespace Etherna.MongODM.IntegrationTests.ModelMaps
                 {
                     mm.MapMember(m => m.Title);
                 });
-            });
+            },
+            sourceRepository: dbContext => ((ITestDbContext)dbContext).Posts);
 
         /// <summary>
         /// Minimal reference to the entity
@@ -61,6 +62,7 @@ namespace Etherna.MongODM.IntegrationTests.ModelMaps
                     mm.IdMemberMap.SetSerializer(new StringSerializer(BsonType.ObjectId));
                 });
                 config.AddModelMap<Post>("e7d1fe44-c5d7-4e5b-8ab6-898295619131", _ => { });
-            });
+            },
+            sourceRepository: dbContext => ((ITestDbContext)dbContext).Posts);
     }
 }

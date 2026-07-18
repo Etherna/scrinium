@@ -29,6 +29,6 @@ namespace Etherna.MongODM.Core.Domain.Models
         protected OperationBase() { }
 
         // Properties.
-        public virtual string DbContextName { get; protected set; } = default!;
+        public virtual string DbContextName { get; protected set; } = null!;
     }
 }

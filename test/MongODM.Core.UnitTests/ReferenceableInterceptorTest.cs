@@ -49,14 +49,12 @@ namespace Etherna.MongODM.Core
             dbContextMock = new Mock<IDbContext>();
             dbContextMock.Setup(c => c.Engine)
                 .Returns(() => dbContextEngineMock.Object);
-            dbContextMock.Setup(c => c.RepositoryRegistry.TryGetRepositoryByHandledModelType(typeof(FakeModel)))
-                .Returns(() => repositoryMock.Object);
 
             var loggerMock = new Mock<ILogger<ReferenceableInterceptor<FakeModel, string>>>();
 
-            /* Resolve the repository binding from the current db context scope,
-             * like during a model deserialization inside a repository call. */
-            using var dbExecutionContext = new DbExecutionContextHandler(dbContextMock.Object);
+            /* Bind the repository from the current operation push, like during a model
+             * deserialization inside a repository collection access. */
+            using var dbExecutionContext = new DbExecutionContextHandler(dbContextMock.Object, repositoryMock.Object);
             interceptor = new ReferenceableInterceptor<FakeModel, string>(
                 [typeof(IReferenceable)],
                 dbContextEngineMock.Object,

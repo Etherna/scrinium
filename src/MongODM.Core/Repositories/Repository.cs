@@ -91,7 +91,7 @@ namespace Etherna.MongODM.Core.Repositories
             // Invoke func into optional implicit execution context.
             DbExecutionContextHandler? dbExecContextHandler = null;
             if (handleImplicitDbExecutionContext)
-                dbExecContextHandler = new DbExecutionContextHandler(DbContext);
+                dbExecContextHandler = new DbExecutionContextHandler(DbContext, this);
 
             var result = await func(_collection).ConfigureAwait(false);
 
@@ -220,7 +220,7 @@ namespace Etherna.MongODM.Core.Repositories
             CancellationToken cancellationToken = default)
         {
             // Create an explicit db execution context. It needs to survive until cursor is alive.
-            var dbExecContextHandler = new DbExecutionContextHandler(DbContext);
+            var dbExecContextHandler = new DbExecutionContextHandler(DbContext, this);
 
             return await AccessToCollectionAsync(async collection =>
             {
@@ -243,7 +243,7 @@ namespace Etherna.MongODM.Core.Repositories
             /* Read through the loaded models of the current scope: a full instance already
              * loaded satisfies the request without a db round trip. Summary instances still
              * go to db, to be upgraded in place with the full document by deserialization. */
-            if (DbContext.TryGetLoadedModel(typeof(TModel), id!) is TModel loadedModel &&
+            if (DbContext.TryGetLoadedModel(this, id!) is TModel loadedModel &&
                 loadedModel is IReferenceable { IsSummary: false })
                 return Task.FromResult(loadedModel);
 
