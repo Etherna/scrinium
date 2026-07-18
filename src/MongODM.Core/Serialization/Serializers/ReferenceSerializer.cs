@@ -25,7 +25,6 @@ using Etherna.MongODM.Core.Utility;
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Threading;
 
 namespace Etherna.MongODM.Core.Serialization.Serializers
 {
@@ -82,7 +81,6 @@ namespace Etherna.MongODM.Core.Serialization.Serializers
         private readonly ReferenceSerializerConfiguration _configuration;
         private IDiscriminatorConvention _discriminatorConvention = null!;
 
-        private readonly ReaderWriterLockSlim configLockAdapters = new(LockRecursionPolicy.SupportsRecursion);
         private readonly IDbContextEngine dbContextEngine;
         private Func<IDbContext, IRepository>? sourceRepositorySelector;
         private bool disposed;
@@ -125,7 +123,6 @@ namespace Etherna.MongODM.Core.Serialization.Serializers
         {
             if (disposed) return;
 
-            configLockAdapters.Dispose();
             _configuration.Dispose();
             disposed = true;
         }
