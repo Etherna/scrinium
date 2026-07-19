@@ -20,6 +20,7 @@ using Etherna.MongODM.Core.Utility;
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Linq;
 using System.Reflection;
 
 namespace Etherna.MongODM.Core.Serialization.Serializers
@@ -31,6 +32,7 @@ namespace Etherna.MongODM.Core.Serialization.Serializers
 
         private readonly Dictionary<Type, BsonElement> activeModelMapIdBsonElement = new();
         private readonly IDbContextEngine dbContextEngine;
+        private readonly Dictionary<Type, IBsonSerializer> defaultFallbackSerializers = [];
 
         // Constructor.
         internal ReferenceSerializerConfiguration(IDbContextEngine dbContextEngine)
@@ -88,16 +90,25 @@ namespace Etherna.MongODM.Core.Serialization.Serializers
         public IBsonSerializer GetSerializer(Type modelType, string? modelMapSchemaId)
         {
             ArgumentNullException.ThrowIfNull(modelType);
+
+            Freeze(); //needed for initialization
+
             if (!_modelMaps.TryGetValue(modelType, out var modelMap))
                 throw new InvalidOperationException("Can't identify registered schema for type " + modelType.Name);
 
             // Find serializer.
-            //if a correct model map is identified with its id, use its bson class map serializer
-            if (modelMapSchemaId != null && modelMap.SchemasById.TryGetValue(modelMapSchemaId, out var modelMapSchema))
+            //if a correct model map schema is identified with its id, use its bson class map serializer
+            if (modelMapSchemaId is not null && modelMap.SchemasById.TryGetValue(modelMapSchemaId, out var modelMapSchema))
                 return modelMapSchema.Serializer;
 
-            //else, use fallback serializer if exists, or the active schema's bsonClassMap serializer
-            return modelMap.FallbackSerializer ?? modelMap.ActiveSchema.Serializer;
+            //else, use the configured fallback serializer or model map schema, if any exists
+            if (modelMap.FallbackSerializer is not null)
+                return modelMap.FallbackSerializer;
+            if (modelMap.FallbackSchema is not null)
+                return modelMap.FallbackSchema.Serializer;
+
+            //else, deserialize only the reference id: any other member can lazy load from the origin document
+            return defaultFallbackSerializers[modelType];
         }
 
         // Protected methods.
@@ -125,6 +136,15 @@ namespace Etherna.MongODM.Core.Serialization.Serializers
                     new BsonElement(
                         dbContextEngine.Options.ModelMapVersion.ElementName,
                         new BsonString(notProxySchema.ActiveSchema.Id)));
+
+                // Generate default fallback serializers.
+                /* Reference documents with an unrecognized schema id deserialize reading only
+                 * the id member of the active schema: being references, any other member can
+                 * lazy load from the origin document. */
+                var idBsonMemberMap = modelMap.ActiveSchema.AllMemberMaps.FirstOrDefault(mm => mm.IsIdMember());
+                defaultFallbackSerializers.Add(
+                    modelMap.ModelType,
+                    new ReferenceFallbackSerializer(modelMap, idBsonMemberMap?.ElementName));
             }
         }
 
