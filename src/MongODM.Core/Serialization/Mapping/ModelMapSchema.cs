@@ -26,6 +26,11 @@ namespace Etherna.MongODM.Core.Serialization.Mapping
 {
     public abstract class ModelMapSchema : FreezableConfig, IModelMapSchema
     {
+        // Consts.
+        /* Sentinel id shared by all fallback schemas: it doesn't identify a schema
+         * version on documents, and is reserved to them. */
+        public const string FallbackId = "fallback";
+
         // Fields.
         private readonly List<IMemberMap> _generatedMemberMaps = new();
         private readonly BsonClassMap bsonClassMap;

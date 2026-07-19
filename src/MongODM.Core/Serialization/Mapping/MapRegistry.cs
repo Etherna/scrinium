@@ -225,6 +225,9 @@ namespace Etherna.MongODM.Core.Serialization.Mapping
 
         protected override void FreezeAction()
         {
+            // Verify uniqueness of model map schema ids.
+            ValidateSchemaIds();
+
             // Link model maps with their base map.
             LinkBaseModelMaps();
 
@@ -469,6 +472,41 @@ namespace Etherna.MongODM.Core.Serialization.Mapping
             }
 
             memberMapListByElementPath.Add(memberMap);
+        }
+
+        /* Model map schema ids identify on documents the schema shaping them, and must be
+         * unique across the whole db context, not only inside their model map: reusing an
+         * id on different model types is a source of misunderstandings. The fallback
+         * schema id is a sentinel shared by all fallback schemas, and is reserved to them. */
+        private void ValidateSchemaIds()
+        {
+            Dictionary<string, List<IModelMapSchema>> schemasById = [];
+            foreach (var modelMap in _maps.Values.OfType<IModelMap>())
+            {
+                foreach (var schema in modelMap.SecondarySchemas.Prepend(modelMap.ActiveSchema))
+                {
+                    if (!schemasById.TryGetValue(schema.Id, out var schemas))
+                    {
+                        schemas = [];
+                        schemasById.Add(schema.Id, schemas);
+                    }
+                    schemas.Add(schema);
+                }
+            }
+
+            List<string> violations = [];
+            foreach (var (id, schemas) in schemasById)
+            {
+                if (id == ModelMapSchema.FallbackId)
+                    violations.Add($"schema id \"{id}\" is reserved to fallback schemas, and is used by model types {string.Join(", ", schemas.Select(s => s.ModelMap.ModelType.Name))}");
+                else if (schemas.Count > 1)
+                    violations.Add($"schema id \"{id}\" is used by model types {string.Join(", ", schemas.Select(s => s.ModelMap.ModelType.Name))}");
+            }
+
+            if (violations.Count > 0)
+                throw new MongodmDuplicateSchemaIdException(
+                    $"DbContext {dbContextEngine.DbContextType.Name} has model map schemas violating id uniqueness: " +
+                    string.Join("; ", violations));
         }
     }
 }
