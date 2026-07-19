@@ -29,7 +29,7 @@ Five source projects (one NuGet package each), two test projects, one sample:
 - **`src/MongODM.Core`** (`Etherna.MongODM.Core`) — The framework itself, host-agnostic. Main areas:
   - `DbContext.cs` / `IDbContext.cs` / `DbContextEngine.cs` / `IDbContextEngine.cs` — unit of work and its engine, related by composition (`IDbContext` does NOT extend `IDbContextEngine`). `DbContextEngine` owns the scope independent members built once at initialization (connections, schema registries, seeding cache, exclusive access locking with `RunWithExclusiveAccessAsync`), and is the type captured by the serialization pipeline; `DbContext` attaches to its engine (exposed as `IDbContext.Engine`) and owns the current unit of work state (`ChangedModelsList`, `SaveChangesAsync`, per-instance repositories, migration facades, `ExecuteInTransactionAsync`).
   - `Repositories/` — `Repository<TModel, TKey>` with typed access to collections; every collection access passes through `AccessToCollectionAsync`.
-  - `Serialization/` — model maps and versioned schemas (`MapRegistry`, `ModelMap`, member maps), discriminator registry, serializers and modifiers.
+  - `Serialization/` — model maps and versioned schemas (`MapRegistry`, `ModelMap`, member maps), discriminator registry, serializers and modifiers. Model map schema ids must be unique across the whole db context, not only inside their model map, with the `fallback` id reserved to fallback schemas: violations fail fast at engine build with a detailed `MongodmDuplicateSchemaIdException`. Reference serializer configurations are separate id spaces (their summary schema ids can mirror the root ones) and stay out of the check.
   - `ProxyModels/` — Castle DynamicProxy-based model proxies enabling lazy loading and change auditing (`IAuditable`).
   - `Migration/` — `DocumentMigration` scripts between document schemas.
   - `Tasks/` — background tasks invoked through `ITaskRunner` (`UpdateDocDependenciesTask` propagates updated summaries to referencing documents; `MigrateDbContextTask` runs a db context migration under exclusive access).
@@ -83,7 +83,7 @@ After the library work, the Etherna services must be migrated: see [SERVICES-MIG
 - **Classes/Structs**: PascalCase (`DbMigrationManager`, `ModelMap`)
 - **Interfaces**: `I` prefix (`IDbContext`, `ITaskRunner`)
 - **Async methods**: always `Async` suffix (`SaveChangesAsync`, `FindOneAsync`)
-- **Properties**: PascalCase (`IsSeeded`, `CurrentStatus`)
+- **Properties**: PascalCase, with `Is`/`Has` prefix for booleans (`IsSeeded`, `CurrentStatus`)
 - **Private fields**: `_camelCase` only when backing a same-named property (`_isSeeded` for `IsSeeded`); otherwise plain `camelCase`
 - **Primary constructor parameters**: `camelCase` without underscore
 - **Constants**: PascalCase (`HandlerKey`)
@@ -113,6 +113,8 @@ Secondary/separator comments:
 ```
 
 Longer explanations of non-obvious behavior use `/* ... */` blocks. Comment only what helps a future reader: non-obvious behavior, intent, or a gotcha. Do **not** write narration of your own reasoning or decisions — that belongs in the commit message / PR description, never in committed code.
+
+Public API members are documented with XML doc comments (`///`), with a well-composed description and no superfluous information; document non-public members too whenever it aids understanding.
 
 ## Member Ordering Within a Class
 
@@ -145,6 +147,7 @@ private void InternalHelper() { ... }
 
 - `internal sealed` for implementations that aren't part of the public API
 - Primary constructors everywhere the constructor is a simple assignment
+- Don't extract a private helper method for logic used in a single place — inline it. Reserve helpers for code shared by two or more call sites (or when extraction materially clarifies an otherwise long, complex method)
 - Framework-initialized components implement `IDbContextEngineInitializable` (engine level: registries, maintainer, migration manager) or `IDbContextInitializable` (scope level: repositories and their registry) — `Initialize(..., logger)` + `IsInitialized` guard instead of taking the dependency in the constructor
 
 ### Persisted Model Classes
@@ -184,8 +187,12 @@ private void InternalHelper() { ... }
 - Switch expressions for multi-branch returns
 - Primary constructors everywhere applicable
 - Collection expressions: `[]`, `[..spread]`
-- Prefer collection expressions over constructors to initialize any collection: `[]` not `new()`, `["a", "b"]` not `new List<string> { "a", "b" }`. Use a constructor only when a collection expression can't express the intent (e.g. presizing capacity with `new List<T>(capacity)`).
+- Prefer collection expressions over constructors to initialize any collection (lists, arrays, dictionaries, etc.): `[]` not `new()`, `["a", "b"]` not `new List<string> { "a", "b" }`. Use a constructor only when a collection expression can't express the intent (e.g. presizing capacity with `new List<T>(capacity)`, or building a specific set type like `new HashSet<T>(value ?? [])`). This applies also where the surrounding legacy code still uses constructors: new code follows the rule, not the neighbors.
 - Target-typed `new()` when type is clear from context (for non-collection types)
+- Tuple deconstruction for multiple return values
+- Prefer a property pattern over a chain of `&&` combining a type/null check with member accesses: it expresses the condition as a single declarative shape the value must match, rather than an imperative sequence of checks
+- `field` keyword for field-backed properties (e.g. lazy initialization) instead of an explicit backing field: `public T Prop => field ??= Compute();`. Needs C# 14: in `src/` it applies only once the `net8.0`/`net9.0` targets are dropped (each TFM compiles with its default LangVersion); the net10-only test projects can use it today
+- Lock fields: prefer the dedicated `System.Threading.Lock` type (.NET 9+) over a plain `object` — more expressive, and the compiler enforces correct `lock` usage on it. In `src/` it applies only once the `net8.0` target is dropped (lowest-target rule); the net10-only test projects can use it today
 
 ## LINQ
 
@@ -195,6 +202,7 @@ private void InternalHelper() { ... }
 
 ## Testing (xUnit + Moq)
 
+- AAA pattern with section comments: `// Setup.`, `// Action.`, `// Assert.` (collapse when a single statement covers two phases)
 - `[Fact]` for basic tests, `[Theory]` with `[InlineData]`/`[MemberData]` for parameterized cases
 - xUnit assertions: `Assert.Equal()`, `Assert.NotNull()`, `Assert.ThrowsAsync<T>()`
 - Moq for mocking: `new Mock<IDbContext>()`

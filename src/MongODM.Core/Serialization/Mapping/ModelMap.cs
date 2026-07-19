@@ -238,7 +238,7 @@ namespace Etherna.MongODM.Core.Serialization.Mapping
             Func<IDbContext, TModel, Task<TModel>>? fixDeserializedModelFunc = null)
         {
             AddFallbackModelMapSchemaHelper(new ModelMapSchema<TModel>(
-                "fallback",
+                ModelMapSchema.FallbackId,
                 new BsonClassMap<TModel>(modelMapSchemaInitializer ?? (cm => cm.AutoMap())),
                 baseSchemaId,
                 fixDeserializedModelFunc,
