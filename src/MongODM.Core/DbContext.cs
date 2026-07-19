@@ -23,6 +23,7 @@ using Etherna.MongODM.Core.ProxyModels;
 using Etherna.MongODM.Core.Repositories;
 using Etherna.MongODM.Core.Serialization;
 using Etherna.MongODM.Core.Serialization.Mapping;
+using Etherna.MongODM.Core.Utility;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using System;
@@ -135,6 +136,50 @@ namespace Etherna.MongODM.Core
         protected abstract IEnumerable<IModelMapsCollector> ModelMapsCollectors { get; }
 
         // Methods.
+        public Task ExecuteInTransactionAsync(Func<Task> action, CancellationToken cancellationToken = default)
+        {
+            ArgumentNullException.ThrowIfNull(action);
+
+            return ExecuteInTransactionAsync(async () =>
+            {
+                await action().ConfigureAwait(false);
+                return 0;
+            }, cancellationToken);
+        }
+
+        public async Task<TResult> ExecuteInTransactionAsync<TResult>(Func<Task<TResult>> func, CancellationToken cancellationToken = default)
+        {
+            ArgumentNullException.ThrowIfNull(func);
+
+            using var session = await engine.StartSessionAsync(cancellationToken).ConfigureAwait(false);
+            session.StartTransaction();
+            logger.DbContextStartedTransaction(engine.Options.DbName);
+
+            /* The session handler enlists in the transaction every operation invoked
+             * without an explicit session on collections of this engine, for the whole
+             * function execution. */
+            using var sessionHandler = new DbSessionHandler(engine, session);
+
+            TResult result;
+            try
+            {
+                result = await func().ConfigureAwait(false);
+            }
+            catch
+            {
+                /* Abort with an uncancellable token: the function may have thrown for the
+                 * cancellation itself, and the abort must run anyway. */
+                await session.AbortTransactionAsync(CancellationToken.None).ConfigureAwait(false);
+                logger.DbContextAbortedTransaction(engine.Options.DbName);
+                throw;
+            }
+
+            await session.CommitTransactionAsync(cancellationToken).ConfigureAwait(false);
+            logger.DbContextCommittedTransaction(engine.Options.DbName);
+
+            return result;
+        }
+
         public Task ExecuteMigrationAsync(string dbMigrationOpId, string? taskId = null, bool throwOnErrors = false) =>
             engine.DbMigrationManager.ExecuteDbContextMigrationAsync(this, dbMigrationOpId, taskId, throwOnErrors);
 
@@ -177,49 +222,28 @@ namespace Etherna.MongODM.Core
 
         public virtual async Task SaveChangesAsync(CancellationToken cancellationToken = default)
         {
-            /*
-             * Currently at MongoDB 4.0 sessions are only available for Replica Sets.
-             * This exclude the development environment from use them, so in order to have a more
-             * similar set up in development and production it's better to disable them, for now.
-             */
-
-            //using (var session = await StartSessionAsync())
-            //{
-            //    session.StartTransaction();
-
-            //    try
-            //    {
-            //        // Commit updated models replacement.
-            //        foreach (var model in DBCache.LoadedModels.Values
-            //            .Where(model => (model as IAuditable).IsChanged)
-            //            .ToList())
-            //        {
-            //            var repository = ModelCollectionRepositoryMap[model.GetType().BaseType];
-            //            await repository.ReplaceAsync(model, session);
-            //        }
-            //    }
-            //    catch
-            //    {
-            //        await session.AbortTransactionAsync();
-            //        throw;
-            //    }
-
-            //    await session.CommitTransactionAsync();
-            //}
-
             // Commit updated models replacement.
             var changedModelsList = ChangedModelsList;
             logger.DbContextSavingChanges(engine.Options.DbName, changedModelsList.Count);
 
-            foreach (var model in changedModelsList)
+            /* When transactions are enabled by options and supported by the connected
+             * deployment, the changed models save into a single implicit transaction:
+             * partial saves can't survive a failure. Skip the new transaction when a
+             * session is already ambient, enlisting in it instead of nesting. Child db
+             * contexts stay out in any case: they save on their own connections, each
+             * applying its own configuration. */
+            if (engine.Options.EnableTransactionsWithReplicaSet &&
+                changedModelsList.Count > 0 &&
+                engine.SupportsTransactions &&
+                DbSessionHandler.TryGetCurrentSession(engine) is null)
             {
-                var repository = TryGetSourceRepository(model);
-                if (repository != null)
-                {
-                    await repository.SaveChangesAsync(model, cancellationToken).ConfigureAwait(false);
-
-                    logger.DbContextSavedChangedModelToRepository(engine.Options.DbName, repository.ModelIdToString(model), repository.Name);
-                }
+                await ExecuteInTransactionAsync(
+                    () => SaveChangedModelsAsync(changedModelsList, cancellationToken),
+                    cancellationToken).ConfigureAwait(false);
+            }
+            else
+            {
+                await SaveChangedModelsAsync(changedModelsList, cancellationToken).ConfigureAwait(false);
             }
 
             // Save changes on child dbcontexts.
@@ -336,6 +360,22 @@ namespace Etherna.MongODM.Core
             Task.CompletedTask;
 
         // Helpers.
+        private async Task SaveChangedModelsAsync(
+            IReadOnlyCollection<IEntityModel> changedModelsList,
+            CancellationToken cancellationToken)
+        {
+            foreach (var model in changedModelsList)
+            {
+                var repository = TryGetSourceRepository(model);
+                if (repository != null)
+                {
+                    await repository.SaveChangesAsync(model, cancellationToken).ConfigureAwait(false);
+
+                    logger.DbContextSavedChangedModelToRepository(engine.Options.DbName, repository.ModelIdToString(model), repository.Name);
+                }
+            }
+        }
+
         private IRepository? TryGetSourceRepository(IEntityModel model) =>
             (model as IReferenceable)?.SourceRepository
                 ?? TryGetRepositoryForModelType(engine.ProxyGenerator.PurgeProxyType(model.GetType()));

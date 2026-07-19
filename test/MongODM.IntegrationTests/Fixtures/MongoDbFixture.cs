@@ -12,6 +12,8 @@
 // You should have received a copy of the GNU Lesser General Public License along with MongODM.
 // If not, see <https://www.gnu.org/licenses/>.
 
+using Etherna.MongoDB.Bson;
+using Etherna.MongoDB.Driver;
 using System;
 using System.ComponentModel;
 using System.Diagnostics;
@@ -25,12 +27,15 @@ namespace Etherna.MongODM.IntegrationTests.Fixtures
     /// <summary>
     /// Provides a MongoDB instance for integration tests: uses the url from the
     /// MONGODM_TEST_DB_URL environment variable when set (e.g. on CI with a service
-    /// container), otherwise spawns a local throwaway mongod process.
+    /// container), otherwise spawns a local throwaway mongod process as a single node
+    /// replica set, supporting transactions. The provided deployment must support
+    /// transactions as well.
     /// </summary>
     internal sealed class MongoDbFixture : IDisposable
     {
         // Consts.
         private const string DbUrlEnvVariable = "MONGODM_TEST_DB_URL";
+        private const string ReplicaSetName = "rs0";
 
         // Fields.
         private string? dataDirectory;
@@ -83,6 +88,38 @@ namespace Etherna.MongODM.IntegrationTests.Fixtures
             return ((IPEndPoint)listener.LocalEndpoint).Port;
         }
 
+        private static void InitiateReplicaSet(int port)
+        {
+            using var client = new MongoClient($"mongodb://127.0.0.1:{port}/?directConnection=true");
+            var adminDb = client.GetDatabase("admin");
+
+            //initiate with an explicit member host, reachable by topology discovery
+            adminDb.RunCommand<BsonDocument>(new BsonDocument("replSetInitiate", new BsonDocument
+            {
+                ["_id"] = ReplicaSetName,
+                ["members"] = new BsonArray
+                {
+                    new BsonDocument
+                    {
+                        ["_id"] = 0,
+                        ["host"] = $"127.0.0.1:{port}"
+                    }
+                }
+            }));
+
+            //wait for the primary election
+            var timeoutLimit = DateTime.UtcNow + startupTimeout;
+            while (DateTime.UtcNow < timeoutLimit)
+            {
+                var hello = adminDb.RunCommand<BsonDocument>(new BsonDocument("hello", 1));
+                if (hello.GetValue("isWritablePrimary", false).ToBoolean())
+                    return;
+
+                Thread.Sleep(200);
+            }
+            throw new InvalidOperationException($"mongod didn't elect a primary within {startupTimeout.TotalSeconds}s");
+        }
+
         private string StartLocalMongod()
         {
             var port = GetFreeTcpPort();
@@ -97,7 +134,7 @@ namespace Etherna.MongODM.IntegrationTests.Fixtures
                 mongodProcess = Process.Start(new ProcessStartInfo
                 {
                     FileName = "mongod",
-                    Arguments = $"--dbpath \"{dataDirectory}\" --port {port} --bind_ip 127.0.0.1 --logpath \"{logPath}\"",
+                    Arguments = $"--dbpath \"{dataDirectory}\" --port {port} --bind_ip 127.0.0.1 --replSet {ReplicaSetName} --logpath \"{logPath}\"",
                     UseShellExecute = false
                 });
             }
@@ -111,6 +148,7 @@ namespace Etherna.MongODM.IntegrationTests.Fixtures
                 throw new InvalidOperationException("Can't start mongod process");
 
             WaitForTcpPort(port);
+            InitiateReplicaSet(port);
 
             return $"mongodb://127.0.0.1:{port}";
         }

@@ -11,12 +11,6 @@ jobs:
   build-test-package:
     runs-on: ubuntu-latest
 
-    services:
-      mongodb:
-        image: mongo:8
-        ports:
-          - 27017:27017
-
     env:
       MONGODM_TEST_DB_URL: mongodb://localhost:27017
 
@@ -25,6 +19,15 @@ jobs:
         uses: actions/checkout@v7
         with:
           fetch-depth: 0
+
+      # Transactions require a replica set: service containers can't override the
+      # command, so run the container directly and initiate a single node replica set.
+      - name: Start MongoDB replica set
+        run: |
+          docker run -d --name mongodb -p 27017:27017 mongo:8 mongod --replSet rs0 --bind_ip_all
+          timeout 60 bash -c 'until docker exec mongodb mongosh --quiet --eval "db.hello().ok" >/dev/null 2>&1; do sleep 1; done'
+          docker exec mongodb mongosh --quiet --eval "rs.initiate({_id: 'rs0', members: [{_id: 0, host: 'localhost:27017'}]})"
+          timeout 60 bash -c 'until docker exec mongodb mongosh --quiet --eval "db.hello().isWritablePrimary" | grep -q true; do sleep 1; done'
 
       - name: Setup dotnet
         uses: actions/setup-dotnet@v5

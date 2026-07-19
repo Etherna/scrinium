@@ -19,6 +19,16 @@ namespace Etherna.MongODM.Core.Options
         public string ConnectionString { get; }
         public string DbName { get; }
         public string DbOperationsCollectionName { get; }
+
+        /// <summary>
+        /// True to save the changed models of <see cref="IDbContext.SaveChangesAsync"/> into an
+        /// implicit transaction, when the connected deployment supports transactions (replica
+        /// set, or sharded cluster). The support is detected at runtime from the cluster
+        /// topology: with unsupporting deployments, like standalone servers, saves stay plain.
+        /// Set false to disable implicit transactions in any case.
+        /// </summary>
+        public bool EnableTransactionsWithReplicaSet { get; }
+
         public string? Identifier { get; }
         public ModelMapVersionOptions ModelMapVersion { get; }
     }
