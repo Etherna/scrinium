@@ -270,6 +270,38 @@ namespace Etherna.MongODM.IntegrationTests
             Assert.Equal("post content", loadedBlog.LastPost!.Content);
         }
 
+        [Fact]
+        public async Task ReferenceWithUnrecognizedSchemaIdLoadsIdOnlyAndLazyLoads()
+        {
+            // Setup.
+            using var contextHandler = AsyncLocalContext.Instance.InitAsyncLocalContext();
+            var (blog, post) = await CreateBlogWithPostAsync();
+
+            //shape the reference as written by an unknown legacy schema, with incompatible members
+            var blogsCollection = dbContext.Engine.Database.GetCollection<BsonDocument>("blogs");
+            await blogsCollection.UpdateOneAsync(
+                Builders<BsonDocument>.Filter.Eq("_id", ObjectId.Parse(blog.Id)),
+                Builders<BsonDocument>.Update
+                    .Set("LastPost._m", "unknown-schema-id")
+                    .Set("LastPost.Title", 42)
+                    .Set("LastPost.Content", "legacy content"));
+
+            // Action.
+            using var readContextHandler = AsyncLocalContext.Instance.InitAsyncLocalContext();
+            var loadedBlog = await dbContext.Blogs.FindOneAsync(blog.Id);
+            var referencedPost = loadedBlog.LastPost!;
+
+            // Assert.
+            //only the id is deserialized from the unrecognized reference document
+            Assert.Equal(post.Id, referencedPost.Id);
+            Assert.True(((IReferenceable)referencedPost).IsSummary);
+            Assert.DoesNotContain(nameof(Post.Title), ((IReferenceable)referencedPost).SettedMemberNames);
+
+            //any other member lazy loads from the origin document
+            Assert.Equal("post title", referencedPost.Title);
+            Assert.Equal("post content", referencedPost.Content);
+        }
+
         // Helpers.
         private async Task<(Blog blog, Post post)> CreateBlogWithPostAsync()
         {
