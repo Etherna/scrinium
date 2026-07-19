@@ -1,77 +1,48 @@
-﻿// Copyright 2020-present Etherna SA
+// Copyright 2020-present Etherna SA
 // This file is part of MongODM.
-// 
+//
 // MongODM is free software: you can redistribute it and/or modify it under the terms of the
 // GNU Lesser General Public License as published by the Free Software Foundation,
 // either version 3 of the License, or (at your option) any later version.
-// 
+//
 // MongODM is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
 // without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 // See the GNU Lesser General Public License for more details.
-// 
+//
 // You should have received a copy of the GNU Lesser General Public License along with MongODM.
 // If not, see <https://www.gnu.org/licenses/>.
 
 using System;
-using System.Threading;
 
 namespace Etherna.MongODM.Core.Utility
 {
-    public abstract class FreezableConfig : IFreezableConfig, IDisposable
+    public abstract class FreezableConfig : IFreezableConfig
     {
         // Fields.
-        private readonly ReaderWriterLockSlim configLock = new(LockRecursionPolicy.SupportsRecursion);
-        private bool disposed;
-
-        // Dispose.
-        public void Dispose()
-        {
-            Dispose(true);
-            GC.SuppressFinalize(this);
-        }
-
-        protected virtual void Dispose(bool disposing)
-        {
-            if (disposed) return;
-
-            // Dispose managed resources.
-            if (disposing)
-                configLock.Dispose();
-
-            disposed = true;
-        }
+        private readonly object configLock = new();
+        private volatile bool _isFrozen;
 
         // Properties.
-        public bool IsFrozen { get; private set; }
+        public bool IsFrozen => _isFrozen;
 
         // Methods.
+        /* Mutations and the freeze happen at engine build; after that, the frozen fast
+         * path is the only concurrent access, avoiding any lock on serialization paths.
+         * Monitor recursion keeps supporting config actions invoked by freeze actions. */
         public void Freeze()
         {
-            configLock.EnterReadLock();
-            try
-            {
-                if (IsFrozen) return;
-            }
-            finally
-            {
-                configLock.ExitReadLock();
-            }
+            if (_isFrozen) return;
 
-            configLock.EnterWriteLock();
-            try
+            lock (configLock)
             {
-                if (!IsFrozen)
+                if (!_isFrozen)
                 {
                     // Execute action.
                     FreezeAction();
 
                     // Freeze.
-                    IsFrozen = true;
+                    _isFrozen = true;
                 }
-            }
-            finally
-            {
-                configLock.ExitWriteLock();
             }
         }
 
@@ -91,17 +62,12 @@ namespace Etherna.MongODM.Core.Utility
         {
             ArgumentNullException.ThrowIfNull(configAction);
 
-            configLock.EnterWriteLock();
-            try
+            lock (configLock)
             {
                 if (IsFrozen)
                     throw new InvalidOperationException("Configuration is frozen");
 
                 return configAction();
-            }
-            finally
-            {
-                configLock.ExitWriteLock();
             }
         }
 

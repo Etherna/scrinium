@@ -73,7 +73,6 @@ namespace Etherna.MongODM.Core.Serialization.Serializers
     /// <typeparam name="TKey">Model Id type</typeparam>
     public sealed class ReferenceSerializer<TModelBase, TKey> :
         SerializerBase<TModelBase>,
-        IDisposable,
         IReferenceSerializer
         where TModelBase : class, IEntityModel<TKey>
     {
@@ -83,7 +82,6 @@ namespace Etherna.MongODM.Core.Serialization.Serializers
 
         private readonly IDbContextEngine dbContextEngine;
         private Func<IDbContext, IRepository>? sourceRepositorySelector;
-        private bool disposed;
 
         // Constructor.
         public ReferenceSerializer(
@@ -118,15 +116,6 @@ namespace Etherna.MongODM.Core.Serialization.Serializers
         {
             get => sourceRepositorySelector;
             set => sourceRepositorySelector = value;
-        }
-
-        // Dispose.
-        public void Dispose()
-        {
-            if (disposed) return;
-
-            _configuration.Dispose();
-            disposed = true;
         }
 
         // Properties.
