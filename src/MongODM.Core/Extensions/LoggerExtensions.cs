@@ -20,7 +20,7 @@ namespace Etherna.MongODM.Core.Extensions
 {
     /*
      * Always group similar log delegates by type, always use incremental event ids.
-     * Last event id is: 38
+     * Last event id is: 41
      */
     public static class LoggerExtensions
     {
@@ -62,6 +62,12 @@ namespace Etherna.MongODM.Core.Extensions
                 LogLevel.Debug,
                 new EventId(3, nameof(DbContextSavedChangedModelToRepository)),
                 "DbContext {DbName} saved changed model with Id {ModelId} on repository {RepositoryName}");
+
+        private static readonly Action<ILogger, string, Exception> _dbContextStartedTransaction =
+            LoggerMessage.Define<string>(
+                LogLevel.Debug,
+                new EventId(39, nameof(DbContextStartedTransaction)),
+                "DbContext {DbName} started a transaction on a new session");
 
         private static readonly Action<ILogger, string, string, string, Exception> _dbContextUnregisteredChangedModel =
             LoggerMessage.Define<string, string, string>(
@@ -147,6 +153,12 @@ namespace Etherna.MongODM.Core.Extensions
                 LogLevel.Trace,
                 new EventId(24, nameof(DbContextAttachedToEngine)),
                 "DbContext {DbName} attached a new instance to its engine");
+
+        private static readonly Action<ILogger, string, Exception> _dbContextCommittedTransaction =
+            LoggerMessage.Define<string>(
+                LogLevel.Information,
+                new EventId(40, nameof(DbContextCommittedTransaction)),
+                "DbContext {DbName} committed transaction");
 
         private static readonly Action<ILogger, string, Exception> _dbContextInitialized =
             LoggerMessage.Define<string>(
@@ -257,14 +269,25 @@ namespace Etherna.MongODM.Core.Extensions
                 "UpdateDocDependenciesTask started on DbContext {DbContextType} with reference repository {ReferenceRepositoryName}, searching for model Id {ModelId} on Id's member maps: {IdMemberMapIdentifiers}");
 
         //*** WARNING LOGS ***
+        private static readonly Action<ILogger, string, Exception> _dbContextAbortedTransaction =
+            LoggerMessage.Define<string>(
+                LogLevel.Warning,
+                new EventId(41, nameof(DbContextAbortedTransaction)),
+                "DbContext {DbName} aborted transaction");
 
         //*** ERROR LOGS ***
 
         //*** FATAL LOGS ***
 
         // Methods.
+        public static void DbContextAbortedTransaction(this ILogger logger, string dbName) =>
+            _dbContextAbortedTransaction(logger, dbName, null!);
+
         public static void DbContextAttachedToEngine(this ILogger logger, string dbName) =>
             _dbContextAttachedToEngine(logger, dbName, null!);
+
+        public static void DbContextCommittedTransaction(this ILogger logger, string dbName) =>
+            _dbContextCommittedTransaction(logger, dbName, null!);
 
         public static void DbContextInitialized(this ILogger logger, string dbName) =>
             _dbContextInitialized(logger, dbName, null!);
@@ -289,6 +312,9 @@ namespace Etherna.MongODM.Core.Extensions
 
         public static void DbContextSeeded(this ILogger logger, string dbName) =>
             _dbContextSeeded(logger, dbName, null!);
+
+        public static void DbContextStartedTransaction(this ILogger logger, string dbName) =>
+            _dbContextStartedTransaction(logger, dbName, null!);
 
         public static void DbContextUnregisteredChangedModel(this ILogger logger, string dbName, string modelId, string repositoryName) =>
             _dbContextUnregisteredChangedModel(logger, dbName, modelId, repositoryName, null!);

@@ -115,6 +115,13 @@ namespace Etherna.MongODM.Core
         /// </summary>
         ISerializerModifierAccessor SerializerModifierAccessor { get; }
 
+        /// <summary>
+        /// True when the connected MongoDB deployment supports transactions (replica set, or
+        /// sharded cluster), detected from the current cluster topology. False while the
+        /// topology is still undiscovered.
+        /// </summary>
+        bool SupportsTransactions { get; }
+
         // Methods.
         IMongoCollection<TDocument> GetMongoCollection<TDocument>(string name, MongoCollectionSettings? settings = null);
 

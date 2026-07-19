@@ -62,6 +62,39 @@ namespace Etherna.MongODM.Core
 
         // Methods.
         /// <summary>
+        /// Execute an action into a database transaction, on a new session of this db context
+        /// engine. All the operations invoked inside the action on repositories of this db
+        /// context enlist automatically in the transaction: it commits when the action
+        /// completes, and aborts if it throws, discarding every enlisted operation.
+        /// </summary>
+        /// <remarks>
+        /// Requires a MongoDB deployment supporting transactions (replica set or sharded
+        /// cluster). The transaction is scoped to the connection of this db context engine:
+        /// operations on different db contexts, children included, don't enlist. Sessions
+        /// don't support concurrent operations: keep operations sequential inside the action.
+        /// </remarks>
+        /// <param name="action">The action to execute into the transaction</param>
+        /// <param name="cancellationToken">Cancellation token</param>
+        Task ExecuteInTransactionAsync(Func<Task> action, CancellationToken cancellationToken = default);
+
+        /// <summary>
+        /// Execute a function into a database transaction, on a new session of this db context
+        /// engine. All the operations invoked inside the function on repositories of this db
+        /// context enlist automatically in the transaction: it commits when the function
+        /// completes, and aborts if it throws, discarding every enlisted operation.
+        /// </summary>
+        /// <remarks>
+        /// Requires a MongoDB deployment supporting transactions (replica set or sharded
+        /// cluster). The transaction is scoped to the connection of this db context engine:
+        /// operations on different db contexts, children included, don't enlist. Sessions
+        /// don't support concurrent operations: keep operations sequential inside the function.
+        /// </remarks>
+        /// <param name="func">The function to execute into the transaction</param>
+        /// <param name="cancellationToken">Cancellation token</param>
+        /// <returns>The function result</returns>
+        Task<TResult> ExecuteInTransactionAsync<TResult>(Func<Task<TResult>> func, CancellationToken cancellationToken = default);
+
+        /// <summary>
         /// Execute a db context migration process: delete old indexes, migrate documents, and build new indexes.
         /// The caller must already hold an exclusive access on the db context.
         /// </summary>
@@ -92,7 +125,11 @@ namespace Etherna.MongODM.Core
         void RegisterLoadedModel(object modelId, IEntityModel model);
 
         /// <summary>
-        /// Save current model changes on db.
+        /// Save current model changes on db. With <see cref="Options.IDbContextOptions.EnableTransactionsWithReplicaSet"/>
+        /// enabled and a deployment supporting transactions, the changed models of this db context
+        /// save into a single implicit transaction; when a session is already ambient (e.g. into
+        /// <see cref="ExecuteInTransactionAsync(Func{Task}, CancellationToken)"/>), saves enlist
+        /// in it instead. Child db contexts save on their own connections, out of both.
         /// </summary>
         /// <param name="cancellationToken">Cancellation token</param>
         Task SaveChangesAsync(CancellationToken cancellationToken = default);

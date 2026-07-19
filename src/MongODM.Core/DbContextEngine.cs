@@ -14,6 +14,7 @@
 
 using Etherna.MongoDB.Bson.Serialization;
 using Etherna.MongoDB.Driver;
+using Etherna.MongoDB.Driver.Core.Clusters;
 using Etherna.MongODM.Core.Domain.ModelMaps;
 using Etherna.MongODM.Core.ExecContext;
 using Etherna.MongODM.Core.Extensions;
@@ -179,6 +180,8 @@ namespace Etherna.MongODM.Core
         public IProxyGenerator ProxyGenerator { get; private set; } = null!;
         public IBsonSerializerRegistry SerializerRegistry => _serializerRegistry;
         public ISerializerModifierAccessor SerializerModifierAccessor { get; private set; } = null!;
+        public bool SupportsTransactions =>
+            Client.Cluster.Description.Type is ClusterType.ReplicaSet or ClusterType.Sharded or ClusterType.LoadBalanced;
 
         // Methods.
         public IMongoCollection<TDocument> GetMongoCollection<TDocument>(

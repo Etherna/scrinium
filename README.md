@@ -21,6 +21,7 @@ Here is a non exhaustive list of implemented features by MongODM:
 - Create relation between documents, and fine configuration of serialized properties with document denormalization
 - Transparent lazy loading of unloaded properties on related documents
 - Manage repositories with database contexts
+- Execute ACID transactions with automatic enlistment of repository operations
 - Automatic denormalized documents update
 - Execute database maintenance tasks with asynchronous task manager [Hangfire](https://www.hangfire.io/) by default, or with your custom one
 - Customizable database indexes

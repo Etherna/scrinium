@@ -14,6 +14,8 @@
 
 using Etherna.MongoDB.Bson.Serialization;
 using Etherna.MongoDB.Driver;
+using Etherna.MongoDB.Driver.Core.Clusters;
+using Etherna.MongODM.Core.Domain.Models;
 using Etherna.MongODM.Core.ExecContext.AsyncLocal;
 using Etherna.MongODM.Core.Models;
 using Etherna.MongODM.Core.Options;
@@ -35,6 +37,7 @@ namespace Etherna.MongODM.Core
         private readonly FakeDbContext dbContext;
         private readonly IDbContextEngine engine;
 
+        private readonly Mock<ICluster> clusterMock = new();
         private readonly Mock<IMongoCollection<FakeModel>> collectionMock = new();
         private readonly Mock<IDbDependencies> dependenciesMock = new();
         private readonly Mock<IMongoClient> mongoClientMock = new();
@@ -61,7 +64,7 @@ namespace Etherna.MongODM.Core
             dependenciesMock.Setup(d => d.ProxyGenerator)
                 .Returns(proxyGeneratorMock.Object);
             dependenciesMock.Setup(d => d.RepositoryRegistry)
-                .Returns(new RepositoryRegistry());
+                .Returns(() => new RepositoryRegistry());
 
             var cursorMock = new Mock<IAsyncCursor<FakeModel>>();
             cursorMock.Setup(c => c.MoveNextAsync(It.IsAny<CancellationToken>()))
@@ -77,7 +80,13 @@ namespace Etherna.MongODM.Core
             
             mongoClientMock.Setup(c => c.GetDatabase(It.IsAny<string>(), It.IsAny<MongoDatabaseSettings>()))
                 .Returns(mongoDatabaseMock.Object);
-            
+
+            //standalone topology by default: no implicit transactions
+            clusterMock.Setup(c => c.Description)
+                .Returns(NewClusterDescription(ClusterType.Standalone));
+            mongoClientMock.Setup(c => c.Cluster)
+                .Returns(clusterMock.Object);
+
             dbContext = new FakeDbContext();
             engine = dbContext.BuildEngine(
                 dependenciesMock.Object,
@@ -94,6 +103,177 @@ namespace Etherna.MongODM.Core
         }
         
         // Tests.
+        [Fact]
+        public async Task ExecuteInTransactionCommitsAndEnlistsOperations()
+        {
+            // Setup.
+            using var contextHandler = AsyncLocalContext.Instance.InitAsyncLocalContext();
+
+            var sessionMock = new Mock<IClientSessionHandle>();
+            mongoClientMock.Setup(c => c.StartSessionAsync(It.IsAny<ClientSessionOptions>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(sessionMock.Object);
+
+            var cursorMock = new Mock<IAsyncCursor<FakeModel>>();
+            cursorMock.Setup(c => c.MoveNextAsync(It.IsAny<CancellationToken>()))
+                .ReturnsAsync(true);
+            cursorMock.SetupGet(c => c.Current)
+                .Returns([new FakeModel { Id = "id" }]);
+            collectionMock.Setup(c => c.FindAsync(sessionMock.Object, It.IsAny<FilterDefinition<FakeModel>>(), It.IsAny<FindOptions<FakeModel, FakeModel>>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(cursorMock.Object);
+
+            // Action.
+            var result = await dbContext.ExecuteInTransactionAsync(async () =>
+            {
+                //the session is registered as ambient for the engine
+                Assert.Same(sessionMock.Object, DbSessionHandler.TryGetCurrentSession(engine));
+
+                //operations invoked without an explicit session enlist in the ambient one
+                await dbContext.FakeModels.CreateAsync(new FakeModel { Id = "id" });
+                await dbContext.FakeModels.FindOneAsync("id");
+
+                return 42;
+            });
+
+            // Assert.
+            Assert.Equal(42, result);
+            Assert.Null(DbSessionHandler.TryGetCurrentSession(engine));
+
+            sessionMock.Verify(s => s.StartTransaction(It.IsAny<TransactionOptions>()), Times.Once);
+            sessionMock.Verify(s => s.CommitTransactionAsync(It.IsAny<CancellationToken>()), Times.Once);
+            sessionMock.Verify(s => s.AbortTransactionAsync(It.IsAny<CancellationToken>()), Times.Never);
+            collectionMock.Verify(c => c.InsertOneAsync(sessionMock.Object, It.IsAny<FakeModel>(), It.IsAny<InsertOneOptions>(), It.IsAny<CancellationToken>()), Times.Once);
+            collectionMock.Verify(c => c.FindAsync(sessionMock.Object, It.IsAny<FilterDefinition<FakeModel>>(), It.IsAny<FindOptions<FakeModel, FakeModel>>(), It.IsAny<CancellationToken>()), Times.Once);
+        }
+
+        [Fact]
+        public async Task ExecuteInTransactionAbortsOnException()
+        {
+            // Setup.
+            using var contextHandler = AsyncLocalContext.Instance.InitAsyncLocalContext();
+
+            var sessionMock = new Mock<IClientSessionHandle>();
+            mongoClientMock.Setup(c => c.StartSessionAsync(It.IsAny<ClientSessionOptions>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(sessionMock.Object);
+
+            // Action.
+            await Assert.ThrowsAsync<InvalidOperationException>(() => dbContext.ExecuteInTransactionAsync(
+                () => Task.FromException(new InvalidOperationException())));
+
+            // Assert.
+            Assert.Null(DbSessionHandler.TryGetCurrentSession(engine));
+
+            sessionMock.Verify(s => s.StartTransaction(It.IsAny<TransactionOptions>()), Times.Once);
+            sessionMock.Verify(s => s.AbortTransactionAsync(It.IsAny<CancellationToken>()), Times.Once);
+            sessionMock.Verify(s => s.CommitTransactionAsync(It.IsAny<CancellationToken>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task SaveChangesRunsIntoTransactionOnReplicaSet()
+        {
+            // Setup.
+            using var contextHandler = AsyncLocalContext.Instance.InitAsyncLocalContext();
+            SetReplicaSetTopology();
+
+            var sessionMock = new Mock<IClientSessionHandle>();
+            mongoClientMock.Setup(c => c.StartSessionAsync(It.IsAny<ClientSessionOptions>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(sessionMock.Object);
+
+            var repositoryMock = NewSourceRepositoryMock();
+            IClientSessionHandle? sessionDuringSave = null;
+            repositoryMock.Setup(r => r.SaveChangesAsync(It.IsAny<IEntityModel>(), It.IsAny<CancellationToken>()))
+                .Callback(() => sessionDuringSave = DbSessionHandler.TryGetCurrentSession(engine))
+                .Returns(Task.CompletedTask);
+
+            var modelMock = NewChangedModelMock(repositoryMock.Object);
+            dbContext.RegisterChangedModel(modelMock.Object);
+
+            // Action.
+            await dbContext.SaveChangesAsync();
+
+            // Assert.
+            //the model saved with the implicit transaction session as ambient
+            Assert.Same(sessionMock.Object, sessionDuringSave);
+            sessionMock.Verify(s => s.StartTransaction(It.IsAny<TransactionOptions>()), Times.Once);
+            sessionMock.Verify(s => s.CommitTransactionAsync(It.IsAny<CancellationToken>()), Times.Once);
+            repositoryMock.Verify(r => r.SaveChangesAsync(modelMock.Object, It.IsAny<CancellationToken>()), Times.Once);
+        }
+
+        [Fact]
+        public async Task TransactionalSaveChangesEnlistsInAmbientSession()
+        {
+            // Setup.
+            using var contextHandler = AsyncLocalContext.Instance.InitAsyncLocalContext();
+            SetReplicaSetTopology();
+
+            var sessionMock = new Mock<IClientSessionHandle>();
+            mongoClientMock.Setup(c => c.StartSessionAsync(It.IsAny<ClientSessionOptions>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(sessionMock.Object);
+
+            var repositoryMock = NewSourceRepositoryMock();
+            IClientSessionHandle? sessionDuringSave = null;
+            repositoryMock.Setup(r => r.SaveChangesAsync(It.IsAny<IEntityModel>(), It.IsAny<CancellationToken>()))
+                .Callback(() => sessionDuringSave = DbSessionHandler.TryGetCurrentSession(engine))
+                .Returns(Task.CompletedTask);
+
+            var modelMock = NewChangedModelMock(repositoryMock.Object);
+            dbContext.RegisterChangedModel(modelMock.Object);
+
+            // Action.
+            await dbContext.ExecuteInTransactionAsync(
+                () => dbContext.SaveChangesAsync());
+
+            // Assert.
+            //a single session started: the save enlisted in the ambient transaction without nesting
+            Assert.Same(sessionMock.Object, sessionDuringSave);
+            mongoClientMock.Verify(c => c.StartSessionAsync(It.IsAny<ClientSessionOptions>(), It.IsAny<CancellationToken>()), Times.Once);
+            sessionMock.Verify(s => s.StartTransaction(It.IsAny<TransactionOptions>()), Times.Once);
+            sessionMock.Verify(s => s.CommitTransactionAsync(It.IsAny<CancellationToken>()), Times.Once);
+        }
+
+        [Fact]
+        public async Task SaveChangesSkipsTransactionOnStandalone()
+        {
+            // Setup.
+            //the default mocked topology is standalone
+            using var contextHandler = AsyncLocalContext.Instance.InitAsyncLocalContext();
+
+            var repositoryMock = NewSourceRepositoryMock();
+            var modelMock = NewChangedModelMock(repositoryMock.Object);
+            dbContext.RegisterChangedModel(modelMock.Object);
+
+            // Action.
+            await dbContext.SaveChangesAsync();
+
+            // Assert.
+            repositoryMock.Verify(r => r.SaveChangesAsync(modelMock.Object, It.IsAny<CancellationToken>()), Times.Once);
+            mongoClientMock.Verify(c => c.StartSessionAsync(It.IsAny<ClientSessionOptions>(), It.IsAny<CancellationToken>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task SaveChangesSkipsTransactionWhenDisabledByOptions()
+        {
+            // Setup.
+            using var contextHandler = AsyncLocalContext.Instance.InitAsyncLocalContext();
+            SetReplicaSetTopology();
+
+            var noTransactionsDbContext = BuildDbContext(
+                new DbContextOptions { EnableTransactionsWithReplicaSet = false },
+                out var noTransactionsEngine);
+
+            var repositoryMock = NewSourceRepositoryMock();
+            var modelMock = NewChangedModelMock(repositoryMock.Object);
+            noTransactionsDbContext.RegisterChangedModel(modelMock.Object);
+
+            // Action.
+            await noTransactionsDbContext.SaveChangesAsync();
+
+            // Assert.
+            repositoryMock.Verify(r => r.SaveChangesAsync(modelMock.Object, It.IsAny<CancellationToken>()), Times.Once);
+            mongoClientMock.Verify(c => c.StartSessionAsync(It.IsAny<ClientSessionOptions>(), It.IsAny<CancellationToken>()), Times.Never);
+
+            (noTransactionsEngine as IDisposable)?.Dispose();
+        }
+
         [Fact]
         public void LoadedModelsAreRegisteredPerInstance()
         {
@@ -174,5 +354,40 @@ namespace Etherna.MongODM.Core
 
             await Task.WhenAll(Process1(), Process2());
         }
+
+        // Helpers.
+        private FakeDbContext BuildDbContext(DbContextOptions dbContextOptions, out IDbContextEngine dbContextEngine)
+        {
+            var newDbContext = new FakeDbContext();
+            dbContextEngine = newDbContext.BuildEngine(
+                dependenciesMock.Object,
+                mongoClientMock.Object,
+                dbContextOptions);
+            newDbContext.AttachToEngine(dbContextEngine, [], dependenciesMock.Object.RepositoryRegistry);
+            return newDbContext;
+        }
+
+        private static ClusterDescription NewClusterDescription(ClusterType type) =>
+            new(new ClusterId(0), false, null, type, []);
+
+        private static Mock<IEntityModel> NewChangedModelMock(IRepository sourceRepository)
+        {
+            var modelMock = new Mock<IEntityModel>();
+            modelMock.As<IAuditable>().Setup(a => a.IsChanged).Returns(true);
+            modelMock.As<IReferenceable>().Setup(r => r.SourceRepository).Returns(sourceRepository);
+            return modelMock;
+        }
+
+        private static Mock<IRepository> NewSourceRepositoryMock()
+        {
+            var repositoryMock = new Mock<IRepository>();
+            repositoryMock.Setup(r => r.ModelIdToString(It.IsAny<object>()))
+                .Returns("id");
+            return repositoryMock;
+        }
+
+        private void SetReplicaSetTopology() =>
+            clusterMock.Setup(c => c.Description)
+                .Returns(NewClusterDescription(ClusterType.ReplicaSet));
     }
 }
