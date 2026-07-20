@@ -20,7 +20,7 @@ namespace Etherna.MongODM.Core.Extensions
 {
     /*
      * Always group similar log delegates by type, always use incremental event ids.
-     * Last event id is: 41
+     * Last event id is: 42
      */
     public static class LoggerExtensions
     {
@@ -276,6 +276,11 @@ namespace Etherna.MongODM.Core.Extensions
                 "DbContext {DbName} aborted transaction");
 
         //*** ERROR LOGS ***
+        private static readonly Action<ILogger, string, string, Exception> _dbMigrationFailed =
+            LoggerMessage.Define<string, string>(
+                LogLevel.Error,
+                new EventId(42, nameof(DbMigrationFailed)),
+                "Db migration operation {DbMigrationOpId} of DbContext {DbName} failed");
 
         //*** FATAL LOGS ***
 
@@ -327,6 +332,9 @@ namespace Etherna.MongODM.Core.Extensions
 
         public static void DbMaintainerInitialized(this ILogger logger, string dbName) =>
             _dbMaintainerInitialized(logger, dbName, null!);
+
+        public static void DbMigrationFailed(this ILogger logger, string dbMigrationOpId, string dbName, Exception exception) =>
+            _dbMigrationFailed(logger, dbMigrationOpId, dbName, exception);
 
         public static void DbMigrationManagerInitialized(this ILogger logger, string dbName) =>
             _dbMigrationManagerInitialized(logger, dbName, null!);

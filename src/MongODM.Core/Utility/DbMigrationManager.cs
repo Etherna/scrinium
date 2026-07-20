@@ -57,94 +57,103 @@ namespace Etherna.MongODM.Core.Utility
             var dbMigrationOp = (DbMigrationOperation)await dbContext.DbOperations.FindOneAsync(dbMigrationOpId).ConfigureAwait(false);
             List<Exception> errors = [];
 
-            // Start migrate operation.
-            dbMigrationOp.TaskStarted(taskId);
-            await dbContext.SaveChangesAsync().ConfigureAwait(false);
-
-            // Remove old indexes.
-            foreach (var repository in dbContext.RepositoryRegistry.Repositories)
+            try
             {
-                dbMigrationOp.AddLog(new DeleteOldIndexesMigrationLog(
-                    repository.Name,
-                    MigrationLogBase.ExecutionState.Executing));
+                // Start migrate operation.
+                dbMigrationOp.TaskStarted(taskId);
                 await dbContext.SaveChangesAsync().ConfigureAwait(false);
 
-                try
+                // Remove old indexes.
+                foreach (var repository in dbContext.RepositoryRegistry.Repositories)
                 {
-                    await repository.DeleteOldIndexesAsync().ConfigureAwait(false);
-
                     dbMigrationOp.AddLog(new DeleteOldIndexesMigrationLog(
                         repository.Name,
-                        MigrationLogBase.ExecutionState.Succeded));
-                }
-                catch (Exception e)
-                {
-                    errors.Add(e);
+                        MigrationLogBase.ExecutionState.Executing));
+                    await dbContext.SaveChangesAsync().ConfigureAwait(false);
 
-                    dbMigrationOp.AddLog(new DeleteOldIndexesMigrationLog(
-                        repository.Name,
-                        MigrationLogBase.ExecutionState.Failed));
-                }
-
-                await dbContext.SaveChangesAsync().ConfigureAwait(false);
-            }
-
-            // Migrate documents.
-            foreach (var docMigration in dbContext.DocumentMigrationList)
-            {
-                //running document migration
-                var result = await docMigration.MigrateAsync(500,
-                    async procDocs =>
+                    try
                     {
-                        dbMigrationOp.AddLog(new DocumentMigrationLog(
-                            docMigration.SourceRepository.Name,
-                            MigrationLogBase.ExecutionState.Executing,
-                            procDocs));
+                        await repository.DeleteOldIndexesAsync().ConfigureAwait(false);
 
-                        await dbContext.SaveChangesAsync().ConfigureAwait(false);
-                    }).ConfigureAwait(false);
+                        dbMigrationOp.AddLog(new DeleteOldIndexesMigrationLog(
+                            repository.Name,
+                            MigrationLogBase.ExecutionState.Succeded));
+                    }
+                    catch (Exception e)
+                    {
+                        errors.Add(e);
 
-                if (!result.Succeded)
-                    errors.Add(new MongodmDbMigrationException(
-                        $"Documents migration failed on \"{docMigration.SourceRepository.Name}\" repository"));
+                        dbMigrationOp.AddLog(new DeleteOldIndexesMigrationLog(
+                            repository.Name,
+                            MigrationLogBase.ExecutionState.Failed));
+                    }
 
-                //ended document migration log
-                dbMigrationOp.AddLog(new DocumentMigrationLog(
-                    docMigration.SourceRepository.Name,
-                    result.Succeded
-                        ? MigrationLogBase.ExecutionState.Succeded
-                        : MigrationLogBase.ExecutionState.Failed,
-                    result.MigratedDocuments));
+                    await dbContext.SaveChangesAsync().ConfigureAwait(false);
+                }
 
-                await dbContext.SaveChangesAsync().ConfigureAwait(false);
+                // Migrate documents.
+                foreach (var docMigration in dbContext.DocumentMigrationList)
+                {
+                    //running document migration
+                    var result = await docMigration.MigrateAsync(500,
+                        async procDocs =>
+                        {
+                            dbMigrationOp.AddLog(new DocumentMigrationLog(
+                                docMigration.SourceRepository.Name,
+                                MigrationLogBase.ExecutionState.Executing,
+                                procDocs));
+
+                            await dbContext.SaveChangesAsync().ConfigureAwait(false);
+                        }).ConfigureAwait(false);
+
+                    if (!result.Succeded)
+                        errors.Add(new MongodmDbMigrationException(
+                            $"Documents migration failed on \"{docMigration.SourceRepository.Name}\" repository"));
+
+                    //ended document migration log
+                    dbMigrationOp.AddLog(new DocumentMigrationLog(
+                        docMigration.SourceRepository.Name,
+                        result.Succeded
+                            ? MigrationLogBase.ExecutionState.Succeded
+                            : MigrationLogBase.ExecutionState.Failed,
+                        result.MigratedDocuments));
+
+                    await dbContext.SaveChangesAsync().ConfigureAwait(false);
+                }
+
+                // Build new indexes.
+                foreach (var repository in dbContext.RepositoryRegistry.Repositories)
+                {
+                    dbMigrationOp.AddLog(new BuildNewIndexesMigrationLog(
+                        repository.Name,
+                        MigrationLogBase.ExecutionState.Executing));
+                    await dbContext.SaveChangesAsync().ConfigureAwait(false);
+
+                    try
+                    {
+                        await repository.BuildNewIndexesAsync().ConfigureAwait(false);
+
+                        dbMigrationOp.AddLog(new BuildNewIndexesMigrationLog(
+                            repository.Name,
+                            MigrationLogBase.ExecutionState.Succeded));
+                    }
+                    catch (Exception e)
+                    {
+                        errors.Add(e);
+
+                        dbMigrationOp.AddLog(new BuildNewIndexesMigrationLog(
+                            repository.Name,
+                            MigrationLogBase.ExecutionState.Failed));
+                    }
+
+                    await dbContext.SaveChangesAsync().ConfigureAwait(false);
+                }
             }
-
-            // Build new indexes.
-            foreach (var repository in dbContext.RepositoryRegistry.Repositories)
+            catch (Exception e)
             {
-                dbMigrationOp.AddLog(new BuildNewIndexesMigrationLog(
-                    repository.Name,
-                    MigrationLogBase.ExecutionState.Executing));
-                await dbContext.SaveChangesAsync().ConfigureAwait(false);
-
-                try
-                {
-                    await repository.BuildNewIndexesAsync().ConfigureAwait(false);
-
-                    dbMigrationOp.AddLog(new BuildNewIndexesMigrationLog(
-                        repository.Name,
-                        MigrationLogBase.ExecutionState.Succeded));
-                }
-                catch (Exception e)
-                {
-                    errors.Add(e);
-
-                    dbMigrationOp.AddLog(new BuildNewIndexesMigrationLog(
-                        repository.Name,
-                        MigrationLogBase.ExecutionState.Failed));
-                }
-
-                await dbContext.SaveChangesAsync().ConfigureAwait(false);
+                // An unhandled exception can't leave the operation on running status,
+                // or no new migration could ever start on the db context.
+                errors.Add(e);
             }
 
             // Complete operation.
@@ -155,11 +164,18 @@ namespace Etherna.MongODM.Core.Utility
 
             await dbContext.SaveChangesAsync().ConfigureAwait(false);
 
-            // Report errors if required.
-            if (errors.Count > 0 && throwOnErrors)
-                throw new MongodmDbMigrationException(
+            // Report errors.
+            if (errors.Count > 0)
+            {
+                var migrationException = new MongodmDbMigrationException(
                     $"Error migrating {dbContext.Engine.Identifier} dbContext",
                     new AggregateException(errors));
+
+                logger.DbMigrationFailed(dbMigrationOpId, dbContext.Engine.Options.DbName, migrationException);
+
+                if (throwOnErrors)
+                    throw migrationException;
+            }
         }
 
         /*
