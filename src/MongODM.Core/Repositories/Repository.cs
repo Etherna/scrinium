@@ -438,27 +438,29 @@ namespace Etherna.MongODM.Core.Repositories
             if (extraElementsMemberMap is not null)
                 membersToDiff = membersToDiff.Where(mm => !ReferenceEquals(mm, extraElementsMemberMap));
 
+            //reading the model members to diff them must not flag it a change candidate.
             var changedMembers = new List<MemberInfo>();
             var setDocument = new BsonDocument();
             var unsetDocument = new BsonDocument();
-            foreach (var memberMap in membersToDiff)
-            {
-                var memberValue = memberMap.Getter(castedModel);
-                var currentValue = memberMap.ShouldSerialize(castedModel, memberValue)
-                    ? SerializeMemberValue(memberMap, memberValue)
-                    : null;
-                var baselineValue = baseline.TryGetValue(memberMap.ElementName, out var bv) ? bv : null;
+            using (DbContext.SuppressChangeTracking())
+                foreach (var memberMap in membersToDiff)
+                {
+                    var memberValue = memberMap.Getter(castedModel);
+                    var currentValue = memberMap.ShouldSerialize(castedModel, memberValue)
+                        ? SerializeMemberValue(memberMap, memberValue)
+                        : null;
+                    var baselineValue = baseline.TryGetValue(memberMap.ElementName, out var bv) ? bv : null;
 
-                // Skip unchanged members.
-                if (currentValue is null ? baselineValue is null : currentValue.Equals(baselineValue))
-                    continue;
+                    // Skip unchanged members.
+                    if (currentValue is null ? baselineValue is null : currentValue.Equals(baselineValue))
+                        continue;
 
-                changedMembers.Add(memberMap.MemberInfo);
-                if (currentValue is not null)
-                    setDocument[memberMap.ElementName] = currentValue;
-                else
-                    unsetDocument[memberMap.ElementName] = 1;
-            }
+                    changedMembers.Add(memberMap.MemberInfo);
+                    if (currentValue is not null)
+                        setDocument[memberMap.ElementName] = currentValue;
+                    else
+                        unsetDocument[memberMap.ElementName] = 1;
+                }
 
             var update = new BsonDocument();
             if (setDocument.ElementCount > 0)
@@ -794,7 +796,9 @@ namespace Etherna.MongODM.Core.Repositories
             if (serializer is null)
                 return null;
 
+            //reading the model members to serialize must not flag it a change candidate.
             var wrapper = new BsonDocument();
+            using (DbContext.SuppressChangeTracking())
             using (var bsonWriter = new BsonDocumentWriter(wrapper))
             {
                 var context = BsonSerializationContext.CreateRoot(bsonWriter);

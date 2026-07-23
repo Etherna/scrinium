@@ -130,5 +130,36 @@ namespace Etherna.MongODM.IntegrationTests
             Assert.Equal("alice", foundWeb3Account.Username);
             Assert.Equal("0xabc", foundWeb3Account.EtherAddress);
         }
+
+        [Fact]
+        public async Task ReadingAMutableCollectionFlagsTheModelForSave()
+        {
+            /* MODM-193 Phase B: exposing a mutable collection is legal, but reading it flags the model
+             * for a diff at save, so a change made through the handed out collection (bypassing the
+             * setter and any domain method) is still detected and persisted. */
+
+            // Setup.
+            using var contextHandler = AsyncLocalContext.Instance.InitAsyncLocalContext();
+            var tagBag = new TagBag();
+            tagBag.Tags.Add("first");
+            await dbContext.TagBags.CreateAsync(tagBag);
+
+            using var workContextHandler = AsyncLocalContext.Instance.InitAsyncLocalContext();
+            var loadedTagBag = await dbContext.TagBags.FindOneAsync(tagBag.Id);
+
+            // Action.
+            //mutate the collection out of band, through the getter (no setter, no domain method)
+            loadedTagBag.Tags.Add("second");
+            await dbContext.SaveChangesAsync();
+
+            // Assert.
+            using var readScope = fixture.ServiceProvider.CreateScope();
+            var readDbContext = readScope.ServiceProvider.GetRequiredService<ITestDbContext>();
+            using var readContextHandler = AsyncLocalContext.Instance.InitAsyncLocalContext();
+            var foundTagBag = await readDbContext.TagBags.FindOneAsync(tagBag.Id);
+            Assert.Equal(2, foundTagBag.Tags.Count);
+            Assert.Contains("first", foundTagBag.Tags);
+            Assert.Contains("second", foundTagBag.Tags);
+        }
     }
 }

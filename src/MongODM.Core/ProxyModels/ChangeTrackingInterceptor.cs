@@ -17,6 +17,7 @@ using Etherna.MongODM.Core.Domain.Models;
 using Etherna.MongODM.Core.Utility;
 using System;
 using System.Collections.Generic;
+using System.Reflection;
 
 namespace Etherna.MongODM.Core.ProxyModels
 {
@@ -46,19 +47,34 @@ namespace Etherna.MongODM.Core.ProxyModels
         {
             ArgumentNullException.ThrowIfNull(invocation);
 
-            /* Any set or domain method invocation marks the model as a change candidate on its
-             * scope: the actual changed members are computed at save by diffing the model
-             * serialization against the baseline captured at load. Gets don't mutate, so they
-             * are ignored; the db context also ignores the mark until a baseline exists (skipping
-             * the sets replayed while deserializing) and while merging loaded data into a model. */
+            /* A set or domain method invocation marks the model as a change candidate on its scope;
+             * a get marks it too when it hands out a mutable value (a mutable collection, or a complex
+             * value the caller can change), because a change could then escape interception. The actual
+             * changed members are computed at save by diffing the model serialization against the
+             * baseline captured at load. The db context ignores the mark until a baseline exists
+             * (skipping the sets replayed while deserializing) and while merging loaded data into a
+             * model, so internal reads (the diff and baseline serialization run suppressed) don't mark. */
             if (dbContext is not null &&
                 invocation.Proxy is IEntityModel entityModel &&
-                !invocation.Method.Name.StartsWith("get_", StringComparison.InvariantCulture))
+                MarksChangeCandidate(invocation.Method))
             {
                 dbContext.MarkChangeCandidate(entityModel);
             }
 
             invocation.Proceed();
+        }
+
+        // Helpers.
+        private static bool MarksChangeCandidate(MethodInfo method)
+        {
+            // A set or a domain method may mutate the model.
+            if (!method.Name.StartsWith("get_", StringComparison.InvariantCulture))
+                return true;
+
+            /* A get marks the model only when it hands out mutable state the caller could change out
+             * of band; the extra elements bag is a framework member, never diffed, so it's excluded. */
+            return method.Name != $"get_{nameof(IModel.ExtraElements)}" &&
+                   MutabilityAnalyzer.ExposesAutonomousMutation(method.ReturnType);
         }
     }
 }

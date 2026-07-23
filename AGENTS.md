@@ -157,6 +157,7 @@ private void InternalHelper() { ... }
 - Protected parameterless constructor for deserialization
 - Collection encapsulation with a private backing field exposed as `IEnumerable<T>`, never `null` (at most empty)
 - `[PropertyAlterer(nameof(MyProp))]` on every method that modifies a property without going through its setter (e.g. mutating a backing field) — the lazy-load trigger for summary reference models. It is NO LONGER needed for change tracking (snapshot based now); it is kept only for the lazy-load role, until MODM-189 replaces it with a source generator. Collections stay encapsulated (read-only interface, non public setter), mutated only through domain methods, so a snapshot diff always detects the change
+- Prefer immutable exposure. A getter that hands out mutable state (a `List<T>`/`Dictionary<>`, or a complex value with public setters or business methods) is legal, but **reading it flags the model for a diff at save** — a change could otherwise escape interception. Expose collections read-only and make embedded value objects immutable (records, get/init-only, no mutating methods) to keep reads free; entity references never count (tracked on their own repository). `ProxyModels/MutabilityAnalyzer` computes this; casting a read-only collection back to mutable to bypass it is unsupported
 
 ## Async Patterns
 
@@ -191,7 +192,7 @@ private void InternalHelper() { ... }
 - Prefer collection expressions over constructors to initialize any collection (lists, arrays, dictionaries, etc.): `[]` not `new()`, `["a", "b"]` not `new List<string> { "a", "b" }`. Use a constructor only when a collection expression can't express the intent (e.g. presizing capacity with `new List<T>(capacity)`, or building a specific set type like `new HashSet<T>(value ?? [])`). This applies also where the surrounding legacy code still uses constructors: new code follows the rule, not the neighbors.
 - Target-typed `new()` when type is clear from context (for non-collection types)
 - Tuple deconstruction for multiple return values
-- Prefer a property pattern over a chain of `&&` combining a type/null check with member accesses: it expresses the condition as a single declarative shape the value must match, rather than an imperative sequence of checks
+- Prefer a property pattern over a chain of `&&` combining a type/null check with member accesses: it expresses the condition as a single declarative shape the value must match, rather than an imperative sequence of checks. This applies also to pure boolean member chains on the same value, with no type/null check involved: `field is { IsInitOnly: false, IsLiteral: false }`, not `!field.IsInitOnly && !field.IsLiteral`
 - `field` keyword for field-backed properties (e.g. lazy initialization) instead of an explicit backing field: `public T Prop => field ??= Compute();`. Needs C# 14: in `src/` it applies only once the `net8.0`/`net9.0` targets are dropped (each TFM compiles with its default LangVersion); the net10-only test projects can use it today
 - Lock fields: prefer the dedicated `System.Threading.Lock` type (.NET 9+) over a plain `object` — more expressive, and the compiler enforces correct `lock` usage on it. In `src/` it applies only once the `net8.0` target is dropped (lowest-target rule); the net10-only test projects can use it today
 
