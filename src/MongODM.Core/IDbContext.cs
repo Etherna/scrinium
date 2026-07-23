@@ -12,6 +12,7 @@
 // You should have received a copy of the GNU Lesser General Public License along with MongODM.
 // If not, see <https://www.gnu.org/licenses/>.
 
+using Etherna.MongoDB.Bson;
 using Etherna.MongODM.Core.Domain.Models;
 using Etherna.MongODM.Core.Migration;
 using Etherna.MongODM.Core.Repositories;
@@ -30,8 +31,10 @@ namespace Etherna.MongODM.Core
     {
         // Properties.
         /// <summary>
-        /// List of models with pending changes to save, registered by change auditing
-        /// on this db context instance.
+        /// List of proxy models flagged as change candidates by their mutations on this db
+        /// context instance. The actual changes are computed at save by diffing each model
+        /// serialization against its baseline; non proxy tracked models don't appear here, but
+        /// their changes are still saved.
         /// </summary>
         IReadOnlyCollection<IEntityModel> ChangedModelsList { get; }
 
@@ -110,11 +113,19 @@ namespace Etherna.MongODM.Core
         Task<DbMigrationOperation?> IsMigrationRunningAsync();
 
         /// <summary>
-        /// Register a model into the changed models list of this db context instance.
-        /// Invoked by change auditing at the first change of a bound model.
+        /// Remove a model from the change candidates of this db context instance, after its
+        /// changes have been saved. Its baseline is kept, so following mutations are tracked.
         /// </summary>
-        /// <param name="model">The changed model</param>
-        void RegisterChangedModel(IEntityModel model);
+        /// <param name="model">The model to clear</param>
+        void ClearChangeCandidate(IEntityModel model);
+
+        /// <summary>
+        /// Flag a proxy model as a change candidate on this db context instance, invoked by
+        /// change tracking on a mutation. The mark is ignored until the model has a baseline
+        /// (skipping the deserialization sets) and while change tracking is suppressed.
+        /// </summary>
+        /// <param name="model">The mutated model</param>
+        void MarkChangeCandidate(IEntityModel model);
 
         /// <summary>
         /// Register a model instance as the loaded one for its document on this db context
@@ -123,6 +134,13 @@ namespace Etherna.MongODM.Core
         /// <param name="modelId">The model document id</param>
         /// <param name="model">The loaded model instance</param>
         void RegisterLoadedModel(object modelId, IEntityModel model);
+
+        /// <summary>
+        /// Remove a model from the change tracking of this db context instance, dropping its
+        /// baseline and its change candidate flag, keeping it out of the next changes save.
+        /// </summary>
+        /// <param name="model">The model to remove</param>
+        void RemoveModelTracking(IEntityModel model);
 
         /// <summary>
         /// Save current model changes on db. With <see cref="Options.IDbContextOptions.EnableTransactionsWithReplicaSet"/>
@@ -166,11 +184,37 @@ namespace Etherna.MongODM.Core
         Task<DbMigrationOperation?> TryStartMigrationAsync();
 
         /// <summary>
-        /// Remove a model from the changed models list of this db context instance,
-        /// keeping it out of the next changes save.
+        /// Set the change tracking baseline of a model on this db context instance: the
+        /// serialized form its loaded members are diffed against at save. Captured at load and
+        /// create, and refreshed after each save.
         /// </summary>
-        /// <param name="model">The model to remove</param>
-        void UnregisterChangedModel(IEntityModel model);
+        /// <param name="model">The tracked model</param>
+        /// <param name="bsonDocument">The serialized document, used as the diff baseline</param>
+        void SetModelBsonDocument(IEntityModel model, BsonDocument bsonDocument);
+
+        /// <summary>
+        /// Bind a model to its source repository on this db context instance, for a tracked
+        /// model that can't carry it (a created or replaced non proxy instance), so its changes
+        /// save to the right repository even when the model type is handled by many repositories.
+        /// </summary>
+        /// <param name="model">The tracked model</param>
+        /// <param name="sourceRepository">The model source repository</param>
+        void SetModelSourceRepository(IEntityModel model, IRepository sourceRepository);
+
+        /// <summary>
+        /// Suppress change tracking on this db context instance until the returned scope is
+        /// disposed: mutations don't flag change candidates. Used while merging loaded data
+        /// into a model, keeping the merge out of the unit of work.
+        /// </summary>
+        /// <returns>The suppression scope</returns>
+        IDisposable SuppressChangeTracking();
+
+        /// <summary>
+        /// Try to get the change tracking baseline of a model on this db context instance.
+        /// </summary>
+        /// <param name="model">The tracked model</param>
+        /// <returns>The baseline document, or null when the model is not tracked</returns>
+        BsonDocument? TryGetModelBsonDocument(IEntityModel model);
 
         /// <summary>
         /// Remove a model instance from the loaded models of this db context instance,

@@ -49,6 +49,12 @@ namespace Etherna.MongODM.Core
             dbContextMock = new Mock<IDbContext>();
             dbContextMock.Setup(c => c.Engine)
                 .Returns(() => dbContextEngineMock.Object);
+            dbContextMock.Setup(c => c.SuppressChangeTracking())
+                .Returns(Mock.Of<IDisposable>());
+
+            //a bound repository always exposes its db context: wire it so merges can suppress tracking
+            repositoryMock.Setup(r => r.DbContext)
+                .Returns(dbContextMock.Object);
 
             var loggerMock = new Mock<ILogger<ReferenceableInterceptor<FakeModel, string>>>();
 

@@ -63,6 +63,7 @@ namespace Etherna.MongODM.Core.Serialization.Mapping
         public string? BaseSchemaId { get; private set; }
         public string Discriminator => bsonClassMap.Discriminator;
         public bool DiscriminatorIsRequired => bsonClassMap.DiscriminatorIsRequired;
+        public BsonMemberMap? ExtraElementsMemberMap => bsonClassMap.ExtraElementsMemberMap;
         public IEnumerable<IMemberMap> GeneratedMemberMaps => _generatedMemberMaps;
         public bool HasRootClass => bsonClassMap.HasRootClass;
         public IMemberMap? IdMemberMap => GeneratedMemberMaps.FirstOrDefault(mm => mm.IsIdMember);

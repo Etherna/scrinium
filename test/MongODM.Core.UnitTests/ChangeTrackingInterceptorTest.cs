@@ -24,7 +24,7 @@ using Xunit;
 
 namespace Etherna.MongODM.Core
 {
-    public class AuditableInterceptorTest
+    public class ChangeTrackingInterceptorTest
     {
         // Fields.
         private readonly Mock<IDbContext> dbContextMock;
@@ -32,7 +32,7 @@ namespace Etherna.MongODM.Core
         private readonly Mock<ISerializerModifierAccessor> serializerModifierAccessorMock;
 
         // Constructor.
-        public AuditableInterceptorTest()
+        public ChangeTrackingInterceptorTest()
         {
             serializerModifierAccessorMock = new Mock<ISerializerModifierAccessor>();
 
@@ -49,42 +49,22 @@ namespace Etherna.MongODM.Core
 
         // Tests.
         [Fact]
-        public void FirstChangeRegistersModelIntoScope()
+        public void GetDoesNotMarkModelAsChangeCandidate()
         {
             // Setup.
             var model = new FakeModel { Id = "id" };
             var interceptor = CreateBoundInterceptor();
-            EnableAuditing(interceptor, model);
 
             // Action.
-            interceptor.Intercept(InterceptorMockHelper.GetPropertySetInvocationMock<FakeModel, int>(
-                m => m.IntegerProp, 42, model).Object);
-            interceptor.Intercept(InterceptorMockHelper.GetPropertySetInvocationMock<FakeModel, string?>(
-                m => m.StringProp, "value", model).Object);
+            interceptor.Intercept(InterceptorMockHelper.GetPropertyGetInvocationMock<FakeModel, int>(
+                m => m.IntegerProp, model).Object);
 
             // Assert.
-            //registered once, at the first change only
-            dbContextMock.Verify(c => c.RegisterChangedModel(model), Times.Once());
+            dbContextMock.Verify(c => c.MarkChangeCandidate(It.IsAny<IEntityModel>()), Times.Never());
         }
 
         [Fact]
-        public void ModelWithoutIdIsNotRegistered()
-        {
-            // Setup.
-            var model = new FakeModel();
-            var interceptor = CreateBoundInterceptor();
-            EnableAuditing(interceptor, model);
-
-            // Action.
-            interceptor.Intercept(InterceptorMockHelper.GetPropertySetInvocationMock<FakeModel, int>(
-                m => m.IntegerProp, 42, model).Object);
-
-            // Assert.
-            dbContextMock.Verify(c => c.RegisterChangedModel(It.IsAny<IEntityModel>()), Times.Never());
-        }
-
-        [Fact]
-        public void NoCacheModifierSkipsRegistration()
+        public void NoCacheModifierSkipsTracking()
         {
             // Setup.
             serializerModifierAccessorMock.Setup(a => a.IsNoCacheEnabled)
@@ -92,69 +72,59 @@ namespace Etherna.MongODM.Core
 
             var model = new FakeModel { Id = "id" };
             var interceptor = CreateBoundInterceptor();
-            EnableAuditing(interceptor, model);
 
             // Action.
             interceptor.Intercept(InterceptorMockHelper.GetPropertySetInvocationMock<FakeModel, int>(
                 m => m.IntegerProp, 42, model).Object);
 
             // Assert.
-            dbContextMock.Verify(c => c.RegisterChangedModel(It.IsAny<IEntityModel>()), Times.Never());
+            dbContextMock.Verify(c => c.MarkChangeCandidate(It.IsAny<IEntityModel>()), Times.Never());
         }
 
         [Fact]
-        public void ResetChangedMembersUnregistersModel()
+        public void SetMarksModelAsChangeCandidate()
         {
             // Setup.
             var model = new FakeModel { Id = "id" };
             var interceptor = CreateBoundInterceptor();
-            EnableAuditing(interceptor, model);
 
+            // Action.
             interceptor.Intercept(InterceptorMockHelper.GetPropertySetInvocationMock<FakeModel, int>(
                 m => m.IntegerProp, 42, model).Object);
 
-            // Action.
-            interceptor.Intercept(InterceptorMockHelper.GetExternalMethodInvocationMock<FakeModel, IAuditable>(
-                nameof(IAuditable.ResetChangedMembers), [], model).Object);
-
             // Assert.
-            dbContextMock.Verify(c => c.UnregisterChangedModel(model), Times.Once());
+            dbContextMock.Verify(c => c.MarkChangeCandidate(model), Times.Once());
         }
 
         [Fact]
-        public void UnboundInterceptorSkipsRegistration()
+        public void UnboundInterceptorSkipsTracking()
         {
             // Setup.
             //no db execution context handler pushed: like a model created outside of a scope
             using var asyncLocalContext = AsyncLocalContext.Instance.InitAsyncLocalContext();
-            var interceptor = new AuditableInterceptor<FakeModel>(
-                [typeof(IAuditable)],
+            var interceptor = new ChangeTrackingInterceptor<FakeModel>(
+                [],
                 dbContextEngineMock.Object);
 
             var model = new FakeModel { Id = "id" };
-            EnableAuditing(interceptor, model);
 
             // Action.
             interceptor.Intercept(InterceptorMockHelper.GetPropertySetInvocationMock<FakeModel, int>(
                 m => m.IntegerProp, 42, model).Object);
 
             // Assert.
-            dbContextMock.Verify(c => c.RegisterChangedModel(It.IsAny<IEntityModel>()), Times.Never());
+            dbContextMock.Verify(c => c.MarkChangeCandidate(It.IsAny<IEntityModel>()), Times.Never());
         }
 
         // Helpers.
-        private AuditableInterceptor<FakeModel> CreateBoundInterceptor()
+        private ChangeTrackingInterceptor<FakeModel> CreateBoundInterceptor()
         {
             /* Create the interceptor inside a db context scope handler, like during
              * a model deserialization inside a repository call. */
             using var dbExecutionContext = new DbExecutionContextHandler(dbContextMock.Object);
-            return new AuditableInterceptor<FakeModel>(
-                [typeof(IAuditable)],
+            return new ChangeTrackingInterceptor<FakeModel>(
+                [],
                 dbContextEngineMock.Object);
         }
-
-        private static void EnableAuditing(AuditableInterceptor<FakeModel> interceptor, FakeModel model) =>
-            interceptor.Intercept(InterceptorMockHelper.GetExternalMethodInvocationMock<FakeModel, IAuditable>(
-                nameof(IAuditable.EnableAuditing), [], model).Object);
     }
 }

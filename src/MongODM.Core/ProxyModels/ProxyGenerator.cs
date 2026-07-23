@@ -214,7 +214,6 @@ namespace Etherna.MongODM.Core.ProxyModels
             // Add internal additional interfaces.
             if (modelType.GetInterfaces().Contains(typeof(IEntityModel))) //only if is IEntityModel.
             {
-                interfaces.Add(typeof(IAuditable));
                 interfaces.Add(typeof(IReferenceable));
             }
 
@@ -237,11 +236,11 @@ namespace Etherna.MongODM.Core.ProxyModels
                     i => i.IsGenericType && i.GetGenericTypeDefinition() == typeof(IEntityModel<>));
                 var entityModelKeyType = entityModelType.GetGenericArguments().Single();
 
-                //auditableInterceptor
-                var auditableInterceptorType = typeof(AuditableInterceptor<>).MakeGenericType(modelType);
+                //changeTrackingInterceptor
+                var changeTrackingInterceptorType = typeof(ChangeTrackingInterceptor<>).MakeGenericType(modelType);
 
                 interceptorInstancers.Add(dbContextEngine => (IInterceptor)Activator.CreateInstance(
-                    auditableInterceptorType,
+                    changeTrackingInterceptorType,
                     additionalInterfaces,
                     dbContextEngine)!);
 

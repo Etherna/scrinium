@@ -12,6 +12,7 @@
 // You should have received a copy of the GNU Lesser General Public License along with MongODM.
 // If not, see <https://www.gnu.org/licenses/>.
 
+using Etherna.MongoDB.Bson;
 using Etherna.MongoDB.Driver;
 using Etherna.MongoDB.Driver.Linq;
 using Etherna.MongODM.Core.Domain.Models;
@@ -38,12 +39,21 @@ namespace Etherna.MongODM.Core
         : IDbContext, IDbContextBuilder
     {
         // Fields.
-        private readonly HashSet<IEntityModel> changedModels = [];
+        /* Change tracking state keyed by reference identity: a model is tracked by the baseline
+         * of its serialized members captured at load, and a proxy signals its mutations marking
+         * itself a change candidate. Non proxy tracked models can't self signal, so they are all
+         * diffed at save. EntityModelBase equates by id, so an id based comparer would collapse
+         * distinct instances: identity is the required key here. */
+        private readonly HashSet<object> changeCandidates = new(ReferenceEqualityComparer.Instance);
+        private int changeTrackingSuppressions;
         private IEnumerable<IDbContext> childDbContexts = null!;
-        private readonly Dictionary<(IRepository Repository, object ModelId), IEntityModel> loadedModels = [];
         private IDbContextEngine engine = null!;
+        private readonly Dictionary<(IRepository Repository, object ModelId), IEntityModel> loadedModels = [];
         private readonly ILogger logger = logger ?? NullLogger.Instance;
+        private readonly Dictionary<object, BsonDocument> modelBsonDocuments = new(ReferenceEqualityComparer.Instance);
+        private readonly Dictionary<object, IRepository> modelSourceRepositories = new(ReferenceEqualityComparer.Instance);
         private IRepositoryRegistry? scopedRepositoryRegistry;
+        private readonly object trackingLock = new();
 
         // Initializer.
         public void AttachToEngine(
@@ -102,10 +112,8 @@ namespace Etherna.MongODM.Core
         {
             get
             {
-                lock (changedModels)
-                    return changedModels
-                        .Where(model => model is IAuditable { IsChanged: true })
-                        .ToList();
+                lock (trackingLock)
+                    return changeCandidates.Cast<IEntityModel>().ToList();
             }
         }
         public IRepository<OperationBase, string> DbOperations { get; private set; } = null!;
@@ -192,15 +200,31 @@ namespace Etherna.MongODM.Core
         public Task<DbMigrationOperation?> IsMigrationRunningAsync() =>
             engine.DbMigrationManager.IsMigrationRunningAsync(this);
 
-        public void RegisterChangedModel(IEntityModel model)
+        public void ClearChangeCandidate(IEntityModel model)
         {
             ArgumentNullException.ThrowIfNull(model);
 
-            bool registered;
-            lock (changedModels)
-                registered = changedModels.Add(model);
+            lock (trackingLock)
+                changeCandidates.Remove(model);
+        }
 
-            if (registered &&
+        public void MarkChangeCandidate(IEntityModel model)
+        {
+            ArgumentNullException.ThrowIfNull(model);
+
+            bool marked;
+            lock (trackingLock)
+            {
+                /* Ignore the mark until the model has a baseline: the member sets replayed while
+                 * deserializing run before the baseline capture, and must not be tracked. Ignore
+                 * it while merging loaded data into a model too, keeping the merges out of the
+                 * unit of work. */
+                if (changeTrackingSuppressions > 0 || !modelBsonDocuments.ContainsKey(model))
+                    return;
+                marked = changeCandidates.Add(model);
+            }
+
+            if (marked &&
                 TryGetSourceRepository(model) is { } repository)
                 logger.DbContextRegisteredChangedModel(engine.Options.DbName, repository.ModelIdToString(model), repository.Name);
         }
@@ -223,8 +247,11 @@ namespace Etherna.MongODM.Core
         public virtual async Task SaveChangesAsync(CancellationToken cancellationToken = default)
         {
             // Commit updated models replacement.
-            var changedModelsList = ChangedModelsList;
-            logger.DbContextSavingChanges(engine.Options.DbName, changedModelsList.Count);
+            /* The models to save are the change candidates flagged by proxy mutations, plus every
+             * non proxy tracked model: a non proxy instance can't self signal its mutations, so
+             * it's always diffed against its baseline. Diffs with no change save nothing. */
+            var modelsToSave = GetModelsToSave();
+            logger.DbContextSavingChanges(engine.Options.DbName, modelsToSave.Count);
 
             /* When transactions are enabled by options and supported by the connected
              * deployment, the changed models save into a single implicit transaction:
@@ -233,17 +260,17 @@ namespace Etherna.MongODM.Core
              * contexts stay out in any case: they save on their own connections, each
              * applying its own configuration. */
             if (engine.Options.EnableTransactionsWithReplicaSet &&
-                changedModelsList.Count > 0 &&
+                modelsToSave.Count > 0 &&
                 engine.SupportsTransactions &&
                 DbSessionHandler.TryGetCurrentSession(engine) is null)
             {
                 await ExecuteInTransactionAsync(
-                    () => SaveChangedModelsAsync(changedModelsList, cancellationToken),
+                    () => SaveChangedModelsAsync(modelsToSave, cancellationToken),
                     cancellationToken).ConfigureAwait(false);
             }
             else
             {
-                await SaveChangedModelsAsync(changedModelsList, cancellationToken).ConfigureAwait(false);
+                await SaveChangedModelsAsync(modelsToSave, cancellationToken).ConfigureAwait(false);
             }
 
             // Save changes on child dbcontexts.
@@ -320,17 +347,54 @@ namespace Etherna.MongODM.Core
         public Task<DbMigrationOperation?> TryStartMigrationAsync() =>
             engine.DbMigrationManager.TryStartDbContextMigrationAsync(this);
 
-        public void UnregisterChangedModel(IEntityModel model)
+        public void RemoveModelTracking(IEntityModel model)
         {
             ArgumentNullException.ThrowIfNull(model);
 
-            bool unregistered;
-            lock (changedModels)
-                unregistered = changedModels.Remove(model);
+            bool removed;
+            lock (trackingLock)
+            {
+                changeCandidates.Remove(model);
+                modelSourceRepositories.Remove(model);
+                removed = modelBsonDocuments.Remove(model);
+            }
 
-            if (unregistered &&
+            if (removed &&
                 TryGetSourceRepository(model) is { } repository)
                 logger.DbContextUnregisteredChangedModel(engine.Options.DbName, repository.ModelIdToString(model), repository.Name);
+        }
+
+        public void SetModelBsonDocument(IEntityModel model, BsonDocument bsonDocument)
+        {
+            ArgumentNullException.ThrowIfNull(model);
+            ArgumentNullException.ThrowIfNull(bsonDocument);
+
+            lock (trackingLock)
+                modelBsonDocuments[model] = bsonDocument;
+        }
+
+        public void SetModelSourceRepository(IEntityModel model, IRepository sourceRepository)
+        {
+            ArgumentNullException.ThrowIfNull(model);
+            ArgumentNullException.ThrowIfNull(sourceRepository);
+
+            lock (trackingLock)
+                modelSourceRepositories[model] = sourceRepository;
+        }
+
+        public IDisposable SuppressChangeTracking()
+        {
+            lock (trackingLock)
+                changeTrackingSuppressions++;
+            return new ChangeTrackingSuppression(this);
+        }
+
+        public BsonDocument? TryGetModelBsonDocument(IEntityModel model)
+        {
+            ArgumentNullException.ThrowIfNull(model);
+
+            lock (trackingLock)
+                return modelBsonDocuments.GetValueOrDefault(model);
         }
 
         public void UnregisterLoadedModel(object modelId, IEntityModel model)
@@ -360,6 +424,22 @@ namespace Etherna.MongODM.Core
             Task.CompletedTask;
 
         // Helpers.
+        private List<IEntityModel> GetModelsToSave()
+        {
+            var modelsToSave = new HashSet<object>(ReferenceEqualityComparer.Instance);
+            lock (trackingLock)
+            {
+                foreach (var candidate in changeCandidates)
+                    modelsToSave.Add(candidate);
+
+                //non proxy tracked models can't self signal their mutations: always diff them.
+                foreach (var model in modelBsonDocuments.Keys)
+                    if (!engine.ProxyGenerator.IsProxyType(model.GetType()))
+                        modelsToSave.Add(model);
+            }
+            return modelsToSave.Cast<IEntityModel>().ToList();
+        }
+
         private async Task SaveChangedModelsAsync(
             IReadOnlyCollection<IEntityModel> changedModelsList,
             CancellationToken cancellationToken)
@@ -376,11 +456,31 @@ namespace Etherna.MongODM.Core
             }
         }
 
-        private IRepository? TryGetSourceRepository(IEntityModel model) =>
-            (model as IReferenceable)?.SourceRepository
-                ?? TryGetRepositoryForModelType(engine.ProxyGenerator.PurgeProxyType(model.GetType()));
+        private IRepository? TryGetSourceRepository(IEntityModel model)
+        {
+            //a referenceable model carries its bound source; a tracked non proxy model (created
+            //or replaced) carries the repository that handled it; else resolve by model type.
+            if ((model as IReferenceable)?.SourceRepository is { } referenceableRepository)
+                return referenceableRepository;
+
+            lock (trackingLock)
+                if (modelSourceRepositories.TryGetValue(model, out var trackedRepository))
+                    return trackedRepository;
+
+            return TryGetRepositoryForModelType(engine.ProxyGenerator.PurgeProxyType(model.GetType()));
+        }
 
         private IRepository? TryGetRepositoryForModelType(Type modelType) =>
             scopedRepositoryRegistry?.TryGetRepositoryByHandledModelType(modelType);
+
+        // Nested types.
+        private sealed class ChangeTrackingSuppression(DbContext dbContext) : IDisposable
+        {
+            public void Dispose()
+            {
+                lock (dbContext.trackingLock)
+                    dbContext.changeTrackingSuppressions--;
+            }
+        }
     }
 }

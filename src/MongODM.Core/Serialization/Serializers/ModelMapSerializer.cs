@@ -115,9 +115,6 @@ namespace Etherna.MongODM.Core.Serialization.Serializers
                 model = task.Result;
             }
 
-            // Enable auditing.
-            (model as IAuditable)?.EnableAuditing();
-
             // Deduplicate model instance on the current db context scope (if proxy).
             /* One document materializes one instance inside a scope: a full load of a document
              * with an already loaded instance returns the existing one, upgrading it in place
@@ -136,7 +133,11 @@ namespace Etherna.MongODM.Core.Serialization.Serializers
                         currentDbContext.TryGetLoadedModel(ambientRepository, id) :
                         currentDbContext.TryGetLoadedModel(typeof(TModel), id);
                     if (loadedModel is null)
+                    {
+                        //capture the change tracking baseline from the just deserialized document.
                         currentDbContext.RegisterLoadedModel(id, (IEntityModel)model);
+                        currentDbContext.SetModelBsonDocument((IEntityModel)model, bsonDocument);
+                    }
                     else if (loadedModel is TModel typedLoadedModel)
                     {
                         if (typedLoadedModel is IReferenceable { IsSummary: true } referenceableModel)

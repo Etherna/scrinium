@@ -27,6 +27,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Linq.Expressions;
+using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -121,9 +122,20 @@ namespace Etherna.MongODM.Core.Repositories
 
         public virtual async Task CreateAsync(IEnumerable<TModel> models, CancellationToken cancellationToken = default)
         {
+            ArgumentNullException.ThrowIfNull(models);
+
             await CreateOnDBAsync(models, cancellationToken).ConfigureAwait(false);
 
             logger.RepositoryCreatedDocuments(Name, DbContext.Engine.Options.DbName, models.Select(m => m.Id!.ToString()!));
+
+            //capture the change tracking baselines of the created models, so their later changes are saved.
+            using (new DbExecutionContextHandler(DbContext))
+                foreach (var model in models)
+                    if (TrySerializeModelBsonDocument(model) is { } baseline)
+                    {
+                        DbContext.SetModelBsonDocument(model, baseline);
+                        DbContext.SetModelSourceRepository(model, this);
+                    }
 
             await DbContext.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
         }
@@ -135,6 +147,14 @@ namespace Etherna.MongODM.Core.Repositories
             await CreateOnDBAsync(model, cancellationToken).ConfigureAwait(false);
 
             logger.RepositoryCreatedDocument(Name, DbContext.Engine.Options.DbName, model.Id!.ToString()!);
+
+            //capture the change tracking baseline of the created model, so its later changes are saved.
+            using (new DbExecutionContextHandler(DbContext))
+                if (TrySerializeModelBsonDocument(model) is { } baseline)
+                {
+                    DbContext.SetModelBsonDocument(model, baseline);
+                    DbContext.SetModelSourceRepository(model, this);
+                }
 
             await DbContext.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
         }
@@ -160,7 +180,7 @@ namespace Etherna.MongODM.Core.Repositories
             await DeleteOnDBAsync(model, additionalFilters ?? [], cancellationToken).ConfigureAwait(false);
 
             // Remove from pending changes and loaded models.
-            DbContext.UnregisterChangedModel(model);
+            DbContext.RemoveModelTracking(model);
             DbContext.UnregisterLoadedModel(model.Id!, model);
 
             logger.RepositoryDeletedDocument(Name, DbContext.Engine.Options.DbName, model.Id!.ToString()!);
@@ -390,22 +410,16 @@ namespace Etherna.MongODM.Core.Repositories
             if (model is not TModel castedModel)
                 throw new MongodmInvalidEntityTypeException("Invalid model type");
 
-            // Fallback to a whole document replace when member level update isn't applicable.
-            if (options.SaveWithDocumentReplace)
+            var baseline = DbContext.TryGetModelBsonDocument(model);
+            if (baseline is null)
             {
-                logger.RepositorySaveFellBackToDocumentReplace(Name, DbContext.Engine.Options.DbName, castedModel.Id!.ToString()!, "document replace is required by repository options");
-                await ReplaceAsync(castedModel, cancellationToken: cancellationToken).ConfigureAwait(false);
-                return;
-            }
-            if (model is not IAuditable auditableModel ||
-                model is not IReferenceable)
-            {
-                logger.RepositorySaveFellBackToDocumentReplace(Name, DbContext.Engine.Options.DbName, castedModel.Id!.ToString()!, "model is not trackable member level");
+                //no baseline to diff against: persist with a whole document replace.
+                logger.RepositorySaveFellBackToDocumentReplace(Name, DbContext.Engine.Options.DbName, castedModel.Id!.ToString()!, "model is not change tracked");
                 await ReplaceAsync(castedModel, cancellationToken: cancellationToken).ConfigureAwait(false);
                 return;
             }
 
-            // Build the changed members update from the active schema.
+            // Build the changed members update diffing the model against its baseline.
             /* Members serialization needs the ambient db execution context, like the
              * documents serialization inside collection accesses. */
             using var dbExecutionContext = new DbExecutionContextHandler(DbContext);
@@ -413,23 +427,35 @@ namespace Etherna.MongODM.Core.Repositories
             var activeSchema = DbContext.Engine.MapRegistry.GetModelMap(
                 DbContext.Engine.ProxyGenerator.PurgeProxyType(model.GetType())).ActiveSchema;
 
+            /* The members safe to diff are all the mapped ones for a full model, but only the
+             * loaded ones for a summary: reading an unloaded summary member would trigger its
+             * lazy load, and it can't have changed anyway. The extra elements bag is excluded:
+             * it isn't a single mapped element, and change tracking never covered it. */
+            var extraElementsMemberMap = activeSchema.ExtraElementsMemberMap;
+            var membersToDiff = model is IReferenceable { IsSummary: true } summaryModel
+                ? activeSchema.AllMemberMaps.Where(mm => summaryModel.SettedMemberNames.Contains(mm.MemberName))
+                : activeSchema.AllMemberMaps;
+            if (extraElementsMemberMap is not null)
+                membersToDiff = membersToDiff.Where(mm => !ReferenceEquals(mm, extraElementsMemberMap));
+
+            var changedMembers = new List<MemberInfo>();
             var setDocument = new BsonDocument();
             var unsetDocument = new BsonDocument();
-            foreach (var memberInfo in auditableModel.ChangedMembers)
+            foreach (var memberMap in membersToDiff)
             {
-                var memberMap = activeSchema.AllMemberMaps.FirstOrDefault(mm => mm.MemberName == memberInfo.Name);
-                if (memberMap is null)
-                {
-                    /* A changed member not mapped by the active schema can't be updated
-                     * member level: persist with a whole document replace. */
-                    logger.RepositorySaveFellBackToDocumentReplace(Name, DbContext.Engine.Options.DbName, castedModel.Id!.ToString()!, $"changed member {memberInfo.Name} is not mapped by the active schema");
-                    await ReplaceAsync(castedModel, cancellationToken: cancellationToken).ConfigureAwait(false);
-                    return;
-                }
-
                 var memberValue = memberMap.Getter(castedModel);
-                if (memberMap.ShouldSerialize(castedModel, memberValue))
-                    setDocument[memberMap.ElementName] = SerializeMemberValue(memberMap, memberValue);
+                var currentValue = memberMap.ShouldSerialize(castedModel, memberValue)
+                    ? SerializeMemberValue(memberMap, memberValue)
+                    : null;
+                var baselineValue = baseline.TryGetValue(memberMap.ElementName, out var bv) ? bv : null;
+
+                // Skip unchanged members.
+                if (currentValue is null ? baselineValue is null : currentValue.Equals(baselineValue))
+                    continue;
+
+                changedMembers.Add(memberMap.MemberInfo);
+                if (currentValue is not null)
+                    setDocument[memberMap.ElementName] = currentValue;
                 else
                     unsetDocument[memberMap.ElementName] = 1;
             }
@@ -440,9 +466,18 @@ namespace Etherna.MongODM.Core.Repositories
             if (unsetDocument.ElementCount > 0)
                 update["$unset"] = unsetDocument;
 
+            // No change detected: nothing to persist.
             if (update.ElementCount == 0)
             {
-                logger.RepositorySaveFellBackToDocumentReplace(Name, DbContext.Engine.Options.DbName, castedModel.Id!.ToString()!, "no serializable changed members");
+                DbContext.ClearChangeCandidate(model);
+                logger.RepositorySavedModelChanges(Name, DbContext.Engine.Options.DbName, castedModel.Id!.ToString()!);
+                return;
+            }
+
+            // Whole document replace when required by the repository options.
+            if (options.SaveWithDocumentReplace)
+            {
+                logger.RepositorySaveFellBackToDocumentReplace(Name, DbContext.Engine.Options.DbName, castedModel.Id!.ToString()!, "document replace is required by repository options");
                 await ReplaceAsync(castedModel, cancellationToken: cancellationToken).ConfigureAwait(false);
                 return;
             }
@@ -488,13 +523,17 @@ namespace Etherna.MongODM.Core.Repositories
             if (model is IReferenceable { IsSummary: true } referenceableModel)
                 referenceableModel.MergeFullModel(updatedModel);
             else
-                RefreshModel(castedModel, updatedModel);
+                RefreshModel(DbContext, castedModel, updatedModel);
+
+            // Refresh the baseline: the saved model now matches the persisted document.
+            if (TrySerializeModelBsonDocument(castedModel) is { } newBaseline)
+                DbContext.SetModelBsonDocument(model, newBaseline);
 
             // Update dependent documents.
-            DbContext.Engine.DbMaintainer.OnUpdatedModel<TKey>(auditableModel, this);
+            DbContext.Engine.DbMaintainer.OnUpdatedModel<TKey>(castedModel, changedMembers, this);
 
-            // Reset changed members.
-            auditableModel.ResetChangedMembers();
+            // Clear the change candidate.
+            DbContext.ClearChangeCandidate(model);
 
             logger.RepositorySavedModelChanges(Name, DbContext.Engine.Options.DbName, castedModel.Id!.ToString()!);
         }
@@ -660,7 +699,7 @@ namespace Etherna.MongODM.Core.Repositories
                  * of work and of next loads deduplication. */
                 if (oldDocument is not null)
                 {
-                    (oldDocument as IAuditable)?.DisableAuditing();
+                    DbContext.RemoveModelTracking(oldDocument);
                     DbContext.UnregisterLoadedModel(oldDocument.Id!, oldDocument);
                 }
 
@@ -722,19 +761,18 @@ namespace Etherna.MongODM.Core.Repositories
                 cancellationToken);
 
         // Helpers.
-        private static void RefreshModel(TModel model, TModel updatedModel)
+        private static void RefreshModel(IDbContext dbContext, TModel model, TModel updatedModel)
         {
-            // Temporary disable auditing.
-            (model as IAuditable)?.DisableAuditing();
-
-            foreach (var member in ReflectionHelper.GetWritableInstanceProperties(typeof(TModel)))
+            /* Suppress change tracking on the refresh: the copied members are the just persisted
+             * document state, not changes to persist. */
+            using (dbContext.SuppressChangeTracking())
             {
-                var value = ReflectionHelper.GetValue(updatedModel, member);
-                ReflectionHelper.SetValue(model, member, value);
+                foreach (var member in ReflectionHelper.GetWritableInstanceProperties(typeof(TModel)))
+                {
+                    var value = ReflectionHelper.GetValue(updatedModel, member);
+                    ReflectionHelper.SetValue(model, member, value);
+                }
             }
-
-            // Reenable auditing.
-            (model as IAuditable)?.EnableAuditing();
         }
 
         private static BsonValue SerializeMemberValue(BsonMemberMap memberMap, object? memberValue)
@@ -747,6 +785,25 @@ namespace Etherna.MongODM.Core.Repositories
             memberMap.GetSerializer().Serialize(context, memberValue);
             bsonWriter.WriteEndDocument();
             return document["value"];
+        }
+
+        private BsonDocument? TrySerializeModelBsonDocument(TModel model)
+        {
+            //an unmapped model can't be serialized, so it can't be change tracked either.
+            var serializer = DbContext.Engine.MapRegistry.GetMappedSerializer(typeof(TModel));
+            if (serializer is null)
+                return null;
+
+            var wrapper = new BsonDocument();
+            using (var bsonWriter = new BsonDocumentWriter(wrapper))
+            {
+                var context = BsonSerializationContext.CreateRoot(bsonWriter);
+                bsonWriter.WriteStartDocument();
+                bsonWriter.WriteName("model");
+                serializer.Serialize(context, model);
+                bsonWriter.WriteEndDocument();
+            }
+            return wrapper["model"].AsBsonDocument;
         }
 
         // Protected virtual methods.
@@ -837,17 +894,28 @@ namespace Etherna.MongODM.Core.Repositories
                 // Update dependent documents.
                 /* Skip when the replace matched no document: the model has been deleted
                  * concurrently, like by a bulk delete with filter, and a dependencies
-                 * update task would fail reloading it. */
+                 * update task would fail reloading it. A whole document replace can change any
+                 * member, so all the reference members propagate to their dependent summaries. */
                 if (updateDependentDocuments)
                 {
                     if (result.MatchedCount > 0)
-                        DbContext.Engine.DbMaintainer.OnUpdatedModel<TKey>((IAuditable)model, this);
+                    {
+                        var activeSchema = DbContext.Engine.MapRegistry.GetModelMap(
+                            DbContext.Engine.ProxyGenerator.PurgeProxyType(model.GetType())).ActiveSchema;
+                        DbContext.Engine.DbMaintainer.OnUpdatedModel<TKey>(
+                            model, activeSchema.AllMemberMaps.Select(mm => mm.MemberInfo), this);
+                    }
                     else
                         logger.RepositorySkippedDependenciesUpdate(Name, DbContext.Engine.Options.DbName, model.Id!.ToString()!);
                 }
 
-                // Reset changed members.
-                ((IAuditable)model).ResetChangedMembers();
+                // Refresh the change tracking: the replaced document is now the model state.
+                if (TrySerializeModelBsonDocument(model) is { } newBaseline)
+                {
+                    DbContext.SetModelBsonDocument(model, newBaseline);
+                    DbContext.SetModelSourceRepository(model, this);
+                }
+                DbContext.ClearChangeCandidate(model);
 
                 logger.RepositoryReplacedDocument(Name, DbContext.Engine.Options.DbName, model.Id!.ToString()!);
             });
