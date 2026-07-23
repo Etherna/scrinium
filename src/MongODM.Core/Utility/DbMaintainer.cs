@@ -14,12 +14,13 @@
 
 using Etherna.MongODM.Core.Domain.Models;
 using Etherna.MongODM.Core.Extensions;
-using Etherna.MongODM.Core.ProxyModels;
 using Etherna.MongODM.Core.Repositories;
 using Etherna.MongODM.Core.Tasks;
 using Microsoft.Extensions.Logging;
 using System;
+using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
 
 namespace Etherna.MongODM.Core.Utility
 {
@@ -72,15 +73,16 @@ namespace Etherna.MongODM.Core.Utility
          * If referred document "referredDoc" updates it's fields "b" and "c" with a new value,
          * "originDoc1.a" and "originDoc2.b" fields would be updated by this process.
          */
-        public void OnUpdatedModel<TKey>(IAuditable updatedModel, IRepository referenceRepository)
+        public void OnUpdatedModel<TKey>(IEntityModel updatedModel, IEnumerable<MemberInfo> changedMembers, IRepository referenceRepository)
         {
             ArgumentNullException.ThrowIfNull(updatedModel);
+            ArgumentNullException.ThrowIfNull(changedMembers);
             ArgumentNullException.ThrowIfNull(referenceRepository);
             if (updatedModel is not IEntityModel<TKey>)
                 throw new ArgumentException($"Model is not of type {nameof(IEntityModel<TKey>)}", nameof(updatedModel));
 
             // Find all possibly involved member maps with changes, from all model maps. Select only referenced members.
-            var referenceMemberMaps = updatedModel.ChangedMembers
+            var referenceMemberMaps = changedMembers
                 .SelectMany(updatedMemberInfo => dbContextEngine.MapRegistry.GetMemberMapsFromMemberInfo(updatedMemberInfo))
                 .Where(memberMap => memberMap.IsEntityReferenceMember);
 

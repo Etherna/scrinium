@@ -185,7 +185,7 @@ namespace Etherna.MongODM.Core
                 .Returns(Task.CompletedTask);
 
             var modelMock = NewChangedModelMock(repositoryMock.Object);
-            dbContext.RegisterChangedModel(modelMock.Object);
+            MarkModelChanged(dbContext, modelMock.Object);
 
             // Action.
             await dbContext.SaveChangesAsync();
@@ -216,7 +216,7 @@ namespace Etherna.MongODM.Core
                 .Returns(Task.CompletedTask);
 
             var modelMock = NewChangedModelMock(repositoryMock.Object);
-            dbContext.RegisterChangedModel(modelMock.Object);
+            MarkModelChanged(dbContext, modelMock.Object);
 
             // Action.
             await dbContext.ExecuteInTransactionAsync(
@@ -239,7 +239,7 @@ namespace Etherna.MongODM.Core
 
             var repositoryMock = NewSourceRepositoryMock();
             var modelMock = NewChangedModelMock(repositoryMock.Object);
-            dbContext.RegisterChangedModel(modelMock.Object);
+            MarkModelChanged(dbContext, modelMock.Object);
 
             // Action.
             await dbContext.SaveChangesAsync();
@@ -262,7 +262,7 @@ namespace Etherna.MongODM.Core
 
             var repositoryMock = NewSourceRepositoryMock();
             var modelMock = NewChangedModelMock(repositoryMock.Object);
-            noTransactionsDbContext.RegisterChangedModel(modelMock.Object);
+            MarkModelChanged(noTransactionsDbContext, modelMock.Object);
 
             // Action.
             await noTransactionsDbContext.SaveChangesAsync();
@@ -370,10 +370,16 @@ namespace Etherna.MongODM.Core
         private static ClusterDescription NewClusterDescription(ClusterType type) =>
             new(new ClusterId(0), false, null, type, []);
 
+        private static void MarkModelChanged(IDbContext targetDbContext, IEntityModel model)
+        {
+            //track the model with a baseline, then flag it changed, like a mutation would
+            targetDbContext.SetModelBsonDocument(model, []);
+            targetDbContext.MarkChangeCandidate(model);
+        }
+
         private static Mock<IEntityModel> NewChangedModelMock(IRepository sourceRepository)
         {
             var modelMock = new Mock<IEntityModel>();
-            modelMock.As<IAuditable>().Setup(a => a.IsChanged).Returns(true);
             modelMock.As<IReferenceable>().Setup(r => r.SourceRepository).Returns(sourceRepository);
             return modelMock;
         }

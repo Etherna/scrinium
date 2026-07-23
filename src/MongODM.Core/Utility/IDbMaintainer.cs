@@ -12,8 +12,10 @@
 // You should have received a copy of the GNU Lesser General Public License along with MongODM.
 // If not, see <https://www.gnu.org/licenses/>.
 
-using Etherna.MongODM.Core.ProxyModels;
+using Etherna.MongODM.Core.Domain.Models;
 using Etherna.MongODM.Core.Repositories;
+using System.Collections.Generic;
+using System.Reflection;
 
 namespace Etherna.MongODM.Core.Utility
 {
@@ -24,11 +26,13 @@ namespace Etherna.MongODM.Core.Utility
     {
         // Methods.
         /// <summary>
-        /// Method to invoke when an auditable model is updated.
+        /// Method to invoke when a tracked model is updated, to propagate its changes to the
+        /// summaries of the documents referencing it.
         /// </summary>
         /// <typeparam name="TKey">Updated model Key type</typeparam>
         /// <param name="updatedModel">The updated model</param>
+        /// <param name="changedMembers">The updated model changed members</param>
         /// <param name="referenceRepository">The repository of the updated model</param>
-        void OnUpdatedModel<TKey>(IAuditable updatedModel, IRepository referenceRepository);
+        void OnUpdatedModel<TKey>(IEntityModel updatedModel, IEnumerable<MemberInfo> changedMembers, IRepository referenceRepository);
     }
 }

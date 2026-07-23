@@ -23,23 +23,27 @@ namespace Etherna.MongODM.IntegrationTests
 {
     public interface ITestDbContext : IDbContext
     {
+        IRepository<AccountBase, string> Accounts { get; }
         IRepository<Blog, string> ArchivedBlogs { get; }
         IRepository<Post, string> ArchivedPosts { get; }
         IRepository<Blog, string> Blogs { get; }
         IRepository<Post, string> Posts { get; }
+        IRepository<TagBag, string> TagBags { get; }
     }
 
     internal sealed class TestDbContext : DbContext, ITestDbContext
     {
         // Properties.
         //repositories
+        public IRepository<AccountBase, string> Accounts { get; } = new Repository<AccountBase, string>("accounts");
         public IRepository<Blog, string> ArchivedBlogs { get; } = new Repository<Blog, string>("archivedBlogs");
         public IRepository<Post, string> ArchivedPosts { get; } = new Repository<Post, string>("archivedPosts");
         public IRepository<Blog, string> Blogs { get; } = new Repository<Blog, string>("blogs");
         public IRepository<Post, string> Posts { get; } = new Repository<Post, string>("posts");
+        public IRepository<TagBag, string> TagBags { get; } = new Repository<TagBag, string>("tagBags");
 
         // Protected properties.
         protected override IEnumerable<IModelMapsCollector> ModelMapsCollectors =>
-            [new BlogMap(), new PostMap()];
+            [new AccountMap(), new BlogMap(), new PostMap(), new TagBagMap()];
     }
 }

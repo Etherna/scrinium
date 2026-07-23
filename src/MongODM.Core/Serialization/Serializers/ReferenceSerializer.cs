@@ -226,9 +226,6 @@ namespace Etherna.MongODM.Core.Serialization.Serializers
                     ((IReferenceable)model).SetAsSummary(((IReferenceable)model).SettedMemberNames);
                 }
 
-                // Enable auditing.
-                ((IAuditable)model).EnableAuditing();
-
                 // Deduplicate model instance on the current db context scope.
                 /* A reference to an already loaded document returns the existing instance.
                  * The first loaded instance becomes the canonical one for its document, but a
@@ -243,7 +240,11 @@ namespace Etherna.MongODM.Core.Serialization.Serializers
                             currentDbContext.TryGetLoadedModel(sourceRepositorySelector(currentDbContext), id) :
                             currentDbContext.TryGetLoadedModel(typeof(TModelBase), id);
                         if (loadedModel is null)
+                        {
+                            //capture the change tracking baseline from the just deserialized summary document.
                             currentDbContext.RegisterLoadedModel(id, model);
+                            currentDbContext.SetModelBsonDocument(model, bsonDocument);
+                        }
                         else if (loadedModel is TModelBase typedLoadedModel)
                         {
                             if (typedLoadedModel is IReferenceable { IsSummary: true } referenceableModel)

@@ -30,6 +30,7 @@ namespace Etherna.MongODM.Core.Serialization.Mapping
         string? BaseSchemaId { get; }
         string Discriminator { get; }
         bool DiscriminatorIsRequired { get; }
+        BsonMemberMap? ExtraElementsMemberMap { get; }
         IEnumerable<IMemberMap> GeneratedMemberMaps { get; }
         bool HasRootClass { get; }
         IMemberMap? IdMemberMap { get; }
