@@ -103,5 +103,32 @@ namespace Etherna.MongODM.IntegrationTests
             Assert.Equal(post.Id, foundBlog.LastPost!.Id);
             Assert.Single(foundBlog.Posts);
         }
+
+        [Fact]
+        public async Task ReplaceConvertsADocumentToANewTypeInPlace()
+        {
+            /* MODM-83: a document handled by a base type repository can change its concrete type
+             * keeping the same id. The converted instance is a brand new, non proxy object: the
+             * replace must persist it, upgrading the stored document to the new type. */
+
+            // Setup.
+            using var contextHandler = AsyncLocalContext.Instance.InitAsyncLocalContext();
+            var web2Account = new Web2Account("alice");
+            await dbContext.Accounts.CreateAsync(web2Account);
+
+            // Action.
+            //convert to a new instance of a different type, same id, and replace
+            var web3Account = new Web3Account(web2Account, "0xabc");
+            await dbContext.Accounts.ReplaceAsync(web3Account);
+
+            // Assert.
+            using var readScope = fixture.ServiceProvider.CreateScope();
+            var readDbContext = readScope.ServiceProvider.GetRequiredService<ITestDbContext>();
+            using var readContextHandler = AsyncLocalContext.Instance.InitAsyncLocalContext();
+            var foundAccount = await readDbContext.Accounts.FindOneAsync(web2Account.Id);
+            var foundWeb3Account = Assert.IsAssignableFrom<Web3Account>(foundAccount);
+            Assert.Equal("alice", foundWeb3Account.Username);
+            Assert.Equal("0xabc", foundWeb3Account.EtherAddress);
+        }
     }
 }
