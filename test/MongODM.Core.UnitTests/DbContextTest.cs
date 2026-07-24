@@ -18,6 +18,7 @@ using Etherna.MongoDB.Driver.Core.Clusters;
 using Etherna.MongODM.Core.Domain.Models;
 using Etherna.MongODM.Core.ExecContext.AsyncLocal;
 using Etherna.MongODM.Core.Models;
+using Etherna.MongODM.Core.Exceptions;
 using Etherna.MongODM.Core.Options;
 using Etherna.MongODM.Core.ProxyModels;
 using Etherna.MongODM.Core.Repositories;
@@ -42,6 +43,7 @@ namespace Etherna.MongODM.Core
         private readonly Mock<IDbDependencies> dependenciesMock = new();
         private readonly Mock<IMongoClient> mongoClientMock = new();
         private readonly Mock<IMongoDatabase> mongoDatabaseMock = new();
+        private readonly DbContextOptions options = new();
         private readonly Mock<IProxyGenerator> proxyGeneratorMock = new();
         
         // Constructor.
@@ -91,7 +93,7 @@ namespace Etherna.MongODM.Core
             engine = dbContext.BuildEngine(
                 dependenciesMock.Object,
                 mongoClientMock.Object,
-                new DbContextOptions());
+                options);
             dbContext.AttachToEngine(engine, [], dependenciesMock.Object.RepositoryRegistry);
         }
 
@@ -103,6 +105,32 @@ namespace Etherna.MongODM.Core
         }
         
         // Tests.
+        [Fact]
+        public void OnImplicitLazyLoadDeniesLoadsWithThrowMode()
+        {
+            // Setup.
+            options.ImplicitLazyLoad = ImplicitLazyLoadMode.Throw;
+
+            // Action and assert.
+            var exception = Assert.Throws<MongodmLazyLoadingException>(
+                () => dbContext.OnImplicitLazyLoad(typeof(FakeModel), "StringProp"));
+            Assert.Contains(nameof(FakeModel), exception.Message, StringComparison.Ordinal);
+            Assert.Contains("StringProp", exception.Message, StringComparison.Ordinal);
+        }
+
+        [Theory]
+        [InlineData(ImplicitLazyLoadMode.Silent)]
+        [InlineData(ImplicitLazyLoadMode.Warn)]
+        public void OnImplicitLazyLoadAllowsLoadsWithNotThrowingModes(ImplicitLazyLoadMode mode)
+        {
+            // Setup.
+            options.ImplicitLazyLoad = mode;
+
+            // Action, asserting no throw.
+            dbContext.OnImplicitLazyLoad(typeof(FakeModel), "StringProp");
+            dbContext.OnImplicitLazyLoad(typeof(FakeModel), "StringProp"); //repeated: warn dedups per scope
+        }
+
         [Fact]
         public async Task ExecuteInTransactionCommitsAndEnlistsOperations()
         {

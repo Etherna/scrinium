@@ -20,7 +20,7 @@ namespace Etherna.MongODM.Core.Extensions
 {
     /*
      * Always group similar log delegates by type, always use incremental event ids.
-     * Last event id is: 42
+     * Last event id is: 43
      */
     public static class LoggerExtensions
     {
@@ -245,6 +245,12 @@ namespace Etherna.MongODM.Core.Extensions
                 "UpdateDocDependenciesTask started on DbContext {DbContextType} with reference repository {ReferenceRepositoryName}, searching for model Id {ModelId} on Id's member maps: {IdMemberMapIdentifiers}");
 
         //*** WARNING LOGS ***
+        private static readonly Action<ILogger, string, string, string?, Exception> _dbContextImplicitLazyLoad =
+            LoggerMessage.Define<string, string, string?>(
+                LogLevel.Warning,
+                new EventId(43, nameof(DbContextImplicitLazyLoad)),
+                "DbContext {DbName} implicitly lazy loaded model type {ModelType} reading member {MemberName}: prefer an explicit preload with LoadValuesAsync");
+
         private static readonly Action<ILogger, string, Exception> _dbContextAbortedTransaction =
             LoggerMessage.Define<string>(
                 LogLevel.Warning,
@@ -269,6 +275,9 @@ namespace Etherna.MongODM.Core.Extensions
 
         public static void DbContextCommittedTransaction(this ILogger logger, string dbName) =>
             _dbContextCommittedTransaction(logger, dbName, null!);
+
+        public static void DbContextImplicitLazyLoad(this ILogger logger, string dbName, string modelType, string? memberName) =>
+            _dbContextImplicitLazyLoad(logger, dbName, modelType, memberName, null!);
 
         public static void DbContextInitialized(this ILogger logger, string dbName) =>
             _dbContextInitialized(logger, dbName, null!);

@@ -421,7 +421,7 @@ namespace Etherna.MongODM.Core.Generators
             b.AppendLine("             * handing out mutable state marks the model as a change candidate, because a");
             b.AppendLine("             * change could then escape interception. */");
             b.AppendLine("            if (proxyIsSummary && !proxySettedMemberNames.ContainsKey(memberName))");
-            b.AppendLine("                ProxyFullLoad();");
+            b.AppendLine("                ProxyFullLoad(memberName);");
             b.AppendLine("            if (exposesMutation)");
             b.AppendLine("                MarkProxyChangeCandidate();");
             b.AppendLine("        }");
@@ -442,7 +442,7 @@ namespace Etherna.MongODM.Core.Generators
             b.AppendLine("            if (alteredMemberNames is null)");
             b.AppendLine("            {");
             b.AppendLine("                if (proxyIsSummary)");
-            b.AppendLine("                    ProxyFullLoad();");
+            b.AppendLine("                    ProxyFullLoad(null);");
             b.AppendLine("                return;");
             b.AppendLine("            }");
             b.AppendLine("            foreach (var memberName in alteredMemberNames)");
@@ -451,7 +451,7 @@ namespace Etherna.MongODM.Core.Generators
             b.AppendLine("                {");
             b.AppendLine("                    if (!proxySettedMemberNames.ContainsKey(memberName))");
             b.AppendLine("                    {");
-            b.AppendLine("                        ProxyFullLoad();");
+            b.AppendLine("                        ProxyFullLoad(memberName);");
             b.AppendLine("                        break;");
             b.AppendLine("                    }");
             b.AppendLine("                }");
@@ -462,7 +462,7 @@ namespace Etherna.MongODM.Core.Generators
             b.AppendLine("            }");
             b.AppendLine("        }");
             b.AppendLine();
-            b.AppendLine("        private void ProxyFullLoad()");
+            b.AppendLine("        private void ProxyFullLoad(string? triggeringMemberName)");
             b.AppendLine("        {");
             b.AppendLine("            if (!proxyIsSummary)");
             b.AppendLine("                return;");
@@ -474,6 +474,9 @@ namespace Etherna.MongODM.Core.Generators
             b.AppendLine("            if (proxySourceRepository is null)");
             b.AppendLine($"                throw new global::System.InvalidOperationException(");
             b.AppendLine($"                    \"Model of type {info.ModelName} is not bound to a db context scope, and can't lazy load\");");
+            b.AppendLine();
+            b.AppendLine("            // React to the implicit lazy load, honoring the db context options.");
+            b.AppendLine($"            proxySourceRepository.DbContext.OnImplicitLazyLoad(typeof({info.ModelFullName}), triggeringMemberName);");
             b.AppendLine();
             b.AppendLine("            // Merge the full document to the current model, with a sync over async load.");
             b.AppendLine("            var task = proxySourceRepository.TryFindOneAsync(base.Id!);");

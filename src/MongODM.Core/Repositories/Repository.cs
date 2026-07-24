@@ -34,6 +34,7 @@ using System.Threading.Tasks;
 namespace Etherna.MongODM.Core.Repositories
 {
     public class Repository<TModel, TKey>(RepositoryOptions<TModel> options) :
+        IFullModelsLoader,
         IRepository<TModel, TKey>
         where TModel : class, IEntityModel<TKey>
     {
@@ -761,6 +762,27 @@ namespace Etherna.MongODM.Core.Repositories
                 onInsertModel,
                 [setField],
                 cancellationToken);
+
+        // Internals.
+        Task IFullModelsLoader.LoadFullModelsAsync(IEnumerable<IEntityModel> models, CancellationToken cancellationToken)
+        {
+            ArgumentNullException.ThrowIfNull(models);
+
+            var ids = models.Cast<TModel>()
+                            .Select(m => m.Id)
+                            .Where(id => id is not null)
+                            .Distinct()
+                            .ToArray();
+            if (ids.Length == 0)
+                return Task.CompletedTask;
+
+            /* Read the full documents in a single query: their deserialization runs on the
+             * current scope, merging into the loaded summary instances through the identity
+             * map. The materialized results are that merge, and don't need to be returned. */
+            return AccessToCollectionAsync(async collection =>
+                await collection.Find(Builders<TModel>.Filter.In(m => m.Id, ids))
+                                .ToListAsync(cancellationToken).ConfigureAwait(false));
+        }
 
         // Helpers.
         private static void RefreshModel(IDbContext dbContext, TModel model, TModel updatedModel)

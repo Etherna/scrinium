@@ -30,6 +30,14 @@ namespace Etherna.MongODM.Core.Options
         public bool EnableTransactionsWithReplicaSet { get; }
 
         public string? Identifier { get; }
+
+        /// <summary>
+        /// How the db context reacts to implicit lazy loads of summary model members:
+        /// load logging a warning (the default), load silently, or deny them throwing.
+        /// Preload members explicitly with <see cref="IDbContext.LoadValuesAsync{TModel}(TModel, System.Linq.Expressions.Expression{System.Func{TModel, object?}}[])"/>.
+        /// </summary>
+        public ImplicitLazyLoadMode ImplicitLazyLoad { get; }
+
         public ModelMapVersionOptions ModelMapVersion { get; }
     }
 }

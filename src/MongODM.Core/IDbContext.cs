@@ -18,6 +18,7 @@ using Etherna.MongODM.Core.Migration;
 using Etherna.MongODM.Core.Repositories;
 using System;
 using System.Collections.Generic;
+using System.Linq.Expressions;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -113,6 +114,37 @@ namespace Etherna.MongODM.Core
         Task<DbMigrationOperation?> IsMigrationRunningAsync();
 
         /// <summary>
+        /// True if the member is already loaded on the model: always true on a full model,
+        /// true on a summary model only for its loaded members. A member not loaded reads
+        /// through an implicit lazy load, honoring <see cref="Options.IDbContextOptions.ImplicitLazyLoad"/>.
+        /// </summary>
+        /// <param name="model">The model</param>
+        /// <param name="member">The member to verify, as a direct member access expression</param>
+        bool IsMemberLoaded<TModel>(TModel model, Expression<Func<TModel, object?>> member)
+            where TModel : class, IEntityModel;
+
+        /// <summary>
+        /// Ensure that the members are loaded on the model: a no-op when the model is full,
+        /// or when a summary model already loaded all of them; otherwise the full document
+        /// loads with a single query, merging in place. Members are a precondition, not a
+        /// projection: any load is always of the whole document.
+        /// </summary>
+        /// <param name="model">The model to preload</param>
+        /// <param name="members">The members to ensure, as direct member access expressions</param>
+        Task LoadValuesAsync<TModel>(TModel model, params Expression<Func<TModel, object?>>[] members)
+            where TModel : class, IEntityModel;
+
+        /// <summary>
+        /// Ensure that the members are loaded on every model of the collection: the full
+        /// documents of the missing ones load with a single query per source repository,
+        /// merging in place. The batch replacement of per instance lazy loads.
+        /// </summary>
+        /// <param name="models">The models to preload</param>
+        /// <param name="members">The members to ensure, as direct member access expressions</param>
+        Task LoadValuesAsync<TModel>(IEnumerable<TModel> models, params Expression<Func<TModel, object?>>[] members)
+            where TModel : class, IEntityModel;
+
+        /// <summary>
         /// Remove a model from the change candidates of this db context instance, after its
         /// changes have been saved. Its baseline is kept, so following mutations are tracked.
         /// </summary>
@@ -126,6 +158,16 @@ namespace Etherna.MongODM.Core
         /// </summary>
         /// <param name="model">The mutated model</param>
         void MarkChangeCandidate(IEntityModel model);
+
+        /// <summary>
+        /// React to an implicit lazy load, before it runs, honoring
+        /// <see cref="Options.IDbContextOptions.ImplicitLazyLoad"/>: log a warning once per
+        /// member per scope, stay silent, or deny the load throwing
+        /// <see cref="Exceptions.MongodmLazyLoadingException"/>. Invoked by the proxy models.
+        /// </summary>
+        /// <param name="modelType">The summary model type</param>
+        /// <param name="memberName">The read member, null for an unanalyzed domain method</param>
+        void OnImplicitLazyLoad(Type modelType, string? memberName);
 
         /// <summary>
         /// Register a model instance as the loaded one for its document on this db context

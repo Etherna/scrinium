@@ -30,6 +30,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Linq.Expressions;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -54,6 +55,7 @@ namespace Etherna.MongODM.Core
         private readonly Dictionary<object, IRepository> modelSourceRepositories = new(ReferenceEqualityComparer.Instance);
         private IRepositoryRegistry? scopedRepositoryRegistry;
         private readonly object trackingLock = new();
+        private readonly HashSet<(Type ModelType, string? MemberName)> warnedImplicitLazyLoads = [];
 
         // Initializer.
         public void AttachToEngine(
@@ -200,6 +202,73 @@ namespace Etherna.MongODM.Core
         public Task<DbMigrationOperation?> IsMigrationRunningAsync() =>
             engine.DbMigrationManager.IsMigrationRunningAsync(this);
 
+        public bool IsMemberLoaded<TModel>(TModel model, Expression<Func<TModel, object?>> member)
+            where TModel : class, IEntityModel
+        {
+            ArgumentNullException.ThrowIfNull(model);
+            ArgumentNullException.ThrowIfNull(member);
+
+            if (model is not IReferenceable { IsSummary: true } referenceable)
+                return true;
+            return referenceable.SettedMemberNames.Contains(
+                ReflectionHelper.GetMemberInfoFromLambda(member).Name);
+        }
+
+        public Task LoadValuesAsync<TModel>(TModel model, params Expression<Func<TModel, object?>>[] members)
+            where TModel : class, IEntityModel
+        {
+            ArgumentNullException.ThrowIfNull(model);
+            return LoadValuesAsync([model], members);
+        }
+
+        public async Task LoadValuesAsync<TModel>(IEnumerable<TModel> models, params Expression<Func<TModel, object?>>[] members)
+            where TModel : class, IEntityModel
+        {
+            ArgumentNullException.ThrowIfNull(models);
+            ArgumentNullException.ThrowIfNull(members);
+
+            var memberNames = members.Select(member => ReflectionHelper.GetMemberInfoFromLambda(member).Name).ToArray();
+
+            /* Select the summary models still missing some requested member. The members are
+             * only the no-op precondition: any load is always of the whole document. */
+            List<(IEntityModel Model, IRepository Repository)> modelsToLoad = [];
+            foreach (var model in models)
+            {
+                if (model is not IReferenceable { IsSummary: true } referenceable)
+                    continue;
+
+                var loadedMemberNames = referenceable.SettedMemberNames.ToHashSet(StringComparer.Ordinal);
+                if (memberNames.All(loadedMemberNames.Contains))
+                    continue;
+
+                var repository = referenceable.SourceRepository
+                    ?? throw new InvalidOperationException(
+                        $"Model of type {typeof(TModel).Name} is not bound to a db context scope, and can't load");
+                modelsToLoad.Add((model, repository));
+            }
+
+            /* One query per source repository: the loaded documents deserialize on this
+             * scope, merging in place into the summary instances through the identity map.
+             * Custom repository implementations without the batch surface load per instance. */
+            foreach (var repositoryGroup in modelsToLoad.GroupBy(pair => pair.Repository))
+            {
+                if (repositoryGroup.Key is IFullModelsLoader fullModelsLoader)
+                {
+                    await fullModelsLoader.LoadFullModelsAsync(
+                        repositoryGroup.Select(pair => pair.Model)).ConfigureAwait(false);
+                }
+                else
+                {
+                    foreach (var (model, repository) in repositoryGroup)
+                    {
+                        var modelId = ReflectionHelper.GetValue(model, model.GetType().GetProperty("Id")!);
+                        if (modelId is not null)
+                            await repository.TryFindOneAsync(modelId).ConfigureAwait(false);
+                    }
+                }
+            }
+        }
+
         public void ClearChangeCandidate(IEntityModel model)
         {
             ArgumentNullException.ThrowIfNull(model);
@@ -227,6 +296,31 @@ namespace Etherna.MongODM.Core
             if (marked &&
                 TryGetSourceRepository(model) is { } repository)
                 logger.DbContextRegisteredChangedModel(engine.Options.DbName, repository.ModelIdToString(model), repository.Name);
+        }
+
+        public void OnImplicitLazyLoad(Type modelType, string? memberName)
+        {
+            ArgumentNullException.ThrowIfNull(modelType);
+
+            switch (engine.Options.ImplicitLazyLoad)
+            {
+                case ImplicitLazyLoadMode.Silent:
+                    break;
+
+                case ImplicitLazyLoadMode.Throw:
+                    throw new MongodmLazyLoadingException(
+                        $"Denied implicit lazy load on model type {modelType.Name}" +
+                        (memberName is null ? " from a domain method" : $", member {memberName}") +
+                        $": preload members with {nameof(LoadValuesAsync)}, or allow implicit lazy loads on the db context options");
+
+                default:
+                    bool firstOccurrence;
+                    lock (trackingLock)
+                        firstOccurrence = warnedImplicitLazyLoads.Add((modelType, memberName));
+                    if (firstOccurrence)
+                        logger.DbContextImplicitLazyLoad(engine.Options.DbName, modelType.Name, memberName);
+                    break;
+            }
         }
 
         public void RegisterLoadedModel(object modelId, IEntityModel model)
