@@ -54,13 +54,6 @@ namespace Etherna.MongODM.AspNetCore.Extensions
         public static IMongODMConfiguration AddMongODM<TTaskRunner>(
             this IServiceCollection services,
             Action<MongODMOptions>? configureOptions = null)
-            where TTaskRunner : class, ITaskRunner, ITaskRunnerBuilder =>
-            AddMongODM<ProxyGenerator, TTaskRunner>(services, configureOptions);
-
-        public static IMongODMConfiguration AddMongODM<TProxyGenerator, TTaskRunner>(
-            this IServiceCollection services,
-            Action<MongODMOptions>? configureOptions = null)
-            where TProxyGenerator : class, IProxyGenerator
             where TTaskRunner : class, ITaskRunner, ITaskRunnerBuilder
         {
             // MongODM generic configuration.
@@ -86,7 +79,7 @@ namespace Etherna.MongODM.AspNetCore.Extensions
 
             services.AddExecutionContext();
 
-            services.TryAddSingleton<IProxyGenerator, TProxyGenerator>();
+            services.TryAddSingleton<IProxyGenerator, ProxyGenerator>();
             services.TryAddSingleton<ITaskRunner, TTaskRunner>();
             services.TryAddSingleton<ITaskRunnerBuilder>(sp => (TTaskRunner)sp.GetRequiredService<ITaskRunner>());
 
@@ -124,9 +117,6 @@ namespace Etherna.MongODM.AspNetCore.Extensions
             //tasks
             services.TryAddTransient<IMigrateDbContextTask, MigrateDbContextTask>();
             services.TryAddTransient<IUpdateDocDependenciesTask, UpdateDocDependenciesTask>();
-
-            //castle proxy generator
-            services.TryAddSingleton<Castle.DynamicProxy.IProxyGenerator>(new Castle.DynamicProxy.ProxyGenerator());
 
             return configuration;
         }

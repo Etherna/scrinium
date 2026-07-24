@@ -19,6 +19,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\..\src\MongODM.Core.Generators\MongODM.Core.Generators.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
     <ProjectReference Include="..\..\src\MongODM.Core\MongODM.Core.csproj" />
   </ItemGroup>
 

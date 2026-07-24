@@ -41,21 +41,6 @@ namespace Etherna.MongODM.Extensions
             return conf;
         }
 
-        public static IMongODMConfiguration AddMongODMWithHangfire<TProxyGenerator>(
-            this IServiceCollection services,
-            Action<HangfireOptions>? configureHangfireOptions = null,
-            Action<MongODMOptions>? configureMongODMOptions = null)
-            where TProxyGenerator : class, IProxyGenerator
-        {
-            // Configure MongODM.
-            var conf = services.AddMongODM<TProxyGenerator, HangfireTaskRunner>(configureMongODMOptions);
-
-            // Configure Hangfire.
-            AddHangfire(services, configureHangfireOptions);
-
-            return conf;
-        }
-
         // Helpers.
         private static void AddHangfire(
             IServiceCollection services,
