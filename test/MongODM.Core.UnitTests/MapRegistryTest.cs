@@ -12,7 +12,10 @@
 // You should have received a copy of the GNU Lesser General Public License along with MongODM.
 // If not, see <https://www.gnu.org/licenses/>.
 
+using Etherna.MongoDB.Bson;
+using Etherna.MongoDB.Bson.IO;
 using Etherna.MongoDB.Bson.Serialization;
+using Etherna.MongODM.Core.Domain.Models;
 using Etherna.MongODM.Core.Exceptions;
 using Etherna.MongODM.Core.Models;
 using Etherna.MongODM.Core.Options;
@@ -20,6 +23,7 @@ using Etherna.MongODM.Core.Serialization.Mapping;
 using Microsoft.Extensions.Logging;
 using Moq;
 using System;
+using System.Linq;
 using Xunit;
 
 namespace Etherna.MongODM.Core
@@ -51,10 +55,6 @@ namespace Etherna.MongODM.Core
                 .Returns("fakeDb");
             dbContextEngineMock.Setup(e => e.Options.ModelMapVersion)
                 .Returns(new ModelMapVersionOptions());
-            dbContextEngineMock.Setup(e => e.ProxyGenerator.IsProxyType(It.IsAny<Type>()))
-                .Returns(true);
-            dbContextEngineMock.Setup(e => e.ProxyGenerator.PurgeProxyType(It.IsAny<Type>()))
-                .Returns<Type>(t => t);
             dbContextEngineMock.Setup(e => e.SerializerRegistry)
                 .Returns(new BsonSerializerRegistry());
 
@@ -62,6 +62,54 @@ namespace Etherna.MongODM.Core
         }
 
         // Tests.
+        [Fact]
+        public void ActiveSchemasCreateInstancesWithProxyGeneratorOnlyForEntityModels()
+        {
+            /* MODM-189: only entity model schemas replace their creators with the proxy
+             * generator; any other model keeps its natural class map creators. */
+
+            // Setup.
+            var proxyInstance = new FakeModel();
+            dbContextEngineMock.Setup(e => e.ProxyGenerator.CreateInstance(typeof(FakeModel), It.IsAny<object[]>()))
+                .Returns(proxyInstance);
+
+            var entityModelMap = (IModelMap)mapRegistry.AddModelMap<FakeModel>("fakeModelMapId");
+            var otherModelMap = (IModelMap)mapRegistry.AddModelMap<FirstModel>("firstModelMapId");
+            mapRegistry.Freeze();
+
+            // Action.
+            var deserializedEntityModel = DeserializeModel<FakeModel>(entityModelMap.ActiveSchema.Serializer, new BsonDocument());
+            var deserializedOtherModel = DeserializeModel<FirstModel>(otherModelMap.ActiveSchema.Serializer, new BsonDocument());
+
+            // Assert.
+            Assert.Same(proxyInstance, deserializedEntityModel);
+            Assert.IsType<FirstModel>(deserializedOtherModel);
+            dbContextEngineMock.Verify(
+                e => e.ProxyGenerator.CreateInstance(typeof(FirstModel), It.IsAny<object[]>()),
+                Times.Never());
+        }
+
+        [Fact]
+        public void FreezeDoesntCreateProxiesNorProxyMaps()
+        {
+            /* MODM-189: model maps register only model types: the schema discovery doesn't
+             * create proxy instances, and proxy types have no maps of their own. */
+
+            // Setup.
+            mapRegistry.AddModelMap<FakeModel>("fakeModelMapId");
+
+            // Action.
+            mapRegistry.Freeze();
+
+            // Assert.
+            dbContextEngineMock.Verify(
+                e => e.ProxyGenerator.CreateInstance(It.IsAny<Type>(), It.IsAny<object[]>()),
+                Times.Never());
+            Assert.Equal(
+                new[] { typeof(FakeModel), typeof(FakeEntityModelBase<string>), typeof(ModelBase), typeof(object) }.OrderBy(t => t.FullName),
+                mapRegistry.MapsByModelType.Keys.OrderBy(t => t.FullName));
+        }
+
         [Fact]
         public void FreezeFailsWithDuplicateActiveAndSecondarySchemaIdsAcrossModelMaps()
         {
@@ -157,6 +205,15 @@ namespace Etherna.MongODM.Core
             Assert.True(mapRegistry.IsFrozen);
             Assert.Equal("first", mapRegistry.GetActiveModelMapIdBsonElement(typeof(FirstModel)).Value.AsString);
             Assert.Equal("second", mapRegistry.GetActiveModelMapIdBsonElement(typeof(SecondModel)).Value.AsString);
+        }
+
+        // Helpers.
+        private static TModel DeserializeModel<TModel>(IBsonSerializer serializer, BsonDocument document)
+        {
+            var bsonReader = new BsonDocumentReader(document);
+            return (TModel)serializer.Deserialize(
+                BsonDeserializationContext.CreateRoot(bsonReader),
+                new BsonDeserializationArgs { NominalType = typeof(TModel) });
         }
     }
 }

@@ -27,7 +27,7 @@
 
   <ItemGroup>
     <PackageReference Include="Castle.Core" Version="5.2.1" />
-    <PackageReference Include="Etherna.MongoDB.Driver" Version="3.10.0" />
+    <PackageReference Include="Etherna.MongoDB.Driver" Version="3.10.1" />
     <PackageReference Include="GitVersion.MsBuild" Version="6.8.2">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>

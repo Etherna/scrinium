@@ -82,7 +82,10 @@ namespace Etherna.MongODM.Core.ProxyModels
                 ?? throw new InvalidOperationException("Can't create a proxy model outside of a db context execution scope");
 
             // If creation of proxy models are disabled, create a simple model instance.
-            if (DisableCreationWithProxyTypes)
+            /* Only entity models need proxies: lazy loading and change candidate marking
+             * only apply to them. Any other model type creates as a plain instance. */
+            if (DisableCreationWithProxyTypes ||
+                !typeof(IEntityModel).IsAssignableFrom(type))
             {
                 return Activator.CreateInstance(
                     type,

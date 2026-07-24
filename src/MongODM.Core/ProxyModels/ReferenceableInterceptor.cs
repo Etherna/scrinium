@@ -49,8 +49,7 @@ namespace Etherna.MongODM.Core.ProxyModels
             /* Bind the model to the source repository identified by the current operation:
              * the repository reading root documents, or the one resolved at engine build for
              * the reference member (declared or deduced). References to models of another db
-             * context stay unbound, and can't lazy load; proxy models created during the
-             * schema discovery bind the internal decoy repository. */
+             * context stay unbound, and can't lazy load. */
             repository = DbExecutionContextHandler.TryGetCurrentRepository(dbContextEngine.ExecutionContext);
             this.logger = logger;
         }

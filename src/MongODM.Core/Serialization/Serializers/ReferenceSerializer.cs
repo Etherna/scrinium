@@ -262,7 +262,7 @@ namespace Etherna.MongODM.Core.Serialization.Serializers
         {
             ArgumentNullException.ThrowIfNull(document);
 
-            var serializer = Configuration.ModelMaps[document.GetType()].ActiveSchema.Serializer;
+            var serializer = Configuration.ModelMaps[dbContextEngine.ProxyGenerator.PurgeProxyType(document.GetType())].ActiveSchema.Serializer;
 
             if (serializer is IBsonIdProvider idProvider)
                 return idProvider.GetDocumentId(document, out id, out idNominalType, out idGenerator);
@@ -295,15 +295,19 @@ namespace Etherna.MongODM.Core.Serialization.Serializers
                 builder => builder.IsDynamicType = context.IsDynamicType);
 
             // Serialize.
-            var serializer = Configuration.ModelMaps[value.GetType()].ActiveSchema.Serializer;
+            /* Proxy types have no registered maps: a proxy instance serializes through the
+             * model map of its purged type, as the nominal type (see ModelMapSerializer). */
+            var actualType = dbContextEngine.ProxyGenerator.PurgeProxyType(value.GetType());
+            if (actualType != value.GetType())
+                args.SerializeAsNominalType = true;
+            var serializer = Configuration.ModelMaps[actualType].ActiveSchema.Serializer;
             serializer.Serialize(localContext, args, value);
 
             // Add additional data.
             //add model map id
             if (bsonDocument.Contains(dbContextEngine.Options.ModelMapVersion.ElementName))
                 bsonDocument.Remove(dbContextEngine.Options.ModelMapVersion.ElementName);
-            var modelMapIdElement = Configuration.GetActiveModelMapIdBsonElement(
-                dbContextEngine.ProxyGenerator.PurgeProxyType(value.GetType()));
+            var modelMapIdElement = Configuration.GetActiveModelMapIdBsonElement(actualType);
             bsonDocument.InsertAt(0, modelMapIdElement);
 
             // Serialize document.
@@ -314,7 +318,7 @@ namespace Etherna.MongODM.Core.Serialization.Serializers
         {
             ArgumentNullException.ThrowIfNull(document);
 
-            var serializer = Configuration.ModelMaps[document.GetType()].ActiveSchema.Serializer;
+            var serializer = Configuration.ModelMaps[dbContextEngine.ProxyGenerator.PurgeProxyType(document.GetType())].ActiveSchema.Serializer;
 
             if (serializer is IBsonIdProvider idProvider)
                 idProvider.SetDocumentId(document, id);

@@ -13,6 +13,7 @@
 // If not, see <https://www.gnu.org/licenses/>.
 
 using Etherna.MongoDB.Bson.Serialization;
+using Etherna.MongODM.Core.Domain.Models;
 using Etherna.MongODM.Core.Extensions;
 using Etherna.MongODM.Core.Utility;
 using System;
@@ -122,9 +123,11 @@ namespace Etherna.MongODM.Core.Serialization.Mapping
             ArgumentNullException.ThrowIfNull(dbContextEngine);
 
             // Verify if can use proxy model.
-            if (ModelMap.ModelType != typeof(object) &&
-                !ModelMap.ModelType.IsAbstract &&
-                !dbContextEngine.ProxyGenerator.IsProxyType(ModelMap.ModelType))
+            /* Only concrete entity models deserialize as proxies: lazy loading and change
+             * candidate marking only apply to them. Any other model keeps its natural
+             * class map creators. */
+            if (ModelMap.ModelType is { IsClass: true, IsAbstract: false } &&
+                typeof(IEntityModel).IsAssignableFrom(ModelMap.ModelType))
             {
                 UseProxyGenerator(dbContextEngine);
                 return true;

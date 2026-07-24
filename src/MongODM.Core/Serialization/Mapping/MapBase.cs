@@ -24,6 +24,5 @@ namespace Etherna.MongODM.Core.Serialization.Mapping
         // Properties.
         public abstract IBsonSerializer Serializer { get; }
         public Type ModelType { get; } = modelType;
-        public abstract Type? ProxyModelType { get; }
     }
 }

@@ -42,17 +42,8 @@ namespace Etherna.MongODM.Core.Serialization.Mapping
             : base(modelType)
         {
             ArgumentNullException.ThrowIfNull(modelType);
-            
-            DbContextEngine = dbContextEngine ?? throw new ArgumentNullException(nameof(dbContextEngine));
 
-            // Verify if uses proxy model.
-            if (modelType.IsClass &&
-                modelType != typeof(object) &&
-                !modelType.IsAbstract &&
-                !dbContextEngine.ProxyGenerator.IsProxyType(modelType))
-            {
-                ProxyModelType = dbContextEngine.ProxyGenerator.CreateInstance(modelType).GetType();
-            }
+            DbContextEngine = dbContextEngine ?? throw new ArgumentNullException(nameof(dbContextEngine));
         }
 
         // Properties.
@@ -78,7 +69,6 @@ namespace Etherna.MongODM.Core.Serialization.Mapping
         }
         public IModelMapSchema? FallbackSchema { get; protected set; }
         public IBsonSerializer? FallbackSerializer { get; protected set; }
-        public override Type? ProxyModelType { get; }
         public IReadOnlyDictionary<string, IModelMapSchema> SchemasById
         {
             get
@@ -173,7 +163,7 @@ namespace Etherna.MongODM.Core.Serialization.Mapping
         }
 
         // Helpers.
-        private MemberMap BuildMemberMap(
+        private static MemberMap BuildMemberMap(
             BsonMemberMap bsonMemberMap,
             IModelMapSchema modelMapSchema,
             IMemberMap? parentMemberMap)
@@ -189,8 +179,7 @@ namespace Etherna.MongODM.Core.Serialization.Mapping
 
                 if (memberSerializer is IModelMapsHandlingSerializer modelMapsContainerSerializer)
                 {
-                    foreach (var modelMap in modelMapsContainerSerializer.HandledModelMaps
-                        .Where(mm => !DbContextEngine.ProxyGenerator.IsProxyType(mm.ModelType))) //skip model maps on proxy types
+                    foreach (var modelMap in modelMapsContainerSerializer.HandledModelMaps)
                     {
                         foreach (var schema in modelMap.SchemasById.Values)
                         {

@@ -13,7 +13,6 @@
 // If not, see <https://www.gnu.org/licenses/>.
 
 using Etherna.MongoDB.Bson.Serialization;
-using System;
 
 namespace Etherna.MongODM.Core.Serialization.Mapping
 {
@@ -22,6 +21,5 @@ namespace Etherna.MongODM.Core.Serialization.Mapping
     {
         // Properties.
         public override IBsonSerializer Serializer { get; } = customSerializer;
-        public override Type? ProxyModelType => null;
     }
 }

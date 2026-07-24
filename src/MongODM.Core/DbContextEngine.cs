@@ -20,7 +20,6 @@ using Etherna.MongODM.Core.ExecContext;
 using Etherna.MongODM.Core.Extensions;
 using Etherna.MongODM.Core.Options;
 using Etherna.MongODM.Core.ProxyModels;
-using Etherna.MongODM.Core.Repositories;
 using Etherna.MongODM.Core.Serialization;
 using Etherna.MongODM.Core.Serialization.Mapping;
 using Etherna.MongODM.Core.Serialization.Modifiers;
@@ -79,9 +78,9 @@ namespace Etherna.MongODM.Core
             _serializerRegistry = (BsonSerializerRegistry)dependencies.BsonSerializerRegistry;
 
             // Execute initialization into execution context.
-            /* Proxy models created during the schema discovery bind the decoy repository:
-             * they only exist to generate the proxy model types. */
-            using var dbExecutionContext = new DbExecutionContextHandler(this, SchemaDiscoveryRepository.Instance);
+            /* Engine level work like schema registration carries the engine on the execution
+             * context, with no db context scope. */
+            using var dbExecutionContext = new DbExecutionContextHandler(this);
 
             // Initialize internal dependencies.
             DbMaintainer.Initialize(this, logger);
