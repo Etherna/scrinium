@@ -29,6 +29,14 @@
     <ProjectReference Include="..\MongODM.Core.Generators\MongODM.Core.Generators.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
   </ItemGroup>
 
+  <!-- Pack the proxy models source generator into the package, applied to every consumer. -->
+  <ItemGroup>
+    <None Include="..\MongODM.Core.Generators\bin\$(Configuration)\netstandard2.0\Etherna.MongODM.Core.Generators.dll"
+          Pack="true"
+          PackagePath="analyzers/dotnet/cs"
+          Visible="false" />
+  </ItemGroup>
+
   <ItemGroup>
     <PackageReference Include="Etherna.MongoDB.Driver" Version="3.10.1" />
     <PackageReference Include="GitVersion.MsBuild" Version="6.8.2">
