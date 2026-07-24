@@ -78,7 +78,7 @@ namespace Etherna.MongODM.IntegrationTests
         {
             /* Non regression for the snapshot diff: a business method that mutates a backing
              * field in place (bypassing the property setter) must still be detected as a
-             * change and persisted, as the previous PropertyAlterer based tracking did. */
+             * change and persisted. */
 
             // Setup.
             using var contextHandler = AsyncLocalContext.Instance.InitAsyncLocalContext();

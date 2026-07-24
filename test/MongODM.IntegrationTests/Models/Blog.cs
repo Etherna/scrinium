@@ -12,7 +12,6 @@
 // You should have received a copy of the GNU Lesser General Public License along with MongODM.
 // If not, see <https://www.gnu.org/licenses/>.
 
-using Etherna.MongODM.Core.Attributes;
 using Etherna.MongODM.Core.Domain.Models;
 using System.Collections.Generic;
 
@@ -42,8 +41,6 @@ namespace Etherna.MongODM.IntegrationTests.Models
         public virtual string Title { get; set; }
 
         // Methods.
-        [PropertyAlterer(nameof(LastPost))]
-        [PropertyAlterer(nameof(Posts))]
         public virtual void AddPost(Post post)
         {
             _posts.Add(post);

@@ -22,7 +22,7 @@ using System.Text;
 namespace Etherna.MongODM.Core.Generators
 {
     /// <summary>
-    /// Generates the proxy model types replacing the legacy Castle dynamic proxies: for each
+    /// Generates the proxy model types: for each
     /// concrete entity model of the compilation, a sealed subclass overriding its virtual
     /// members with the lazy loading and change candidate interception, implementing
     /// IReferenceable with generated per-member merges, and registered at assembly level
@@ -33,7 +33,6 @@ namespace Etherna.MongODM.Core.Generators
     {
         // Consts.
         private const string EntityModelInterfaceFullName = "Etherna.MongODM.Core.Domain.Models.IEntityModel";
-        private const string PropertyAltererAttributeFullName = "Etherna.MongODM.Core.Attributes.PropertyAltererAttribute";
 
         // Methods.
         public void Initialize(IncrementalGeneratorInitializationContext context)
@@ -90,11 +89,12 @@ namespace Etherna.MongODM.Core.Generators
                 classSymbol.DeclaringSyntaxReferences[0].Span != syntaxContext.Node.Span)
                 return null;
 
-            return BuildProxyModelInfo(classSymbol);
+            return BuildProxyModelInfo(classSymbol, syntaxContext.SemanticModel.Compilation);
         }
 
-        private static ProxyModelInfo BuildProxyModelInfo(INamedTypeSymbol classSymbol)
+        private static ProxyModelInfo BuildProxyModelInfo(INamedTypeSymbol classSymbol, Compilation compilation)
         {
+            var methodAnalyzer = new AlteredMembersAnalyzer(classSymbol, compilation);
             var info = new ProxyModelInfo
             {
                 Accessibility = classSymbol.DeclaredAccessibility == Accessibility.Public ? "public" : "internal",
@@ -142,7 +142,7 @@ namespace Etherna.MongODM.Core.Generators
                                 !IsOverridable(method, method.IsVirtual, method.IsOverride, method.IsSealed, method.DeclaredAccessibility))
                                 continue;
 
-                            info.OverriddenMethods.Add(BuildOverriddenMethodInfo(method));
+                            info.OverriddenMethods.Add(BuildOverriddenMethodInfo(method, methodAnalyzer));
                             break;
 
                         default: break;
@@ -209,16 +209,11 @@ namespace Etherna.MongODM.Core.Generators
                 _ => "private"
             };
 
-        private static OverriddenMethodInfo BuildOverriddenMethodInfo(IMethodSymbol method) =>
+        private static OverriddenMethodInfo BuildOverriddenMethodInfo(IMethodSymbol method, AlteredMembersAnalyzer methodAnalyzer) =>
             new()
             {
                 Accessibility = GetAccessibilityModifier(method.DeclaredAccessibility),
-                AlteredMemberNames = [.. EnumerateWithOverridden(method)
-                    .SelectMany(m => m.GetAttributes())
-                    .Where(a => a.AttributeClass?.ToDisplayString() == PropertyAltererAttributeFullName)
-                    .Select(a => a.ConstructorArguments.FirstOrDefault().Value as string)
-                    .OfType<string>()
-                    .Distinct()],
+                AlteredMemberNames = methodAnalyzer.ComputeAlteredMemberNames(method),
                 Name = method.Name,
                 Parameters = [.. method.Parameters.Select(p => new MethodParameterInfo
                 {
@@ -328,9 +323,11 @@ namespace Etherna.MongODM.Core.Generators
             {
                 var parameterDeclarations = string.Join(", ", method.Parameters.Select(p => $"{p.Modifier}{p.TypeFullName} {p.Name}"));
                 var parameterForwards = string.Join(", ", method.Parameters.Select(p => $"{ForwardModifier(p.Modifier)}{p.Name}"));
-                var alteredMembers = method.AlteredMemberNames.Count == 0 ?
-                    "global::System.Array.Empty<string>()" :
-                    "new[] { " + string.Join(", ", method.AlteredMemberNames.Select(n => $"\"{n}\"")) + " }";
+                var alteredMembers = method.AlteredMemberNames is null ?
+                    "null" :
+                    method.AlteredMemberNames.Count == 0 ?
+                        "global::System.Array.Empty<string>()" :
+                        "new[] { " + string.Join(", ", method.AlteredMemberNames.Select(n => $"\"{n}\"")) + " }";
 
                 b.AppendLine($"        {method.Accessibility} override {method.ReturnTypeFullName} {method.Name}({parameterDeclarations})");
                 b.AppendLine("        {");
@@ -435,12 +432,19 @@ namespace Etherna.MongODM.Core.Generators
             b.AppendLine("            MarkProxyChangeCandidate();");
             b.AppendLine("        }");
             b.AppendLine();
-            b.AppendLine("        private void OnProxyMethodInvoke(string[] alteredMemberNames)");
+            b.AppendLine("        private void OnProxyMethodInvoke(string[]? alteredMemberNames)");
             b.AppendLine("        {");
             b.AppendLine("            /* A method invocation marks the model as a change candidate; a method altering a");
             b.AppendLine("             * not loaded member on a summary model loads the full document, else reports its");
-            b.AppendLine("             * altered members as setted. */");
+            b.AppendLine("             * altered members as setted. A method with unknown altered members (no analyzable");
+            b.AppendLine("             * source) conservatively loads the full document on a summary model. */");
             b.AppendLine("            MarkProxyChangeCandidate();");
+            b.AppendLine("            if (alteredMemberNames is null)");
+            b.AppendLine("            {");
+            b.AppendLine("                if (proxyIsSummary)");
+            b.AppendLine("                    ProxyFullLoad();");
+            b.AppendLine("                return;");
+            b.AppendLine("            }");
             b.AppendLine("            foreach (var memberName in alteredMemberNames)");
             b.AppendLine("            {");
             b.AppendLine("                if (proxyIsSummary)");
@@ -484,12 +488,6 @@ namespace Etherna.MongODM.Core.Generators
             return b.ToString();
         }
 
-        private static IEnumerable<IMethodSymbol> EnumerateWithOverridden(IMethodSymbol method)
-        {
-            for (var current = method; current is not null; current = current.OverriddenMethod)
-                yield return current;
-        }
-
         private static string WithSpace(string? modifier) =>
             modifier is null ? "" : modifier + " ";
 
@@ -530,7 +528,7 @@ namespace Etherna.MongODM.Core.Generators
         private sealed class OverriddenMethodInfo
         {
             public string Accessibility { get; set; } = "public";
-            public List<string> AlteredMemberNames { get; set; } = [];
+            public List<string>? AlteredMemberNames { get; set; }
             public string Name { get; set; } = "";
             public List<MethodParameterInfo> Parameters { get; set; } = [];
             public bool ReturnsVoid { get; set; }
