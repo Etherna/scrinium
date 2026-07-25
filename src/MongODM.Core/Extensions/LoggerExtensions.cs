@@ -20,18 +20,12 @@ namespace Etherna.MongODM.Core.Extensions
 {
     /*
      * Always group similar log delegates by type, always use incremental event ids.
-     * Last event id is: 42
+     * Last event id is: 43
      */
     public static class LoggerExtensions
     {
         // Fields.
         //*** TRACE LOGS ***
-        private static readonly Action<ILogger, Type, Type, Exception> _proxyModelTypeCreated =
-            LoggerMessage.Define<Type, Type>(
-                LogLevel.Trace,
-                new EventId(32, nameof(ProxyModelTypeCreated)),
-                "ProxyGenerator created proxy type for model type {ModelType}: {ProxyModelType}");
-
         private static readonly Action<ILogger, string, string, Exception> _repositoryAccessedCollection =
             LoggerMessage.Define<string, string>(
                 LogLevel.Trace,
@@ -141,12 +135,6 @@ namespace Etherna.MongODM.Core.Extensions
                 new EventId(6, nameof(SchemaRegistryInitialized)),
                 "SchemaRegistry of DbContext {DbName} initialized");
 
-        private static readonly Action<ILogger, Type, string, Exception> _summaryModelFullLoaded =
-            LoggerMessage.Define<Type, string>(
-                LogLevel.Debug,
-                new EventId(21, nameof(SummaryModelFullLoaded)),
-                "Summary model of type {ModelType} with id {ModelId} full loaded");
-
         //*** INFORMATION LOGS ***
         private static readonly Action<ILogger, string, Exception> _dbContextAttachedToEngine =
             LoggerMessage.Define<string>(
@@ -244,18 +232,6 @@ namespace Etherna.MongODM.Core.Extensions
                 new EventId(23, nameof(RepositorySavedModelChanges)),
                 "Repository {RepositoryName} of DbContext {DbName} saved changed members of document with Id: {ModelId}");
 
-        private static readonly Action<ILogger, Type, string, Exception> _summaryModelMergedFullModel =
-            LoggerMessage.Define<Type, string>(
-                LogLevel.Trace,
-                new EventId(37, nameof(SummaryModelMergedFullModel)),
-                "Summary model {ModelType} with Id {ModelId} merged with its full model");
-
-        private static readonly Action<ILogger, Type, string, Exception> _summaryModelMergedSummaryModel =
-            LoggerMessage.Define<Type, string>(
-                LogLevel.Trace,
-                new EventId(38, nameof(SummaryModelMergedSummaryModel)),
-                "Summary model {ModelType} with Id {ModelId} merged with another summary model");
-
         private static readonly Action<ILogger, Type, string, string, Exception> _updateDocDependenciesTaskEnded =
             LoggerMessage.Define<Type, string, string>(
                 LogLevel.Information,
@@ -269,6 +245,12 @@ namespace Etherna.MongODM.Core.Extensions
                 "UpdateDocDependenciesTask started on DbContext {DbContextType} with reference repository {ReferenceRepositoryName}, searching for model Id {ModelId} on Id's member maps: {IdMemberMapIdentifiers}");
 
         //*** WARNING LOGS ***
+        private static readonly Action<ILogger, string, string, string?, Exception> _dbContextImplicitLazyLoad =
+            LoggerMessage.Define<string, string, string?>(
+                LogLevel.Warning,
+                new EventId(43, nameof(DbContextImplicitLazyLoad)),
+                "DbContext {DbName} implicitly lazy loaded model type {ModelType} reading member {MemberName}: prefer an explicit preload with LoadValuesAsync");
+
         private static readonly Action<ILogger, string, Exception> _dbContextAbortedTransaction =
             LoggerMessage.Define<string>(
                 LogLevel.Warning,
@@ -293,6 +275,9 @@ namespace Etherna.MongODM.Core.Extensions
 
         public static void DbContextCommittedTransaction(this ILogger logger, string dbName) =>
             _dbContextCommittedTransaction(logger, dbName, null!);
+
+        public static void DbContextImplicitLazyLoad(this ILogger logger, string dbName, string modelType, string? memberName) =>
+            _dbContextImplicitLazyLoad(logger, dbName, modelType, memberName, null!);
 
         public static void DbContextInitialized(this ILogger logger, string dbName) =>
             _dbContextInitialized(logger, dbName, null!);
@@ -341,9 +326,6 @@ namespace Etherna.MongODM.Core.Extensions
 
         public static void DiscriminatorRegistryInitialized(this ILogger logger, string dbName) =>
             _discriminatorRegistryInitialized(logger, dbName, null!);
-
-        public static void ProxyModelTypeCreated(this ILogger logger, Type modelType, Type proxyModelType) =>
-            _proxyModelTypeCreated(logger, modelType, proxyModelType, null!);
 
         public static void RepositoryAccessedCollection(this ILogger logger, string repositoryName, string dbName) =>
             _repositoryAccessedCollection(logger, repositoryName, dbName, null!);
@@ -395,15 +377,6 @@ namespace Etherna.MongODM.Core.Extensions
 
         public static void SchemaRegistryInitialized(this ILogger logger, string dbName) =>
             _schemaRegistryInitialized(logger, dbName, null!);
-
-        public static void SummaryModelFullLoaded(this ILogger logger, Type modelType, string modelId) =>
-            _summaryModelFullLoaded(logger, modelType, modelId, null!);
-
-        public static void SummaryModelMergedFullModel(this ILogger logger, Type modelType, string modelId) =>
-            _summaryModelMergedFullModel(logger, modelType, modelId, null!);
-
-        public static void SummaryModelMergedSummaryModel(this ILogger logger, Type modelType, string modelId) =>
-            _summaryModelMergedSummaryModel(logger, modelType, modelId, null!);
 
         public static void UpdateDocDependenciesTaskEnded(this ILogger logger, Type dbContextType, string referencedRepositoryName, string modelId) =>
             _updateDocDependenciesTaskEnded(logger, dbContextType, referencedRepositoryName, modelId, null!);

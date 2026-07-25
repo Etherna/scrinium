@@ -23,6 +23,5 @@ namespace Etherna.MongODM.Core.Serialization.Mapping
         // Properties.
         IBsonSerializer Serializer { get; }
         Type ModelType { get; }
-        Type? ProxyModelType { get; }
     }
 }

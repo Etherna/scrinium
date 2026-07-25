@@ -179,7 +179,13 @@ namespace Etherna.MongODM.Core.Serialization.Serializers
                 builder => builder.IsDynamicType = context.IsDynamicType);
 
             // Get default schema.
-            var actualType = value.GetType();
+            /* Proxy types have no registered maps: a proxy instance serializes through the
+             * model map of its purged type. Serializing as the nominal type keeps the bson
+             * class map serializer on the purged class map, instead of delegating to the
+             * actual type; member reads dispatch to the proxy overrides anyway. */
+            var actualType = dbContextEngine.ProxyGenerator.PurgeProxyType(value.GetType());
+            if (actualType != value.GetType())
+                args.SerializeAsNominalType = true;
             var modelMap = dbContextEngine.MapRegistry.GetModelMap(actualType);
 
             // Serialize.

@@ -70,6 +70,9 @@ namespace Etherna.MongODM.Core
             public BsonDocument SerializedDocument { get; } = new();
         }
 
+        public class FakeModelProxy : FakeModel
+        { }
+
         // Fields.
         private readonly Mock<IDbContextEngine> dbContextEngineMock = new();
         private readonly Mock<IDiscriminatorRegistry> discriminatorRegistryMock = new();
@@ -90,6 +93,8 @@ namespace Etherna.MongODM.Core
                 .Returns(AsyncLocalContext.Instance);
             dbContextEngineMock.Setup(c => c.ProxyGenerator.IsProxyType(It.IsAny<Type>()))
                 .Returns(true);
+            dbContextEngineMock.Setup(c => c.ProxyGenerator.PurgeProxyType(It.IsAny<Type>()))
+                .Returns<Type>(t => t);
             dbContextEngineMock.Setup(c => c.Options.ModelMapVersion)
                 .Returns(() => modelMapVersionOptions);
             dbContextEngineMock.Setup(c => c.MapRegistry)
@@ -311,6 +316,44 @@ namespace Etherna.MongODM.Core
 
             // Assert
             Assert.Equal(0, test.SerializedDocument.CompareTo(test.ExpectedDocument));
+        }
+
+        [Fact]
+        public void SerializeProxyModelThroughItsPurgedModelMap()
+        {
+            /* MODM-189: proxy types have no registered model maps: a proxy instance serializes
+             * through the model map of its purged type, writing the same document of a plain
+             * instance - same members, same model map id, no proxy type traces. */
+
+            // Setup.
+            var classMap = new BsonClassMap<FakeModel>(cm => cm.AutoMap());
+            classMap.Freeze();
+            var serializer = new ModelMapSerializer<FakeModel>(dbContextEngineMock.Object);
+
+            modelMapMock.Setup(s => s.ActiveSchema.Serializer)
+                .Returns(() => classMap.ToSerializer());
+            mapRegistryMock.Setup(sr => sr.GetActiveModelMapIdBsonElement(typeof(FakeModel)))
+                .Returns(new BsonElement("_m", new BsonString("mapId")));
+            dbContextEngineMock.Setup(c => c.ProxyGenerator.PurgeProxyType(typeof(FakeModelProxy)))
+                .Returns(typeof(FakeModel));
+
+            BsonDocument SerializeModel(FakeModel model)
+            {
+                var document = new BsonDocument();
+                using var bsonWriter = new BsonDocumentWriter(document);
+                serializer.Serialize(
+                    BsonSerializationContext.CreateRoot(bsonWriter),
+                    new BsonSerializationArgs { NominalType = typeof(FakeModel) },
+                    model);
+                return document;
+            }
+
+            // Action.
+            var proxyDocument = SerializeModel(new FakeModelProxy { Id = "idVal", IntegerProp = 42, StringProp = "yes" });
+            var plainDocument = SerializeModel(new FakeModel { Id = "idVal", IntegerProp = 42, StringProp = "yes" });
+
+            // Assert.
+            Assert.Equal(0, proxyDocument.CompareTo(plainDocument));
         }
 
         [Fact]

@@ -64,13 +64,6 @@ namespace Etherna.MongODM.Core.Serialization.Serializers
                     modelMap);
                 modelMap.ActiveSchema = modelMapSchema;
 
-                // If model schema uses proxy model, register a new one for proxy type.
-                if (modelMap.ProxyModelType != null)
-                {
-                    var proxyModelMap = CreateNewDefaultModelMap(modelMap.ProxyModelType);
-                    _modelMaps.Add(modelMap.ProxyModelType, proxyModelMap);
-                }
-
                 return modelMap;
             });
 
@@ -124,18 +117,11 @@ namespace Etherna.MongODM.Core.Serialization.Serializers
                 modelMap.Freeze();
 
                 // Generate active model maps id bson elements.
-                /*
-                 * If current model type is proxy, we need to use id of its base type. This because
-                 * when we serialize a proxy model, we don't want that in the proxy's model map id
-                 * will be reported on document, but we want to serialize its original type's id.
-                 */
-                var notProxySchema = _modelMaps[dbContextEngine.ProxyGenerator.PurgeProxyType(modelMap.ModelType)];
-
                 activeModelMapIdBsonElement.Add(
                     modelMap.ModelType,
                     new BsonElement(
                         dbContextEngine.Options.ModelMapVersion.ElementName,
-                        new BsonString(notProxySchema.ActiveSchema.Id)));
+                        new BsonString(modelMap.ActiveSchema.Id)));
 
                 // Generate default fallback serializers.
                 /* Reference documents with an unrecognized schema id deserialize reading only

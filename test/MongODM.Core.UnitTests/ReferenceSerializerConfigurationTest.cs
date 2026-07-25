@@ -22,6 +22,7 @@ using Etherna.MongODM.Core.Serialization.Mapping;
 using Etherna.MongODM.Core.Serialization.Serializers;
 using Moq;
 using System;
+using System.Reflection;
 using Xunit;
 
 namespace Etherna.MongODM.Core
@@ -38,10 +39,13 @@ namespace Etherna.MongODM.Core
                 .Returns(new MapRegistry());
             dbContextEngineMock.Setup(e => e.Options.ModelMapVersion)
                 .Returns(new ModelMapVersionOptions());
-            dbContextEngineMock.Setup(e => e.ProxyGenerator.IsProxyType(It.IsAny<Type>()))
-                .Returns(true);
-            dbContextEngineMock.Setup(e => e.ProxyGenerator.PurgeProxyType(It.IsAny<Type>()))
-                .Returns<Type>(t => t);
+            dbContextEngineMock.Setup(e => e.ProxyGenerator.CreateInstance(It.IsAny<Type>(), It.IsAny<object[]>()))
+                .Returns<Type, object[]>((type, arguments) => Activator.CreateInstance(
+                    type,
+                    BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance,
+                    null,
+                    arguments,
+                    null)!);
         }
 
         // Tests.

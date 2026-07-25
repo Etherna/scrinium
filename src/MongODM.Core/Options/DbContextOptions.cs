@@ -30,6 +30,7 @@ namespace Etherna.MongODM.Core.Options
         public string DbOperationsCollectionName { get; set; } = "_db_ops";
         public bool EnableTransactionsWithReplicaSet { get; set; } = true;
         public string? Identifier { get; set; }
+        public ImplicitLazyLoadMode ImplicitLazyLoad { get; set; } = ImplicitLazyLoadMode.Warn;
         public ModelMapVersionOptions ModelMapVersion { get; set; } = new ModelMapVersionOptions();
         public IEnumerable<Type> ChildDbContextTypes => _childDbContextTypes;
 

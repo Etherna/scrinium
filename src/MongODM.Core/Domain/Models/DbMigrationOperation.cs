@@ -12,7 +12,6 @@
 // You should have received a copy of the GNU Lesser General Public License along with MongODM.
 // If not, see <https://www.gnu.org/licenses/>.
 
-using Etherna.MongODM.Core.Attributes;
 using Etherna.MongODM.Core.Domain.Models.DbMigrationOpAgg;
 using System;
 using System.Collections.Generic;
@@ -53,7 +52,6 @@ namespace Etherna.MongODM.Core.Domain.Models
         public virtual string? TaskId { get; protected set; }
 
         // Methods.
-        [PropertyAlterer(nameof(Logs))]
         public virtual void AddLog(MigrationLogBase log)
         {
             ArgumentNullException.ThrowIfNull(log);
@@ -61,7 +59,6 @@ namespace Etherna.MongODM.Core.Domain.Models
             _logs.Add(log);
         }
 
-        [PropertyAlterer(nameof(CurrentStatus))]
         public virtual void TaskCancelled()
         {
             if (CurrentStatus is Status.Completed or Status.Failed)
@@ -70,8 +67,6 @@ namespace Etherna.MongODM.Core.Domain.Models
             CurrentStatus = Status.Cancelled;
         }
 
-        [PropertyAlterer(nameof(CompletedDateTime))]
-        [PropertyAlterer(nameof(CurrentStatus))]
         public virtual void TaskCompleted()
         {
             if (CurrentStatus != Status.Running)
@@ -81,7 +76,6 @@ namespace Etherna.MongODM.Core.Domain.Models
             CurrentStatus = Status.Completed;
         }
 
-        [PropertyAlterer(nameof(CurrentStatus))]
         public virtual void TaskFailed()
         {
             if (CurrentStatus is Status.Completed or Status.Cancelled)
@@ -90,8 +84,6 @@ namespace Etherna.MongODM.Core.Domain.Models
             CurrentStatus = Status.Failed;
         }
 
-        [PropertyAlterer(nameof(CurrentStatus))]
-        [PropertyAlterer(nameof(TaskId))]
         public virtual void TaskStarted(string? taskId = null)
         {
             if (CurrentStatus != Status.New)

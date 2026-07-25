@@ -92,13 +92,6 @@ namespace Etherna.MongODM.Core.Serialization.Mapping
                     modelMap);
                 modelMap.ActiveSchema = schema;
 
-                // If model schema uses proxy model, register a new one for proxy type.
-                if (modelMap.ProxyModelType != null)
-                {
-                    var proxyModelMap = CreateNewDefaultModelMap(modelMap.ProxyModelType);
-                    _maps.Add(modelMap.ProxyModelType, proxyModelMap);
-                }
-
                 return modelMap;
             });
 
@@ -256,35 +249,23 @@ namespace Etherna.MongODM.Core.Serialization.Mapping
                 /*
                  * Only model map based schemas can be analyzed.
                  * Schemas based on custom serializers can't be explored.
-                 * 
-                 * Skip member map analysis of proxy models.
-                 * 
+                 *
                  * This operation needs to be executed AFTER that all serializers have been registered.
                  */
-                if (!dbContextEngine.ProxyGenerator.IsProxyType(modelMap.ModelType))
+                foreach (var memberMap in modelMap.AllDescendingMemberMaps)
                 {
-                    foreach (var memberMap in modelMap.AllDescendingMemberMaps)
-                    {
-                        //map member map into registers
-                        _memberMapsById[memberMap.Id] = memberMap;
-                        MapMemberMapsByMemberInfo(memberMap);
-                        MapMemberMapsByRootModelMapAndElementPath(memberMap);
-                    }
+                    //map member map into registers
+                    _memberMapsById[memberMap.Id] = memberMap;
+                    MapMemberMapsByMemberInfo(memberMap);
+                    MapMemberMapsByRootModelMapAndElementPath(memberMap);
                 }
 
                 // Generate active model maps id bson elements.
-                /*
-                 * If current model type is proxy, we need to use id of its base type. This because
-                 * when we serialize a proxy model, we don't want that the proxy's model map id
-                 * will be reported on document, but we want to serialize its original type's id.
-                 */
-                var notProxyModelMap = GetModelMap(dbContextEngine.ProxyGenerator.PurgeProxyType(modelMap.ModelType));
-
                 activeModelMapIdBsonElement.Add(
                     modelMap.ModelType,
                     new BsonElement(
                         dbContextEngine.Options.ModelMapVersion.ElementName,
-                        new BsonString(notProxyModelMap.ActiveSchema.Id)));
+                        new BsonString(modelMap.ActiveSchema.Id)));
             }
         }
 
