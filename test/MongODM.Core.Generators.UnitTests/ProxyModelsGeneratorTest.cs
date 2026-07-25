@@ -112,6 +112,25 @@ namespace Etherna.MongODM.Core.Generators
         }
 
         [Fact]
+        public void DoesntProxyTheIdMember()
+        {
+            // Action.
+            var runResult = RunGenerator(ModelSource, out _);
+
+            // Assert.
+            var proxySource = runResult.Results[0].GeneratedSources
+                .Single(s => s.HintName == "CatProxy.g.cs").SourceText.ToString();
+
+            //identity is definitionally present and immutable: no interception, no merges
+            Assert.DoesNotContain("override string Id", proxySource, StringComparison.Ordinal);
+            Assert.DoesNotContain("\"Id\"", proxySource, StringComparison.Ordinal);
+
+            //the id keeps driving the lazy load, and other members stay proxied
+            Assert.Contains("base.Id", proxySource, StringComparison.Ordinal);
+            Assert.Contains("public override int Age", proxySource, StringComparison.Ordinal);
+        }
+
+        [Fact]
         public void RegistersProxiesAtAssemblyLevel()
         {
             // Action.

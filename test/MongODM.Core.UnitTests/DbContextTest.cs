@@ -41,6 +41,7 @@ namespace Etherna.MongODM.Core
         private readonly Mock<ICluster> clusterMock = new();
         private readonly Mock<IMongoCollection<FakeModel>> collectionMock = new();
         private readonly Mock<IDbDependencies> dependenciesMock = new();
+        private readonly Mock<IMapRegistry> mapRegistryMock = new();
         private readonly Mock<IMongoClient> mongoClientMock = new();
         private readonly Mock<IMongoDatabase> mongoDatabaseMock = new();
         private readonly DbContextOptions options = new();
@@ -59,8 +60,23 @@ namespace Etherna.MongODM.Core
                 .Returns(new Mock<IDiscriminatorRegistry>().Object);
             dependenciesMock.Setup(d => d.ExecutionContext)
                 .Returns(AsyncLocalContext.Instance);
+            /* Resolve the mapped id member of the fake models from a real frozen class
+             * map: the db context reads the identity always from the mapping. The class
+             * map is built on the level declaring the id member. */
+            var fakeModelClassMap = new BsonClassMap<FakeEntityModelBase<string>>(cm =>
+                cm.MapIdMember(m => m.Id));
+            fakeModelClassMap.Freeze();
+            var modelMapSchemaMock = new Mock<IModelMapSchema>();
+            modelMapSchemaMock.Setup(s => s.AllMemberMaps)
+                .Returns([fakeModelClassMap.IdMemberMap!]);
+            var modelMapMock = new Mock<IModelMap>();
+            modelMapMock.Setup(m => m.ActiveSchema)
+                .Returns(modelMapSchemaMock.Object);
+            var modelMap = modelMapMock.Object;
+            mapRegistryMock.Setup(r => r.TryGetModelMap(It.IsAny<Type>(), out modelMap))
+                .Returns(true);
             dependenciesMock.Setup(d => d.MapRegistry)
-                .Returns(new Mock<IMapRegistry>().Object);
+                .Returns(mapRegistryMock.Object);
             proxyGeneratorMock.Setup(p => p.PurgeProxyType(It.IsAny<Type>()))
                 .Returns<Type>(t => t);
             dependenciesMock.Setup(d => d.ProxyGenerator)
@@ -320,6 +336,43 @@ namespace Etherna.MongODM.Core
 
             // Assert.
             Assert.Null(dbContext.TryGetLoadedModel(typeof(FakeModel), "id"));
+        }
+
+        [Fact]
+        public void ReplaceOutdatedLoadedModelSwapsTheLoadedInstance()
+        {
+            // Setup.
+            var outdatedModel = new FakeModelProxy { Id = "id" };
+            var currentModel = new FakeModelProxy { Id = "id" };
+            dbContext.RegisterLoadedModel("id", outdatedModel);
+
+            // Action.
+            dbContext.ReplaceOutdatedLoadedModel("id", outdatedModel, currentModel);
+
+            // Assert.
+            //the fresh instance becomes the loaded one, and only the outdated one is flagged
+            Assert.Same(currentModel, dbContext.TryGetLoadedModel(typeof(FakeModel), "id"));
+            Assert.True(dbContext.IsOutdatedModel(outdatedModel));
+            Assert.False(dbContext.IsOutdatedModel(currentModel));
+        }
+
+        [Fact]
+        public void ReplaceOutdatedLoadedModelValidatesTheModelIds()
+        {
+            // Setup.
+            var outdatedModel = new FakeModelProxy { Id = "id" };
+            var currentModel = new FakeModelProxy { Id = "otherId" };
+            dbContext.RegisterLoadedModel("id", outdatedModel);
+
+            // Action.
+            var exception = Assert.Throws<ArgumentException>(
+                () => dbContext.ReplaceOutdatedLoadedModel("id", outdatedModel, currentModel));
+
+            // Assert.
+            //the mismatch fails fast, before any state mutation
+            Assert.Equal("currentModel", exception.ParamName);
+            Assert.False(dbContext.IsOutdatedModel(outdatedModel));
+            Assert.Same(outdatedModel, dbContext.TryGetLoadedModel(typeof(FakeModel), "id"));
         }
 
         [Theory]

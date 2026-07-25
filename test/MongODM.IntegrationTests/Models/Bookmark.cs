@@ -1,28 +1,35 @@
-﻿// Copyright 2020-present Etherna SA
+// Copyright 2020-present Etherna SA
 // This file is part of MongODM.
-// 
+//
 // MongODM is free software: you can redistribute it and/or modify it under the terms of the
 // GNU Lesser General Public License as published by the Free Software Foundation,
 // either version 3 of the License, or (at your option) any later version.
-// 
+//
 // MongODM is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
 // without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 // See the GNU Lesser General Public License for more details.
-// 
+//
 // You should have received a copy of the GNU Lesser General Public License along with MongODM.
 // If not, see <https://www.gnu.org/licenses/>.
 
-using System.Collections.Generic;
-using System.Threading.Tasks;
+using Etherna.MongODM.Core.Domain.Models;
 
-namespace Etherna.MongODM.Core.Tasks
+namespace Etherna.MongODM.IntegrationTests.Models
 {
-    public interface IUpdateDocDependenciesTask
+    public class Bookmark : EntityModelBase<string>
     {
-        Task RunAsync<TDbContext>(
-            string referencedRepositoryName,
-            object referencedModelId,
-            IEnumerable<string> idMemberMapIdentifiers)
-            where TDbContext : class, IDbContext;
+        // Constructors.
+        public Bookmark(string label, Blog blog)
+        {
+            Label = label;
+            Blog = blog;
+        }
+#pragma warning disable CS8618 // Non-nullable field must contain a non-null value when exiting constructor. Consider declaring as nullable.
+        protected Bookmark() { }
+#pragma warning restore CS8618
+
+        // Properties.
+        public virtual Blog Blog { get; protected set; }
+        public virtual string Label { get; set; }
     }
 }

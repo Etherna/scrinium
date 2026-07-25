@@ -22,7 +22,7 @@ Here is a non exhaustive list of implemented features by MongODM:
 - Transparent lazy loading of unloaded properties on related documents, configurable (warn, silent, or deny), with explicit batch preloading for performance sensitive code
 - Manage repositories with database contexts
 - Execute ACID transactions with automatic enlistment of repository operations
-- Automatic denormalized documents update
+- Automatic denormalized documents update, following also the type changes of referenced documents in polymorphic hierarchies
 - Execute database maintenance tasks with asynchronous task manager [Hangfire](https://www.hangfire.io/) by default, or with your custom one
 - Customizable database indexes
 - Handle different versioned document schemas with same database collection

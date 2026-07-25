@@ -140,9 +140,21 @@ namespace Etherna.MongODM.Core.Serialization.Serializers
                     }
                     else if (loadedModel is TModel typedLoadedModel)
                     {
-                        if (typedLoadedModel is IReferenceable { IsSummary: true } referenceableModel)
-                            referenceableModel.MergeFullModel(model);
-                        model = typedLoadedModel;
+                        if (dbContextEngine.ProxyGenerator.PurgeProxyType(typedLoadedModel.GetType()) == actualType)
+                        {
+                            if (typedLoadedModel is IReferenceable { IsSummary: true } referenceableModel)
+                                referenceableModel.MergeFullModel(model);
+                            model = typedLoadedModel;
+                        }
+                        else
+                        {
+                            /* The document changed type after the loaded instance materialized,
+                             * and an instance type can't upgrade: the full document read is
+                             * authoritative, so the fresh instance replaces the outdated one as
+                             * the loaded model, and is returned by this and the next loads. */
+                            currentDbContext.ReplaceOutdatedLoadedModel(id, (IEntityModel)typedLoadedModel, (IEntityModel)model);
+                            currentDbContext.SetModelBsonDocument((IEntityModel)model, bsonDocument);
+                        }
                     }
                 }
             }

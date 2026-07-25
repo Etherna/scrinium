@@ -28,7 +28,6 @@ using Microsoft.Extensions.Logging;
 using MoreLinq;
 using System;
 using System.Collections.Generic;
-using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Reflection;
 using System.Threading.Tasks;
@@ -41,12 +40,10 @@ namespace Etherna.MongODM.Core.Tasks
         : IUpdateDocDependenciesTask
     {
         // Methods.
-        [SuppressMessage("Reliability", "CA2000:Dispose objects before losing scope")]
         public async Task RunAsync<TDbContext>(
             string referencedRepositoryName,
             object referencedModelId,
-            IEnumerable<string> idMemberMapIdentifiers,
-            bool withExclusiveAccessAllowance)
+            IEnumerable<string> idMemberMapIdentifiers)
             where TDbContext : class, IDbContext
         {
             ArgumentNullException.ThrowIfNull(idMemberMapIdentifiers);
@@ -58,14 +55,23 @@ namespace Etherna.MongODM.Core.Tasks
             var dbContext = (TDbContext)serviceProvider.GetService(typeof(TDbContext))!;
             using var dbExecutionContext = new DbExecutionContextHandler(dbContext); //run into a db execution context
 
-            // Run with exclusive access allowance, if required.
-            ExclusiveAccessHandler? exclusiveAccessHandler = null;
-            if (withExclusiveAccessAllowance)
-                exclusiveAccessHandler = new ExclusiveAccessHandler(dbContext.Engine.ExecutionContext);
+            /* The task never holds an exclusive access allowance: executed during an
+             * exclusive access (e.g. a migration), its collection accesses throw, and the
+             * task executor retries later — background propagation stays out of exclusive
+             * works, and converges on their outcome. */
 
             // Get data.
+            /* A model deleted while its update task was pending has nothing to propagate:
+             * skip without failing, or the task executor would retry forever a task that
+             * can never succeed. The referencing summaries keep their last denormalized
+             * values. */
             var referencedRepository = dbContext.RepositoryRegistry.Repositories.First(r => r.Name == referencedRepositoryName);
-            var referencedModel = await referencedRepository.FindOneAsync(referencedModelId).ConfigureAwait(false);
+            var referencedModel = await referencedRepository.TryFindOneAsync(referencedModelId).ConfigureAwait(false);
+            if (referencedModel is null)
+            {
+                logger.UpdateDocDependenciesTaskSkippedOnDeletedModel(typeof(TDbContext), referencedRepositoryName, referencedModelId.ToString()!);
+                return;
+            }
             var referencedModelType = dbContext.Engine.ProxyGenerator.PurgeProxyType(referencedModel.GetType());
 
             // Recover reference id member maps model's schemas, and all model maps.
@@ -85,7 +91,7 @@ namespace Etherna.MongODM.Core.Tasks
              * We need to create this dictionary map:
              * - repositoryDictionary: repository -> id member map -> serialized document
              * 
-             * Each document is serialized with its current active schema serializer.
+             * Each sub-document is serialized with the serializer of its reference member.
              * 
              * Different id paths may share also same serializers. 
              * Because of this, we use an external cache for avoid to serialize multiple times with same serializer.
@@ -101,8 +107,15 @@ namespace Etherna.MongODM.Core.Tasks
                               repoGroup => repoGroup
                     .Select(idmm =>
                     {
-                        //select active schema serializer
-                        var documentSerializer = idmm.ModelMapSchema.ModelMap.Serializer;
+                        /* Select the serializer of the reference member hosting the sub-document,
+                         * unwrapping array serializers on collection members: the same serializer
+                         * writing the summary at document save, so the refreshed sub-document
+                         * keeps the reference schema shape, its schema id, and the discriminator
+                         * of the current referenced model type. */
+                        var documentSerializer = idmm.ParentMemberMap!.Serializer;
+                        while (documentSerializer is IBsonArraySerializer arraySerializer &&
+                            arraySerializer.TryGetItemSerializationInfo(out var itemSerializationInfo))
+                            documentSerializer = itemSerializationInfo.Serializer;
 
                         //use cache
                         if (!serializedDocumentsCache.TryGetValue(documentSerializer, out BsonDocument? doc))
@@ -174,22 +187,19 @@ namespace Etherna.MongODM.Core.Tasks
                 {
                     foreach (var memberMapPair in repoPair.Value)
                     {
-                        findAndUpdateAsyncMethodInfo.Invoke(null,
+                        await ((Task<bool>)findAndUpdateAsyncMethodInfo.Invoke(null,
                         [
                             repository,
                             memberMapPair.Key,
                             memberMapPair.Value,
                             updatableDocumentId,
                             referencedModelId
-                        ]);
+                        ])!).ConfigureAwait(false);
                     }
                 }
             }
 
             logger.UpdateDocDependenciesTaskEnded(typeof(TDbContext), referencedRepositoryName, referencedModelId.ToString()!);
-            
-            // Dispose exclusiveAccessHandler, if initialized.
-            exclusiveAccessHandler?.Dispose();
         }
 
         // Helpers.
