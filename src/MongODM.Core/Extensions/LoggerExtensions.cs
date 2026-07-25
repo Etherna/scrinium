@@ -20,7 +20,7 @@ namespace Etherna.MongODM.Core.Extensions
 {
     /*
      * Always group similar log delegates by type, always use incremental event ids.
-     * Last event id is: 43
+     * Last event id is: 45
      */
     public static class LoggerExtensions
     {
@@ -257,6 +257,18 @@ namespace Etherna.MongODM.Core.Extensions
                 new EventId(41, nameof(DbContextAbortedTransaction)),
                 "DbContext {DbName} aborted transaction");
 
+        private static readonly Action<ILogger, string, string, string, string, Exception> _dbContextReplacedOutdatedLoadedModel =
+            LoggerMessage.Define<string, string, string, string>(
+                LogLevel.Warning,
+                new EventId(44, nameof(DbContextReplacedOutdatedLoadedModel)),
+                "DbContext {DbName} replaced outdated loaded model with Id {ModelId}: its document changed type from {OutdatedModelType} to {CurrentModelType}");
+
+        private static readonly Action<ILogger, Type, string, string, Exception> _updateDocDependenciesTaskSkippedOnDeletedModel =
+            LoggerMessage.Define<Type, string, string>(
+                LogLevel.Warning,
+                new EventId(45, nameof(UpdateDocDependenciesTaskSkippedOnDeletedModel)),
+                "UpdateDocDependenciesTask skipped on DbContext {DbContextType} with reference repository {ReferenceRepositoryName}: model Id {ModelId} doesn't exist anymore");
+
         //*** ERROR LOGS ***
         private static readonly Action<ILogger, string, string, Exception> _dbMigrationFailed =
             LoggerMessage.Define<string, string>(
@@ -287,6 +299,9 @@ namespace Etherna.MongODM.Core.Extensions
 
         public static void DbContextRegisteredLoadedModel(this ILogger logger, string dbName, string modelId, string repositoryName) =>
             _dbContextRegisteredLoadedModel(logger, dbName, modelId, repositoryName, null!);
+
+        public static void DbContextReplacedOutdatedLoadedModel(this ILogger logger, string dbName, string modelId, string outdatedModelType, string currentModelType) =>
+            _dbContextReplacedOutdatedLoadedModel(logger, dbName, modelId, outdatedModelType, currentModelType, null!);
 
         public static void DbContextReturnedLoadedModel(this ILogger logger, string dbName, string modelId, string repositoryName) =>
             _dbContextReturnedLoadedModel(logger, dbName, modelId, repositoryName, null!);
@@ -380,6 +395,9 @@ namespace Etherna.MongODM.Core.Extensions
 
         public static void UpdateDocDependenciesTaskEnded(this ILogger logger, Type dbContextType, string referencedRepositoryName, string modelId) =>
             _updateDocDependenciesTaskEnded(logger, dbContextType, referencedRepositoryName, modelId, null!);
+
+        public static void UpdateDocDependenciesTaskSkippedOnDeletedModel(this ILogger logger, Type dbContextType, string referencedRepositoryName, string modelId) =>
+            _updateDocDependenciesTaskSkippedOnDeletedModel(logger, dbContextType, referencedRepositoryName, modelId, null!);
 
         public static void UpdateDocDependenciesTaskStarted(this ILogger logger, Type dbContextType, string referencedRepositoryName, string modelId, IEnumerable<string> idMemberMapIdentifiers) =>
             _updateDocDependenciesTaskStarted(logger, dbContextType, referencedRepositoryName, modelId, idMemberMapIdentifiers, null!);

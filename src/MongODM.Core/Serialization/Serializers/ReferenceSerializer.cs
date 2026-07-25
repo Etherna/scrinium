@@ -216,10 +216,12 @@ namespace Etherna.MongODM.Core.Serialization.Serializers
                     return null!;
 
                 // Set model as summarizable.
+                /* The id member never joins the summary member names: identity is
+                 * definitionally present on any instance. */
                 if (dbContextEngine.SerializerModifierAccessor.IsReadOnlyReferencedIdEnabled)
                 {
                     ((IReferenceable)model).ClearSettedMembers();
-                    ((IReferenceable)model).SetAsSummary([nameof(model.Id)]);
+                    ((IReferenceable)model).SetAsSummary([]);
                 }
                 else
                 {

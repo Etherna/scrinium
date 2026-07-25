@@ -39,6 +39,10 @@ namespace Etherna.MongODM.Core
         {
             public string? Name { get; set; }
         }
+        public class WrongIdModel : FakeEntityModelBase<string>
+        {
+            public virtual string? Code { get; set; }
+        }
 
         // Fields.
         private readonly Mock<IDbContextEngine> dbContextEngineMock = new();
@@ -156,6 +160,28 @@ namespace Etherna.MongODM.Core
             // Assert.
             Assert.Contains("v1", exception.Message, StringComparison.Ordinal);
             Assert.Contains(nameof(FirstModel), exception.Message, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void FreezeFailsWithIdMemberNotImplementingTheEntityIdContract()
+        {
+            /* The typed entity id contract and the mapped id member must be the same
+             * member: mapping another property as the document id would silently split
+             * the persisted identity from the one addressed by the framework. */
+
+            // Setup.
+            mapRegistry.AddModelMap<WrongIdModel>("wrongId", mm =>
+            {
+                mm.AutoMap();
+                mm.MapIdMember(m => m.Code);
+            });
+
+            // Action.
+            var exception = Assert.Throws<MongodmInvalidIdMemberException>(() => mapRegistry.Freeze());
+
+            // Assert.
+            Assert.Contains(nameof(WrongIdModel), exception.Message, StringComparison.Ordinal);
+            Assert.Contains(nameof(WrongIdModel.Code), exception.Message, StringComparison.Ordinal);
         }
 
         [Fact]

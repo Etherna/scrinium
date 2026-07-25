@@ -31,6 +31,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Linq.Expressions;
+using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -121,6 +122,14 @@ namespace Etherna.MongODM.Core
         public IRepository<OperationBase, string> DbOperations { get; private set; } = null!;
         public virtual IEnumerable<DocumentMigration> DocumentMigrationList { get; } = [];
         public IDbContextEngine Engine => engine;
+        public bool IsChangeTrackingSuppressed
+        {
+            get
+            {
+                lock (trackingLock)
+                    return changeTrackingSuppressions > 0;
+            }
+        }
         public bool IsSeeded
         {
             get
@@ -210,8 +219,20 @@ namespace Etherna.MongODM.Core
 
             if (model is not IReferenceable { IsSummary: true } referenceable)
                 return true;
-            return referenceable.SettedMemberNames.Contains(
-                ReflectionHelper.GetMemberInfoFromLambda(member).Name);
+
+            //the id member is definitionally present on any instance
+            var memberName = ReflectionHelper.GetMemberInfoFromLambda(member).Name;
+            if (TryGetIdMemberInfo(model.GetType())?.Name == memberName)
+                return true;
+
+            return referenceable.SettedMemberNames.Contains(memberName);
+        }
+
+        public bool IsOutdatedModel(object model)
+        {
+            ArgumentNullException.ThrowIfNull(model);
+
+            return model is IProxyModel { OutdatedModelType: not null };
         }
 
         public Task LoadValuesAsync<TModel>(TModel model, params Expression<Func<TModel, object?>>[] members)
@@ -237,8 +258,11 @@ namespace Etherna.MongODM.Core
                 if (model is not IReferenceable { IsSummary: true } referenceable)
                     continue;
 
+                //the id member is definitionally present, so it never requires a load
                 var loadedMemberNames = referenceable.SettedMemberNames.ToHashSet(StringComparer.Ordinal);
-                if (memberNames.All(loadedMemberNames.Contains))
+                if (memberNames.All(name =>
+                        loadedMemberNames.Contains(name) ||
+                        TryGetIdMemberInfo(model.GetType())?.Name == name))
                     continue;
 
                 var repository = referenceable.SourceRepository
@@ -261,7 +285,9 @@ namespace Etherna.MongODM.Core
                 {
                     foreach (var (model, repository) in repositoryGroup)
                     {
-                        var modelId = ReflectionHelper.GetValue(model, model.GetType().GetProperty("Id")!);
+                        var modelId = TryGetIdMemberInfo(model.GetType()) is { } idMemberInfo
+                            ? ReflectionHelper.GetValue(model, idMemberInfo)
+                            : null;
                         if (modelId is not null)
                             await repository.TryFindOneAsync(modelId).ConfigureAwait(false);
                     }
@@ -336,6 +362,34 @@ namespace Etherna.MongODM.Core
                 loadedModels[(repository, modelId)] = model;
 
             logger.DbContextRegisteredLoadedModel(engine.Options.DbName, modelId.ToString()!, repository.Name);
+        }
+
+        public void ReplaceOutdatedLoadedModel(object modelId, IEntityModel outdatedModel, IEntityModel currentModel)
+        {
+            ArgumentNullException.ThrowIfNull(modelId);
+            ArgumentNullException.ThrowIfNull(outdatedModel);
+            ArgumentNullException.ThrowIfNull(currentModel);
+
+            // Validate that both instances belong to the identified document, before any state mutation.
+            /* The id reads stay legal on an invalidated instance: the id member is not
+             * proxied, being definitionally present and immutable. */
+            ValidateModelId(modelId, outdatedModel, nameof(outdatedModel));
+            ValidateModelId(modelId, currentModel, nameof(currentModel));
+
+            /* The runtime type of the outdated instance can't upgrade: flag it, so any
+             * application interaction with it fails loudly instead of proceeding with the
+             * wrong type, and drop it from the change tracking. The fresh instance becomes
+             * the loaded one for the document, served by the next loads. */
+            var currentModelType = engine.ProxyGenerator.PurgeProxyType(currentModel.GetType());
+            (outdatedModel as IProxyModel)?.SetOutdatedModelType(currentModelType);
+            RemoveModelTracking(outdatedModel);
+            RegisterLoadedModel(modelId, currentModel);
+
+            logger.DbContextReplacedOutdatedLoadedModel(
+                engine.Options.DbName,
+                modelId.ToString()!,
+                engine.ProxyGenerator.PurgeProxyType(outdatedModel.GetType()).Name,
+                currentModelType.Name);
         }
 
         public virtual async Task SaveChangesAsync(CancellationToken cancellationToken = default)
@@ -566,6 +620,29 @@ namespace Etherna.MongODM.Core
 
         private IRepository? TryGetRepositoryForModelType(Type modelType) =>
             scopedRepositoryRegistry?.TryGetRepositoryByHandledModelType(modelType);
+
+        private MemberInfo? TryGetIdMemberInfo(Type modelType)
+        {
+            /* The identity member is the mapped id of the model map active schema, not
+             * necessarily a property named "Id". Any working entity map resolves one:
+             * explicitly mapped, auto mapped by the driver conventions, or inherited
+             * from the linked base maps. Null only for unmapped model types. */
+            if (engine.MapRegistry.TryGetModelMap(engine.ProxyGenerator.PurgeProxyType(modelType), out var modelMap) &&
+                modelMap.ActiveSchema.AllMemberMaps.FirstOrDefault(mm => mm.IsIdMember())?.MemberInfo is { } idMemberInfo)
+                return idMemberInfo;
+            return null;
+        }
+
+        private void ValidateModelId(object modelId, IEntityModel model, string paramName)
+        {
+            var idMemberInfo = TryGetIdMemberInfo(model.GetType())
+                ?? throw new InvalidOperationException(
+                    $"Can't resolve the mapped id member of model type {engine.ProxyGenerator.PurgeProxyType(model.GetType()).Name}");
+            var modelIdValue = ReflectionHelper.GetValue(model, idMemberInfo);
+            if (!modelId.Equals(modelIdValue))
+                throw new ArgumentException(
+                    $"Model id {modelIdValue ?? "null"} doesn't match the document id {modelId}", paramName);
+        }
 
         // Nested types.
         private sealed class ChangeTrackingSuppression(DbContext dbContext) : IDisposable

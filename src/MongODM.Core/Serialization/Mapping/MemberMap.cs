@@ -133,26 +133,20 @@ namespace Etherna.MongODM.Core.Serialization.Mapping
         }
 
         public IEnumerable<IMemberMap> MemberMapPath => ParentMemberMap is null ?
-            new[] { this } :
-            ParentMemberMap.MemberMapPath.Concat(new[] { this });
+            [this] :
+            ParentMemberMap.MemberMapPath.Concat([this]);
 
         public IModelMapSchema ModelMapSchema { get; }
 
-        public IMemberMap? OwnerEntityIdMap
-        {
-            get
-            {
-                // Search backward first entity.
-                var entityMemberMap = MemberMapPath.Reverse()
-                                                   .FirstOrDefault(mm => mm.ModelMapSchema.IsEntity)
-                                                   ?.ParentMemberMap;
-
-                // Search id member map with same schema of this.
-                return entityMemberMap?.ChildMemberMaps
-                    ?.Where(mm => mm.ModelMapSchema == ModelMapSchema)
-                    ?.Single(mm => mm.IsIdMember);
-            }
-        }
+        public IMemberMap? OwnerEntityIdMap =>
+            /* The owner entity id is the id member of the sub-document containing this
+             * member, at the same schema level: among the children of the parent member
+             * map, the id sharing this member's schema. Members of schemas above the
+             * entity levels (e.g. base object maps, without an id of their own) resolve
+             * no owner id, at any reference nesting depth. */
+            ParentMemberMap?.ChildMemberMaps
+                .Where(mm => mm.ModelMapSchema == ModelMapSchema)
+                .SingleOrDefault(mm => mm.IsIdMember);
 
         public IMemberMap? ParentMemberMap { get; }
 

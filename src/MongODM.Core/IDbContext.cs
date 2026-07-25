@@ -55,6 +55,13 @@ namespace Etherna.MongODM.Core
         IDbContextEngine Engine { get; }
 
         /// <summary>
+        /// True while change tracking is suppressed on this db context instance (see
+        /// <see cref="SuppressChangeTracking"/>): the library internals are reading models
+        /// to merge or diff loaded data.
+        /// </summary>
+        bool IsChangeTrackingSuppressed { get; }
+
+        /// <summary>
         /// True if it has been seeded.
         /// </summary>
         bool IsSeeded { get; }
@@ -124,6 +131,15 @@ namespace Etherna.MongODM.Core
             where TModel : class, IEntityModel;
 
         /// <summary>
+        /// True if the model instance is outdated: its document changed type after the
+        /// instance materialized, and any application interaction with it throws
+        /// <see cref="Exceptions.MongodmOutdatedModelTypeException"/>. Reload the model
+        /// from its repository to get the current type.
+        /// </summary>
+        /// <param name="model">The model to verify</param>
+        bool IsOutdatedModel(object model);
+
+        /// <summary>
         /// Ensure that the members are loaded on the model: a no-op when the model is full,
         /// or when a summary model already loaded all of them; otherwise the full document
         /// loads with a single query, merging in place. Members are a precondition, not a
@@ -176,6 +192,18 @@ namespace Etherna.MongODM.Core
         /// <param name="modelId">The model document id</param>
         /// <param name="model">The loaded model instance</param>
         void RegisterLoadedModel(object modelId, IEntityModel model);
+
+        /// <summary>
+        /// Replace the loaded model instance of a document with a fresh one carrying the
+        /// current document type, invoked by the load deduplication when a full load finds
+        /// the document with another type of its hierarchy. The outdated instance leaves the
+        /// change tracking and starts denying any application interaction, throwing
+        /// <see cref="Exceptions.MongodmOutdatedModelTypeException"/>.
+        /// </summary>
+        /// <param name="modelId">The model document id</param>
+        /// <param name="outdatedModel">The loaded instance with the outdated type</param>
+        /// <param name="currentModel">The fresh instance with the current document type</param>
+        void ReplaceOutdatedLoadedModel(object modelId, IEntityModel outdatedModel, IEntityModel currentModel);
 
         /// <summary>
         /// Remove a model from the change tracking of this db context instance, dropping its

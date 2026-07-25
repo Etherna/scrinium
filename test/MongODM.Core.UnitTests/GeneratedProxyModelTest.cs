@@ -13,6 +13,7 @@
 // If not, see <https://www.gnu.org/licenses/>.
 
 using Etherna.MongODM.Core.Domain.Models;
+using Etherna.MongODM.Core.Exceptions;
 using Etherna.MongODM.Core.Models;
 using Etherna.MongODM.Core.ProxyModels;
 using Etherna.MongODM.Core.Repositories;
@@ -48,7 +49,7 @@ namespace Etherna.MongODM.Core
             // Setup.
             proxyModel.Id = "idVal";
             proxyModel.StringProp = "loaded";
-            ((IReferenceable)proxyModel).SetAsSummary(["Id", "StringProp"]);
+            ((IReferenceable)proxyModel).SetAsSummary(["StringProp"]);
 
             // Action.
             var value = proxyModel.StringProp;
@@ -75,7 +76,7 @@ namespace Etherna.MongODM.Core
                 .ReturnsAsync(fullModel);
 
             proxyModel.Id = "idVal";
-            ((IReferenceable)proxyModel).SetAsSummary(["Id"]);
+            ((IReferenceable)proxyModel).SetAsSummary([]);
 
             // Action.
             var value = proxyModel.StringProp;
@@ -100,12 +101,63 @@ namespace Etherna.MongODM.Core
         }
 
         [Fact]
+        public void IdIsImplicitlyLoadedOnSummaries()
+        {
+            // Setup.
+            proxyModel.Id = "idVal";
+            ((IReferenceable)proxyModel).SetAsSummary([]);
+
+            // Action.
+            var id = proxyModel.Id;
+
+            // Assert.
+            //identity is definitionally present: reading it never loads the full document
+            Assert.Equal("idVal", id);
+            Assert.True(((IReferenceable)proxyModel).IsSummary);
+            repositoryMock.Verify(
+                r => r.TryFindOneAsync(It.IsAny<object>(), It.IsAny<CancellationToken>()),
+                Times.Never());
+        }
+
+        [Fact]
+        public void IdStaysReadableOnOutdatedModel()
+        {
+            // Setup.
+            proxyModel.Id = "idVal";
+            ((IProxyModel)proxyModel).SetOutdatedModelType(typeof(EvolvedFakeModel));
+
+            // Action.
+            var id = proxyModel.Id;
+
+            // Assert.
+            //the id survived the document type change, and drives the model reload
+            Assert.Equal("idVal", id);
+        }
+
+        [Fact]
+        public void MergeFullModelOfAnotherTypeIsSkipped()
+        {
+            // Setup.
+            proxyModel.Id = "idVal";
+            proxyModel.StringProp = "current";
+            ((IReferenceable)proxyModel).SetAsSummary(["StringProp"]);
+
+            // Action.
+            ((IReferenceable)proxyModel).MergeFullModel(new object());
+
+            // Assert.
+            //a full model of another type can't merge: the summary state is preserved
+            Assert.True(((IReferenceable)proxyModel).IsSummary);
+            Assert.Equal("current", proxyModel.StringProp);
+        }
+
+        [Fact]
         public void MergeSummaryModelCopiesOnlyMissingMembers()
         {
             // Setup.
             proxyModel.Id = "idVal";
             proxyModel.StringProp = "current";
-            ((IReferenceable)proxyModel).SetAsSummary(["Id", "StringProp"]);
+            ((IReferenceable)proxyModel).SetAsSummary(["StringProp"]);
 
             var otherSummaryModel = new FakeModelProxy
             {
@@ -113,7 +165,7 @@ namespace Etherna.MongODM.Core
                 IntegerProp = 42,
                 StringProp = "other"
             };
-            ((IReferenceable)otherSummaryModel).SetAsSummary(["Id", "IntegerProp", "StringProp"]);
+            ((IReferenceable)otherSummaryModel).SetAsSummary(["IntegerProp", "StringProp"]);
 
             // Action.
             ((IReferenceable)proxyModel).MergeSummaryModel(otherSummaryModel);
@@ -126,6 +178,54 @@ namespace Etherna.MongODM.Core
         }
 
         [Fact]
+        public void OutdatedModelAllowsInternalReadsUnderSuppression()
+        {
+            // Setup.
+            proxyModel.Id = "idVal";
+            proxyModel.StringProp = "value";
+            ((IProxyModel)proxyModel).SetOutdatedModelType(typeof(EvolvedFakeModel));
+            dbContextMock.Setup(c => c.IsChangeTrackingSuppressed)
+                .Returns(true);
+
+            // Action.
+            var value = proxyModel.StringProp;
+
+            // Assert.
+            Assert.Equal("value", value);
+        }
+
+        [Fact]
+        public void OutdatedModelDeniesApplicationInteractions()
+        {
+            // Setup.
+            proxyModel.Id = "idVal";
+            proxyModel.StringProp = "value";
+            ((IProxyModel)proxyModel).SetOutdatedModelType(typeof(EvolvedFakeModel));
+
+            // Assert.
+            Assert.Equal(typeof(EvolvedFakeModel), ((IProxyModel)proxyModel).OutdatedModelType);
+
+            var getException = Assert.Throws<MongodmOutdatedModelTypeException>(() => proxyModel.StringProp);
+            Assert.Contains("idVal", getException.Message, StringComparison.Ordinal);
+            Assert.Contains($"loaded as type {nameof(FakeModel)}", getException.Message, StringComparison.Ordinal);
+            Assert.Contains(nameof(EvolvedFakeModel), getException.Message, StringComparison.Ordinal);
+
+            Assert.Throws<MongodmOutdatedModelTypeException>(() => proxyModel.StringProp = "other");
+        }
+
+        [Fact]
+        public void SetOfTheIdMemberIsNotTracked()
+        {
+            // Action.
+            proxyModel.Id = "idVal";
+
+            // Assert.
+            //the id member is not proxied: identity never joins the tracking bookkeeping
+            Assert.DoesNotContain("Id", ((IReferenceable)proxyModel).SettedMemberNames);
+            dbContextMock.Verify(c => c.MarkChangeCandidate(It.IsAny<IEntityModel>()), Times.Never());
+        }
+
+        [Fact]
         public void SetRecordsTheMemberAndMarksChangeCandidate()
         {
             // Action.
@@ -135,5 +235,9 @@ namespace Etherna.MongODM.Core
             Assert.Contains("StringProp", ((IReferenceable)proxyModel).SettedMemberNames);
             dbContextMock.Verify(c => c.MarkChangeCandidate(proxyModel), Times.Once());
         }
+
+        // Nested types.
+        private sealed class EvolvedFakeModel : FakeModel
+        { }
     }
 }

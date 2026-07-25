@@ -12,7 +12,10 @@
 // You should have received a copy of the GNU Lesser General Public License along with MongODM.
 // If not, see <https://www.gnu.org/licenses/>.
 
+using Etherna.MongoDB.Bson;
+using Etherna.MongoDB.Bson.Serialization.Serializers;
 using Etherna.MongODM.Core;
+using Etherna.MongODM.Core.Domain.Models;
 using Etherna.MongODM.Core.Extensions;
 using Etherna.MongODM.Core.Serialization;
 using Etherna.MongODM.Core.Serialization.Serializers;
@@ -37,5 +40,26 @@ namespace Etherna.MongODM.IntegrationTests.ModelMaps
                             PostMap.MinimalReferenceSerializer(dbContextEngine)));
                 });
         }
+
+        /// <summary>
+        /// Preview information serializer, including the blog title and the nested
+        /// last post reference
+        /// </summary>
+        public static ReferenceSerializer<Blog, string> PreviewWithLastPostSerializer(IDbContextEngine dbContextEngine) =>
+            ReferenceSerializer.Create(dbContextEngine, config =>
+            {
+                config.AddModelMap<ModelBase>("2f8a9b3c-6d1e-4f7a-9c2b-5e8d0a4b7c1f");
+                config.AddModelMap<EntityModelBase<string>>("b4e7d2a9-3c5f-48b1-a6d8-9f0e2c7b5a3d", mm =>
+                {
+                    mm.MapIdMember(m => m.Id);
+                    mm.IdMemberMap.SetSerializer(new StringSerializer(BsonType.ObjectId));
+                });
+                config.AddModelMap<Blog>("9c1d4e7f-2b8a-4c6d-b3e9-7a5f0d8c2b4e", mm =>
+                {
+                    mm.MapMember(b => b.LastPost).SetSerializer(PostMap.PreviewInfoSerializer(dbContextEngine));
+                    mm.MapMember(b => b.Title);
+                });
+            },
+            sourceRepository: (ITestDbContext dbContext) => dbContext.Blogs);
     }
 }

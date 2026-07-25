@@ -27,8 +27,7 @@ namespace Etherna.MongODM.HF.Tasks
             Type dbContextType,
             string referenceRepositoryName,
             object modelId,
-            IEnumerable<string> idMemberMapIdentifiers,
-            bool withExclusiveAccessAllowance)
+            IEnumerable<string> idMemberMapIdentifiers)
         {
             var method = typeof(UpdateDocDependenciesTask).GetMethod(
                 nameof(UpdateDocDependenciesTask.RunAsync), BindingFlags.Public | BindingFlags.Instance)!
@@ -39,8 +38,7 @@ namespace Etherna.MongODM.HF.Tasks
             [
                 referenceRepositoryName,
                 modelId,
-                idMemberMapIdentifiers,
-                withExclusiveAccessAllowance
+                idMemberMapIdentifiers
             ])!;
         }
     }

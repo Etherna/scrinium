@@ -72,8 +72,7 @@ namespace Etherna.MongODM.IntegrationTests.Fixtures
             Type dbContextType,
             string referenceRepositoryName,
             object modelId,
-            IEnumerable<string> idMemberMapIdentifiers,
-            bool withExclusiveAccessAllowance)
+            IEnumerable<string> idMemberMapIdentifiers)
         {
             ArgumentNullException.ThrowIfNull(idMemberMapIdentifiers);
 
@@ -87,7 +86,7 @@ namespace Etherna.MongODM.IntegrationTests.Fixtures
                         .MakeGenericMethod(dbContextType)
                         .Invoke(
                             serviceProvider.GetRequiredService<IUpdateDocDependenciesTask>(),
-                            [referenceRepositoryName, modelId, idMemberMapIdentifiersList, withExclusiveAccessAllowance])!);
+                            [referenceRepositoryName, modelId, idMemberMapIdentifiersList])!);
         }
 
         public void SetMongODMOptions(MongODMOptions options) { }

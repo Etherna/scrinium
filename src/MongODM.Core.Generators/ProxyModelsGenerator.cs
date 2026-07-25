@@ -98,6 +98,7 @@ namespace Etherna.MongODM.Core.Generators
             var info = new ProxyModelInfo
             {
                 Accessibility = classSymbol.DeclaredAccessibility == Accessibility.Public ? "public" : "internal",
+                IdPropertyName = FindEntityIdProperty(classSymbol)?.Name ?? "Id",
                 KeyTypeIsNullable = FindEntityKeyType(classSymbol) is { } keyType &&
                                     (keyType.IsReferenceType || keyType.NullableAnnotation == NullableAnnotation.Annotated ||
                                      keyType.OriginalDefinition.SpecialType == SpecialType.System_Nullable_T),
@@ -125,6 +126,13 @@ namespace Etherna.MongODM.Core.Generators
                             if (!visitedProperties.Add(property.Name))
                                 continue;
 
+                            /* The id member is not proxied: identity is definitionally present,
+                             * never changes, and must stay readable also on an outdated
+                             * instance, where it drives the model reload. Merges skip it too,
+                             * because merged instances share the document by construction. */
+                            if (property.Name == info.IdPropertyName)
+                                continue;
+
                             //writable properties join the merges, with any accessibility
                             if (property.SetMethod is not null)
                                 info.WritableProperties.Add(BuildWritablePropertyInfo(property, type, classSymbol));
@@ -150,7 +158,25 @@ namespace Etherna.MongODM.Core.Generators
                 }
             }
 
+            //the id member is never an interception trigger
+            foreach (var method in info.OverriddenMethods)
+                method.AlteredMemberNames?.Remove(info.IdPropertyName);
+
             return info;
+        }
+
+        private static IPropertySymbol? FindEntityIdProperty(INamedTypeSymbol classSymbol)
+        {
+            /* The identity property is the implicit implementation of the typed entity model
+             * interface id. Models without it (or with an explicit implementation) fall back
+             * to the "Id" name convention, like the lazy load emission does. */
+            var entityInterface = classSymbol.AllInterfaces
+                .FirstOrDefault(i => i.IsGenericType && i.ConstructedFrom.ToDisplayString() == EntityModelInterfaceFullName + "<TKey>");
+            if (entityInterface?.GetMembers("Id").OfType<IPropertySymbol>().FirstOrDefault() is { } interfaceIdProperty &&
+                classSymbol.FindImplementationForInterfaceMember(interfaceIdProperty) is IPropertySymbol implementingProperty &&
+                implementingProperty.ExplicitInterfaceImplementations.IsEmpty)
+                return implementingProperty;
+            return null;
         }
 
         private static ITypeSymbol? FindEntityKeyType(INamedTypeSymbol classSymbol) =>
@@ -274,6 +300,7 @@ namespace Etherna.MongODM.Core.Generators
             b.AppendLine("        // Fields.");
             b.AppendLine("        private global::Etherna.MongODM.Core.IDbContext? proxyDbContext;");
             b.AppendLine("        private bool proxyIsSummary;");
+            b.AppendLine("        private global::System.Type? proxyOutdatedModelType;");
             b.AppendLine("        private readonly global::System.Collections.Generic.Dictionary<string, bool> proxySettedMemberNames = new(); //<memberName, isFromSummary>");
             b.AppendLine("        private global::Etherna.MongODM.Core.Repositories.IRepository? proxySourceRepository;");
             foreach (var property in info.OverriddenProperties.Where(p => p.GetterAccessibilityIsEmittable && !p.IsExtraElements).OrderBy(p => p.Name))
@@ -310,7 +337,8 @@ namespace Etherna.MongODM.Core.Generators
                 b.AppendLine();
             }
 
-            //IReferenceable properties
+            //IProxyModel and IReferenceable properties
+            b.AppendLine("        global::System.Type? global::Etherna.MongODM.Core.ProxyModels.IProxyModel.OutdatedModelType => proxyOutdatedModelType;");
             b.AppendLine("        bool global::Etherna.MongODM.Core.ProxyModels.IReferenceable.IsSummary => proxyIsSummary;");
             b.AppendLine("        global::System.Collections.Generic.IEnumerable<string> global::Etherna.MongODM.Core.ProxyModels.IReferenceable.SettedMemberNames =>");
             b.AppendLine("            global::System.Linq.Enumerable.ToArray(proxySettedMemberNames.Keys);");
@@ -346,11 +374,19 @@ namespace Etherna.MongODM.Core.Generators
             b.AppendLine("            proxySourceRepository = sourceRepository;");
             b.AppendLine("        }");
             b.AppendLine();
+            b.AppendLine("        void global::Etherna.MongODM.Core.ProxyModels.IProxyModel.SetOutdatedModelType(global::System.Type actualModelType) =>");
+            b.AppendLine("            proxyOutdatedModelType = actualModelType;");
+            b.AppendLine();
             b.AppendLine("        void global::Etherna.MongODM.Core.ProxyModels.IReferenceable.ClearSettedMembers() =>");
             b.AppendLine("            proxySettedMemberNames.Clear();");
             b.AppendLine();
-            b.AppendLine("        void global::Etherna.MongODM.Core.ProxyModels.IReferenceable.MergeFullModel(object fullModel) =>");
-            b.AppendLine($"            MergeProxyFullModel(fullModel as {info.ModelFullName});");
+            b.AppendLine("        void global::Etherna.MongODM.Core.ProxyModels.IReferenceable.MergeFullModel(object fullModel)");
+            b.AppendLine("        {");
+            b.AppendLine("            /* A full model of another type of the hierarchy can't merge: the caller");
+            b.AppendLine("             * resolves the outdated instance, so the merge is skipped here. */");
+            b.AppendLine($"            if (fullModel is {info.ModelFullName} typedFullModel)");
+            b.AppendLine("                MergeProxyFullModel(typedFullModel);");
+            b.AppendLine("        }");
             b.AppendLine();
             b.AppendLine("        void global::Etherna.MongODM.Core.ProxyModels.IReferenceable.MergeSummaryModel(object summaryModel)");
             b.AppendLine("        {");
@@ -420,6 +456,7 @@ namespace Etherna.MongODM.Core.Generators
             b.AppendLine("            /* A get of a not loaded member on a summary model loads the full document; a get");
             b.AppendLine("             * handing out mutable state marks the model as a change candidate, because a");
             b.AppendLine("             * change could then escape interception. */");
+            b.AppendLine("            ThrowIfProxyOutdated();");
             b.AppendLine("            if (proxyIsSummary && !proxySettedMemberNames.ContainsKey(memberName))");
             b.AppendLine("                ProxyFullLoad(memberName);");
             b.AppendLine("            if (exposesMutation)");
@@ -428,6 +465,7 @@ namespace Etherna.MongODM.Core.Generators
             b.AppendLine();
             b.AppendLine("        private void OnProxyMemberSet(string memberName)");
             b.AppendLine("        {");
+            b.AppendLine("            ThrowIfProxyOutdated();");
             b.AppendLine("            proxySettedMemberNames[memberName] = false;");
             b.AppendLine("            MarkProxyChangeCandidate();");
             b.AppendLine("        }");
@@ -438,6 +476,7 @@ namespace Etherna.MongODM.Core.Generators
             b.AppendLine("             * not loaded member on a summary model loads the full document, else reports its");
             b.AppendLine("             * altered members as setted. A method with unknown altered members (no analyzable");
             b.AppendLine("             * source) conservatively loads the full document on a summary model. */");
+            b.AppendLine("            ThrowIfProxyOutdated();");
             b.AppendLine("            MarkProxyChangeCandidate();");
             b.AppendLine("            if (alteredMemberNames is null)");
             b.AppendLine("            {");
@@ -468,7 +507,7 @@ namespace Etherna.MongODM.Core.Generators
             b.AppendLine("                return;");
             if (info.KeyTypeIsNullable)
             {
-                b.AppendLine("            if (base.Id is null)");
+                b.AppendLine($"            if (base.{info.IdPropertyName} is null)");
                 b.AppendLine("                throw new global::System.InvalidOperationException(\"model or id can't be null\");");
             }
             b.AppendLine("            if (proxySourceRepository is null)");
@@ -479,9 +518,26 @@ namespace Etherna.MongODM.Core.Generators
             b.AppendLine($"            proxySourceRepository.DbContext.OnImplicitLazyLoad(typeof({info.ModelFullName}), triggeringMemberName);");
             b.AppendLine();
             b.AppendLine("            // Merge the full document to the current model, with a sync over async load.");
-            b.AppendLine("            var task = proxySourceRepository.TryFindOneAsync(base.Id!);");
+            b.AppendLine($"            var task = proxySourceRepository.TryFindOneAsync(base.{info.IdPropertyName}!);");
             b.AppendLine("            task.Wait();");
-            b.AppendLine($"            MergeProxyFullModel(task.Result as {info.ModelFullName});");
+            b.AppendLine("            ThrowIfProxyOutdated(); //the load deduplication flags this instance on a document type change");
+            b.AppendLine($"            if (task.Result is {info.ModelFullName} typedResult)");
+            b.AppendLine("                MergeProxyFullModel(typedResult);");
+            b.AppendLine("            else if (task.Result is null)");
+            b.AppendLine("                MergeProxyFullModel(null); //document not found: nothing to load, give up the summary state");
+            b.AppendLine("            //else: document of another type of the hierarchy, this instance is outdated");
+            b.AppendLine("        }");
+            b.AppendLine();
+            b.AppendLine("        private void ThrowIfProxyOutdated()");
+            b.AppendLine("        {");
+            b.AppendLine("            /* An outdated instance denies any application interaction, but stays readable by");
+            b.AppendLine("             * the library internals, running under change tracking suppression (e.g. the");
+            b.AppendLine("             * member diffs of a referencing model at save time). */");
+            b.AppendLine("            if (proxyOutdatedModelType is null || proxyDbContext?.IsChangeTrackingSuppressed == true)");
+            b.AppendLine("                return;");
+            b.AppendLine("            throw new global::Etherna.MongODM.Core.Exceptions.MongodmOutdatedModelTypeException(");
+            b.AppendLine($"                $\"Model {{base.{info.IdPropertyName}}} was loaded as type {info.ModelName}, but its document is now of type \" +");
+            b.AppendLine("                $\"{proxyOutdatedModelType.Name}: reload the model from its repository to get the current type\");");
             b.AppendLine("        }");
 
             b.AppendLine("    }");
@@ -504,6 +560,7 @@ namespace Etherna.MongODM.Core.Generators
         private sealed class ProxyModelInfo
         {
             public string Accessibility { get; set; } = "public";
+            public string IdPropertyName { get; set; } = "Id";
             public bool KeyTypeIsNullable { get; set; }
             public string ModelFullName { get; set; } = "";
             public string ModelName { get; set; } = "";

@@ -14,6 +14,7 @@
 
 using Etherna.MongoDB.Bson;
 using Etherna.MongoDB.Bson.Serialization;
+using Etherna.MongODM.Core.Domain.Models;
 using Etherna.MongODM.Core.Extensions;
 using Etherna.MongODM.Core.Repositories;
 using Etherna.MongODM.Core.Serialization.Serializers;
@@ -267,6 +268,9 @@ namespace Etherna.MongODM.Core.Serialization.Mapping
                         dbContextEngine.Options.ModelMapVersion.ElementName,
                         new BsonString(modelMap.ActiveSchema.Id)));
             }
+
+            // Verify that mapped id members implement the entity id contract.
+            ValidateIdMemberMaps();
         }
 
         // Helpers.
@@ -453,6 +457,40 @@ namespace Etherna.MongODM.Core.Serialization.Mapping
             }
 
             memberMapListByElementPath.Add(memberMap);
+        }
+
+        /* Repositories, identity map and references address documents through the typed
+         * entity id contract, while serialization addresses them through the mapped id
+         * member: they must be the same member, or the two identities would diverge
+         * silently. Verify that every mapped id member of an entity model type, reference
+         * configuration maps included, is the implicit implementation of the contract. */
+        private void ValidateIdMemberMaps()
+        {
+            foreach (var idMemberMap in _memberMapsById.Values.Where(mm => mm.IsIdMember))
+            {
+                var modelType = idMemberMap.ModelMapSchema.ModelMap.ModelType;
+                if (modelType.IsInterface)
+                    continue;
+
+                var entityInterface = modelType.GetInterfaces()
+                    .FirstOrDefault(i => i.IsGenericType && i.GetGenericTypeDefinition() == typeof(IEntityModel<>));
+                if (entityInterface is null) //no entity id contract to honor
+                    continue;
+
+                var interfaceMapping = modelType.GetInterfaceMap(entityInterface);
+                var interfaceIdGetter = entityInterface.GetProperty(nameof(IEntityModel<object>.Id))!.GetMethod!;
+                var contractIdGetter = interfaceMapping.TargetMethods[
+                    Array.IndexOf(interfaceMapping.InterfaceMethods, interfaceIdGetter)];
+
+                var mappedIdGetter = (idMemberMap.BsonMemberMap.MemberInfo as PropertyInfo)?.GetMethod;
+                if (mappedIdGetter is null ||
+                    mappedIdGetter.GetBaseDefinition() != contractIdGetter.GetBaseDefinition())
+                    throw new MongodmInvalidIdMemberException(
+                        $"Model map schema {idMemberMap.ModelMapSchema.Id} of type {modelType.Name} maps " +
+                        $"{idMemberMap.BsonMemberMap.MemberInfo.Name} as its document id, but the id member of " +
+                        $"an entity model must be the implicit implementation of " +
+                        $"{nameof(IEntityModel<object>)}<TKey>.{nameof(IEntityModel<object>.Id)}");
+            }
         }
 
         /* Model map schema ids identify on documents the schema shaping them, and must be

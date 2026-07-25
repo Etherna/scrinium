@@ -15,6 +15,7 @@
 using Etherna.MongODM.Core.Domain.Models;
 using Etherna.MongODM.Core.Extensions;
 using Etherna.MongODM.Core.Repositories;
+using Etherna.MongODM.Core.Serialization.Mapping;
 using Etherna.MongODM.Core.Tasks;
 using Microsoft.Extensions.Logging;
 using System;
@@ -92,7 +93,8 @@ namespace Etherna.MongODM.Core.Utility
              * These are taken from all schemas and all model maps.
              */
             var idMemberMaps = referenceMemberMaps
-                .Select(mm => mm.OwnerEntityIdMap!) //must exist, because we have selected only referenced member maps
+                .Select(mm => mm.OwnerEntityIdMap)
+                .OfType<IMemberMap>() //members of schemas without an id of their own resolve no owner id
                 .Distinct();
 
             // Select all id member maps with same element path of previously selected.
@@ -117,8 +119,7 @@ namespace Etherna.MongODM.Core.Utility
                 dbContextEngine.DbContextType,
                 referenceRepository.Name,
                 updatedModelId,
-                idMemberMapIds,
-                ExclusiveAccessHandler.IsExclusiveAccessAllowed(dbContextEngine.ExecutionContext));
+                idMemberMapIds);
 
             logger.DbMaintainerEnqueuedDependenciesUpdateTask(
                 dbContextEngine.Options.DbName,
