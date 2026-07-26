@@ -18,7 +18,10 @@ using Etherna.MongODM.AspNetCoreSample.Persistence;
 using Etherna.MongODM.Extensions;
 using Hangfire;
 using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using System;
 
 namespace Etherna.MongODM.AspNetCoreSample
 {
@@ -28,13 +31,36 @@ namespace Etherna.MongODM.AspNetCoreSample
         {
             var builder = WebApplication.CreateBuilder(args);
 
+            /* Serve the build-time static web assets (e.g. the scoped css bundle) in any
+             * environment: by default they load only on Development, and the sample can
+             * run as a plain non-published binary. */
+            builder.WebHost.UseStaticWebAssets();
+
             // Add services to the container.
             builder.Services.AddRazorPages();
 
             builder.Services.AddHangfireServer();
 
-            builder.Services.AddMongODMWithHangfire()
-                .AddDbContext<ISampleDbContext, SampleDbContext>();
+            // Connection strings come from configuration (see appsettings*.json).
+            var hangfireDbConnectionString = builder.Configuration.GetConnectionString("HangfireDb")
+                ?? throw new InvalidOperationException("Missing ConnectionStrings:HangfireDb configuration");
+            var sampleDbConnectionString = builder.Configuration.GetConnectionString("SampleDb")
+                ?? throw new InvalidOperationException("Missing ConnectionStrings:SampleDb configuration");
+
+            builder.Services.AddMongODMWithHangfire(hangfireOptions =>
+                {
+                    hangfireOptions.ConnectionString = hangfireDbConnectionString;
+                })
+                .AddDbContext<ISampleDbContext, SampleDbContext>(options =>
+                {
+                    options.ConnectionString = sampleDbConnectionString;
+                })
+                //read-only view over the same database, to demo read-only db context access
+                .AddDbContext<IReadOnlySampleDbContext, ReadOnlySampleDbContext>(options =>
+                {
+                    options.ConnectionString = sampleDbConnectionString;
+                    options.IsReadOnly = true;
+                });
 
             builder.Services.AddMongODMAdminDashboard();
 

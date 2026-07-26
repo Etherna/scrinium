@@ -22,6 +22,14 @@ namespace Etherna.MongODM.Core.Repositories
     {
         // Properties.
         public IEnumerable<(IndexKeysDefinition<TModel> keys, CreateIndexOptions<TModel> options)> IndexBuilders { get; set; } = [];
+
+        /// <summary>
+        /// When true, the repository denies any write on its collection, index management
+        /// included. Reads work normally. Useful to consume a collection owned by another
+        /// application, avoiding any possibility to write on it.
+        /// </summary>
+        public bool IsReadOnly { get; set; }
+
         public string Name { get; } = name ?? throw new ArgumentNullException(nameof(name));
 
         /// <summary>

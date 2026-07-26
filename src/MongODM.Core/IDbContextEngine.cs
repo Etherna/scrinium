@@ -123,7 +123,20 @@ namespace Etherna.MongODM.Core
         bool SupportsTransactions { get; }
 
         // Methods.
-        IMongoCollection<TDocument> GetMongoCollection<TDocument>(string name, MongoCollectionSettings? settings = null);
+        /// <summary>
+        /// Get a collection of the database, guarded by the engine access limitations.
+        /// The collection is read-only when required by the parameter, or by the db
+        /// context options: any write operation on it, index management included, throws
+        /// <see cref="UnauthorizedAccessException"/>.
+        /// </summary>
+        /// <param name="name">The collection name</param>
+        /// <param name="settings">Optional collection settings</param>
+        /// <param name="isReadOnly">True to deny writes on the collection</param>
+        /// <returns>The guarded collection</returns>
+        IMongoCollection<TDocument> GetMongoCollection<TDocument>(
+            string name,
+            MongoCollectionSettings? settings = null,
+            bool isReadOnly = false);
 
         Task RunWithExclusiveAccessAsync(
             Func<Task> action,

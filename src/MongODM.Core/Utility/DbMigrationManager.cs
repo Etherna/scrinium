@@ -53,6 +53,9 @@ namespace Etherna.MongODM.Core.Utility
         {
             ArgumentNullException.ThrowIfNull(dbContext);
             ArgumentNullException.ThrowIfNull(dbMigrationOpId);
+            if (dbContext.Engine.Options.IsReadOnly)
+                throw new InvalidOperationException(
+                    $"Can't execute a migration on the read-only db context {dbContext.Engine.Identifier}");
 
             var dbMigrationOp = (DbMigrationOperation)await dbContext.DbOperations.FindOneAsync(dbMigrationOpId).ConfigureAwait(false);
             List<Exception> errors = [];
@@ -64,7 +67,9 @@ namespace Etherna.MongODM.Core.Utility
                 await dbContext.SaveChangesAsync().ConfigureAwait(false);
 
                 // Remove old indexes.
-                foreach (var repository in dbContext.RepositoryRegistry.Repositories)
+                /* Read-only repositories deny index management: their indexes belong to the
+                 * collection owner, so they stay out of the migration index steps. */
+                foreach (var repository in dbContext.RepositoryRegistry.Repositories.Where(r => !r.IsReadOnly))
                 {
                     dbMigrationOp.AddLog(new DeleteOldIndexesMigrationLog(
                         repository.Name,
@@ -122,7 +127,8 @@ namespace Etherna.MongODM.Core.Utility
                 }
 
                 // Build new indexes.
-                foreach (var repository in dbContext.RepositoryRegistry.Repositories)
+                //read-only repositories stay out of the index steps, like above
+                foreach (var repository in dbContext.RepositoryRegistry.Repositories.Where(r => !r.IsReadOnly))
                 {
                     dbMigrationOp.AddLog(new BuildNewIndexesMigrationLog(
                         repository.Name,
@@ -231,8 +237,10 @@ namespace Etherna.MongODM.Core.Utility
         {
             ArgumentNullException.ThrowIfNull(dbContext);
 
-            // Deny start when another migration is queued or running, or an exclusive access is locking the db context.
-            if (dbContext.Engine.IsExclusiveWriteEnabled ||
+            // Deny start on a read-only db context, when another migration is queued or running,
+            // or an exclusive access is locking the db context.
+            if (dbContext.Engine.Options.IsReadOnly ||
+                dbContext.Engine.IsExclusiveWriteEnabled ||
                 await IsMigrationRunningAsync(dbContext).ConfigureAwait(false) is not null)
                 return null;
 

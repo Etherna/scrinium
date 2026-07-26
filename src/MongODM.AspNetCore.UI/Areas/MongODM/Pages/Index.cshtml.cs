@@ -65,6 +65,10 @@ namespace Etherna.MongODM.AspNetCore.UI.Areas.MongODM.Pages
             var statuses = new List<object>();
             foreach (var dbContext in DbContexts)
             {
+                // Read-only db contexts deny migrations: no migration state to report.
+                if (dbContext.Engine.Options.IsReadOnly)
+                    continue;
+
                 var runningOperation = await dbContext.IsMigrationRunningAsync().ConfigureAwait(false);
                 var lastOperations = await dbContext.GetLastMigrationsAsync(0, HistoryLength).ConfigureAwait(false);
 

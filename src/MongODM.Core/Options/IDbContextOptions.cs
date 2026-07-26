@@ -38,6 +38,13 @@ namespace Etherna.MongODM.Core.Options
         /// </summary>
         public ImplicitLazyLoadMode ImplicitLazyLoad { get; }
 
+        /// <summary>
+        /// True to deny any write on the database from this db context: document writes,
+        /// index management, seeding and migrations. Reads work normally. Useful to consume
+        /// a database owned by another application, avoiding any possibility to write on it.
+        /// </summary>
+        public bool IsReadOnly { get; }
+
         public ModelMapVersionOptions ModelMapVersion { get; }
     }
 }

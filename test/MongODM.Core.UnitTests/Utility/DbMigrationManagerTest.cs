@@ -112,6 +112,45 @@ namespace Etherna.MongODM.Core.Utility
         }
 
         [Fact]
+        public async Task ExecuteMigrationSkipsIndexStepsOnReadOnlyRepositories()
+        {
+            // Setup.
+            var readOnlyRepositoryMock = new Mock<IRepository>();
+            readOnlyRepositoryMock.Setup(r => r.IsReadOnly).Returns(true);
+            readOnlyRepositoryMock.Setup(r => r.Name).Returns("readOnlyModels");
+            var writableRepositoryMock = new Mock<IRepository>();
+            writableRepositoryMock.Setup(r => r.Name).Returns("writableModels");
+            repositoryRegistryMock.Setup(r => r.Repositories)
+                .Returns([readOnlyRepositoryMock.Object, writableRepositoryMock.Object]);
+
+            // Action.
+            await dbMigrationManager.ExecuteDbContextMigrationAsync(dbContextMock.Object, "opId");
+
+            // Assert.
+            Assert.Equal(DbMigrationOperation.Status.Completed, dbMigrationOp.CurrentStatus);
+            readOnlyRepositoryMock.Verify(r => r.DeleteOldIndexesAsync(It.IsAny<CancellationToken>()), Times.Never());
+            readOnlyRepositoryMock.Verify(r => r.BuildNewIndexesAsync(It.IsAny<CancellationToken>()), Times.Never());
+            writableRepositoryMock.Verify(r => r.DeleteOldIndexesAsync(It.IsAny<CancellationToken>()), Times.Once());
+            writableRepositoryMock.Verify(r => r.BuildNewIndexesAsync(It.IsAny<CancellationToken>()), Times.Once());
+            Assert.DoesNotContain(dbMigrationOp.Logs, log => log is DeleteOldIndexesMigrationLog { Repository: "readOnlyModels" });
+            Assert.DoesNotContain(dbMigrationOp.Logs, log => log is BuildNewIndexesMigrationLog { Repository: "readOnlyModels" });
+            Assert.Contains(dbMigrationOp.Logs, log => log is DeleteOldIndexesMigrationLog { Repository: "writableModels" });
+            Assert.Contains(dbMigrationOp.Logs, log => log is BuildNewIndexesMigrationLog { Repository: "writableModels" });
+        }
+
+        [Fact]
+        public async Task ExecuteMigrationThrowsOnReadOnlyDbContext()
+        {
+            // Setup.
+            optionsMock.Setup(o => o.IsReadOnly).Returns(true);
+
+            // Action and assert.
+            await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                dbMigrationManager.ExecuteDbContextMigrationAsync(dbContextMock.Object, "opId"));
+            dbContextMock.Verify(c => c.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Never());
+        }
+
+        [Fact]
         public async Task ExecuteMigrationThrowsOnUnhandledExceptionWhenRequired()
         {
             // Setup.
@@ -130,6 +169,22 @@ namespace Etherna.MongODM.Core.Utility
             Assert.Contains("FakeDbContext", migrationException.Message, StringComparison.Ordinal);
             var aggregateException = Assert.IsType<AggregateException>(migrationException.InnerException);
             Assert.Contains(unhandledException, aggregateException.InnerExceptions);
+        }
+
+        [Fact]
+        public async Task TryStartMigrationDeniesOnReadOnlyDbContext()
+        {
+            // Setup.
+            optionsMock.Setup(o => o.IsReadOnly).Returns(true);
+
+            // Action.
+            var migrationOp = await dbMigrationManager.TryStartDbContextMigrationAsync(dbContextMock.Object);
+
+            // Assert.
+            Assert.Null(migrationOp);
+            dbOperationsMock.Verify(
+                r => r.CreateAsync(It.IsAny<OperationBase>(), It.IsAny<CancellationToken>()),
+                Times.Never());
         }
     }
 }

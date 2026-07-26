@@ -36,8 +36,10 @@ namespace Etherna.MongODM.IntegrationTests.Fixtures
         // Properties.
         public IImplicitSourceDbContext ImplicitSourceDbContext { get; private set; } = null!;
         public string ImplicitSourceDbName { get; } = "mongodm-it-implicit-" + Guid.NewGuid().ToString("N");
+        public IMixedAccessDbContext MixedAccessDbContext { get; private set; } = null!;
         public string MongoDbUrl => mongoDb.DbUrl;
         public string ParentDbName { get; } = "mongodm-it-parent-" + Guid.NewGuid().ToString("N");
+        public IReadOnlyDbContext ReadOnlyDbContext { get; private set; } = null!;
         public ISecondDbContext SecondDbContext { get; private set; } = null!;
         public string SecondDbName { get; } = "mongodm-it-second-" + Guid.NewGuid().ToString("N");
         public IServiceProvider ServiceProvider => serviceProvider;
@@ -92,19 +94,38 @@ namespace Etherna.MongODM.IntegrationTests.Fixtures
                     options =>
                     {
                         options.ConnectionString = $"{mongoDb.DbUrl}/{ImplicitSourceDbName}";
+                    })
+                //read-only consumers of the database owned by SecondDbContext
+                .AddDbContext<IReadOnlyDbContext, ReadOnlyDbContext>(
+                    _ => new ReadOnlyDbContext(),
+                    options =>
+                    {
+                        options.ConnectionString = $"{mongoDb.DbUrl}/{SecondDbName}";
+                        options.IsReadOnly = true;
+                    })
+                .AddDbContext<IMixedAccessDbContext, MixedAccessDbContext>(
+                    _ => new MixedAccessDbContext(),
+                    options =>
+                    {
+                        options.ConnectionString = $"{mongoDb.DbUrl}/{SecondDbName}";
                     });
 
             serviceProvider = services.BuildServiceProvider();
 
             ImplicitSourceDbContext = serviceProvider.GetRequiredService<IImplicitSourceDbContext>();
+            MixedAccessDbContext = serviceProvider.GetRequiredService<IMixedAccessDbContext>();
+            ReadOnlyDbContext = serviceProvider.GetRequiredService<IReadOnlyDbContext>();
             TaskRunner = (InlineTaskRunner)serviceProvider.GetRequiredService<ITaskRunner>();
             TestDbContext = serviceProvider.GetRequiredService<ITestDbContext>();
             SecondDbContext = serviceProvider.GetRequiredService<ISecondDbContext>();
 
             // Exercise the seeding path, like at application startup.
+            /* The mixed access db context seeds too: its migration runs the index steps
+             * only on its writable repositories. The read-only db context skips seeding. */
             using var contextHandler = AsyncLocalContext.Instance.InitAsyncLocalContext();
             await TestDbContext.SeedIfNeededAsync();
             await SecondDbContext.SeedIfNeededAsync();
+            await MixedAccessDbContext.SeedIfNeededAsync();
         }
     }
 

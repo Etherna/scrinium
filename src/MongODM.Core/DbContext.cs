@@ -432,6 +432,13 @@ namespace Etherna.MongODM.Core
 
         public async Task<bool> SeedIfNeededAsync()
         {
+            // Skip on a read-only db context: seeding and migrations belong to the db owner.
+            if (engine.Options.IsReadOnly)
+            {
+                logger.DbContextSeedingSkippedOnReadOnly(engine.Options.DbName);
+                return false;
+            }
+
             // Check if already seeded.
             if (IsSeeded)
                 return false;

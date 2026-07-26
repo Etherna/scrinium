@@ -12,6 +12,8 @@
   --warning-bg: #fef3c7;
   --danger: #b91c1c;
   --danger-bg: #fee2e2;
+  --info: #1e40af;
+  --info-bg: #dbeafe;
   --neutral: #4b5563;
   --neutral-bg: #f3f4f6;
 }
@@ -174,6 +176,11 @@ main.container {
 .status-badge.locked {
   background-color: var(--danger-bg);
   color: var(--danger);
+}
+
+.status-badge.read-only {
+  background-color: var(--info-bg);
+  color: var(--info);
 }
 
 @keyframes pulse {
