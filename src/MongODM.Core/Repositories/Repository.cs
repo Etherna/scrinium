@@ -66,9 +66,10 @@ namespace Etherna.MongODM.Core.Repositories
 
         // Properties.
         public IDbContext DbContext { get; private set; } = null!;
+        public bool IsInitialized { get; private set; }
+        public bool IsReadOnly => options.IsReadOnly || DbContext.Engine.Options.IsReadOnly;
         public Type KeyType => typeof(TKey);
         public Type ModelType => typeof(TModel);
-        public bool IsInitialized { get; private set; }
         public string Name => options.Name;
 
         // Public methods.
@@ -88,7 +89,7 @@ namespace Etherna.MongODM.Core.Repositories
             ArgumentNullException.ThrowIfNull(func);
 
             // Initialize collection cache.
-            _collection ??= DbContext.Engine.GetMongoCollection<TModel>(options.Name);
+            _collection ??= DbContext.Engine.GetMongoCollection<TModel>(options.Name, isReadOnly: options.IsReadOnly);
 
             // Invoke func into optional implicit execution context.
             DbExecutionContextHandler? dbExecContextHandler = null;

@@ -7,7 +7,8 @@
 
     var baseUrl = window.location.pathname;
     var banner = document.getElementById('connection-banner');
-    var cards = Array.prototype.slice.call(document.querySelectorAll('.dbcontext-card'));
+    //read-only db contexts render as static cards, with no migration controls to drive
+    var cards = Array.prototype.slice.call(document.querySelectorAll('.dbcontext-card:not([data-read-only])'));
     var pollTimer = null;
 
     if (cards.length === 0)

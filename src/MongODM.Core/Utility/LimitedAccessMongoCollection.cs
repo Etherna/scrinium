@@ -29,7 +29,11 @@ namespace Etherna.MongODM.Core.Utility
      * the ambient session of the engine when active (e.g. a transaction started by
      * ExecuteInTransactionAsync), and without any session the operation runs session-less.
      * The session-less overloads forward with a null session. Change stream watches and
-     * estimated document counts stay session-less: they can't run in transactions. */
+     * estimated document counts stay session-less: they can't run in transactions.
+     *
+     * A read-only collection denies any write operation, index management included: the
+     * write permission verification throws UnauthorizedAccessException. Reads keep
+     * working, exclusive access permitting. */
     [SuppressMessage("Naming", "CA1711:Identifiers should not have incorrect suffix")]
     public class LimitedAccessMongoCollection<TDocument>(
         IDbContextEngine dbContextEngine,
@@ -67,7 +71,10 @@ namespace Etherna.MongODM.Core.Utility
             get
             {
                 VerifyReadPermission();
-                return mongoCollection.Indexes;
+                return new LimitedAccessMongoIndexManager<TDocument>(
+                    mongoCollection.Indexes,
+                    VerifyReadPermission,
+                    VerifyWritePermission);
             }
         }
         public IMongoSearchIndexManager SearchIndexes
@@ -75,7 +82,10 @@ namespace Etherna.MongODM.Core.Utility
             get
             {
                 VerifyReadPermission();
-                return mongoCollection.SearchIndexes;
+                return new LimitedAccessMongoSearchIndexManager(
+                    mongoCollection.SearchIndexes,
+                    VerifyReadPermission,
+                    VerifyWritePermission);
             }
         }
         public MongoCollectionSettings Settings

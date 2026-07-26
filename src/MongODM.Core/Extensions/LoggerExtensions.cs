@@ -20,7 +20,7 @@ namespace Etherna.MongODM.Core.Extensions
 {
     /*
      * Always group similar log delegates by type, always use incremental event ids.
-     * Last event id is: 45
+     * Last event id is: 46
      */
     public static class LoggerExtensions
     {
@@ -172,6 +172,12 @@ namespace Etherna.MongODM.Core.Extensions
                 new EventId(2, nameof(DbContextSeeded)),
                 "DbContext {DbName} has been seeded");
 
+        private static readonly Action<ILogger, string, Exception> _dbContextSeedingSkippedOnReadOnly =
+            LoggerMessage.Define<string>(
+                LogLevel.Information,
+                new EventId(46, nameof(DbContextSeedingSkippedOnReadOnly)),
+                "DbContext {DbName} skipped seeding: the db context is read-only");
+
         private static readonly Action<ILogger, string, string, Exception> _repositoryBuiltIndexes =
             LoggerMessage.Define<string, string>(
                 LogLevel.Information,
@@ -317,6 +323,9 @@ namespace Etherna.MongODM.Core.Extensions
 
         public static void DbContextSeeded(this ILogger logger, string dbName) =>
             _dbContextSeeded(logger, dbName, null!);
+
+        public static void DbContextSeedingSkippedOnReadOnly(this ILogger logger, string dbName) =>
+            _dbContextSeedingSkippedOnReadOnly(logger, dbName, null!);
 
         public static void DbContextStartedTransaction(this ILogger logger, string dbName) =>
             _dbContextStartedTransaction(logger, dbName, null!);

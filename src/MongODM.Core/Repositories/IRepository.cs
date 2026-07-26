@@ -26,6 +26,14 @@ namespace Etherna.MongODM.Core.Repositories
     public interface IRepository : IDbContextInitializable
     {
         IDbContext DbContext { get; }
+
+        /// <summary>
+        /// True when the repository denies any write on its collection, index management
+        /// included, because required by its own options or by the db context options.
+        /// Reads work normally.
+        /// </summary>
+        bool IsReadOnly { get; }
+
         Type KeyType { get; }
         Type ModelType { get; }
         string Name { get; }

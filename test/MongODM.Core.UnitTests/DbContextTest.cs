@@ -436,6 +436,25 @@ namespace Etherna.MongODM.Core
             await Task.WhenAll(Process1(), Process2());
         }
 
+        [Fact]
+        public async Task SeedIfNeededSkipsOnReadOnlyDbContext()
+        {
+            // Setup.
+            var readOnlyDbContext = BuildDbContext(
+                new DbContextOptions { IsReadOnly = true },
+                out var readOnlyEngine);
+
+            // Action.
+            var seeded = await readOnlyDbContext.SeedIfNeededAsync();
+
+            // Assert.
+            //no seeding, and no seeding state read from db either
+            Assert.False(seeded);
+            mongoDatabaseMock.Verify(d => d.GetCollection<OperationBase>(It.IsAny<string>(), It.IsAny<MongoCollectionSettings>()), Times.Never);
+
+            (readOnlyEngine as IDisposable)?.Dispose();
+        }
+
         // Helpers.
         private FakeDbContext BuildDbContext(DbContextOptions dbContextOptions, out IDbContextEngine dbContextEngine)
         {

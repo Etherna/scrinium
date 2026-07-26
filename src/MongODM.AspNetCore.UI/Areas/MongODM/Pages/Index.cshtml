@@ -1,4 +1,4 @@
-﻿@page
+@page
 @model Etherna.MongODM.AspNetCore.UI.Areas.MongODM.Pages.IndexModel
 @{
     ViewData["Title"] = "Db contexts";
@@ -11,25 +11,39 @@
 <div class="dbcontexts">
     @foreach (var context in Model.DbContexts)
     {
-        <section class="dbcontext-card" data-identifier="@context.Engine.Identifier">
-            <header class="dbcontext-card-header">
-                <h2>@context.Engine.Identifier</h2>
-                <span class="status-badge" data-role="status">&hellip;</span>
-                <button type="button" class="btn-start" data-role="start" disabled>Start migration</button>
-            </header>
+        if (context.Engine.Options.IsReadOnly)
+        {
+            <section class="dbcontext-card" data-identifier="@context.Engine.Identifier" data-read-only>
+                <header class="dbcontext-card-header">
+                    <h2>@context.Engine.Identifier</h2>
+                    <span class="status-badge read-only">Read-only</span>
+                </header>
 
-            <p class="action-feedback" data-role="feedback" hidden></p>
+                <p class="muted">This db context denies any write: migrations are managed by the database owner.</p>
+            </section>
+        }
+        else
+        {
+            <section class="dbcontext-card" data-identifier="@context.Engine.Identifier">
+                <header class="dbcontext-card-header">
+                    <h2>@context.Engine.Identifier</h2>
+                    <span class="status-badge" data-role="status">&hellip;</span>
+                    <button type="button" class="btn-start" data-role="start" disabled>Start migration</button>
+                </header>
 
-            <div class="migration-live" data-role="live" hidden>
-                <h3><span class="spinner"></span> Migration in progress</h3>
-                <p class="migration-live-meta" data-role="live-meta"></p>
-                <ol class="log-list" data-role="logs"></ol>
-            </div>
+                <p class="action-feedback" data-role="feedback" hidden></p>
 
-            <div class="migration-history">
-                <h3>Latest migrations</h3>
-                <div data-role="history"><p class="muted">Loading&hellip;</p></div>
-            </div>
-        </section>
+                <div class="migration-live" data-role="live" hidden>
+                    <h3><span class="spinner"></span> Migration in progress</h3>
+                    <p class="migration-live-meta" data-role="live-meta"></p>
+                    <ol class="log-list" data-role="logs"></ol>
+                </div>
+
+                <div class="migration-history">
+                    <h3>Latest migrations</h3>
+                    <div data-role="history"><p class="muted">Loading&hellip;</p></div>
+                </div>
+            </section>
+        }
     }
 </div>

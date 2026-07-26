@@ -185,10 +185,11 @@ namespace Etherna.MongODM.Core
         // Methods.
         public IMongoCollection<TDocument> GetMongoCollection<TDocument>(
             string name,
-            MongoCollectionSettings? settings = null)
+            MongoCollectionSettings? settings = null,
+            bool isReadOnly = false)
         {
             var mongoCollection = Database.GetCollection<TDocument>(name, settings);
-            return new LimitedAccessMongoCollection<TDocument>(this, mongoCollection, false);
+            return new LimitedAccessMongoCollection<TDocument>(this, mongoCollection, isReadOnly || Options.IsReadOnly);
         }
 
         public Task RunWithExclusiveAccessAsync(
