@@ -492,7 +492,7 @@ namespace Etherna.MongODM.Core.Repositories
              * shaped by an older schema would mix schemas into a broken document. */
             var filter = Builders<TModel>.Filter.Eq(m => m.Id, castedModel.Id) &
                 Builders<TModel>.Filter.Eq(
-                    new StringFieldDefinition<TModel, string>(DbContext.Engine.Options.ModelMapVersion.ElementName),
+                    new StringFieldDefinition<TModel, string>(DbContext.Engine.Options.ModelMapSchemaId.ElementName),
                     activeSchema.Id);
 
             var updatedModel = await AccessToCollectionAsync(async collection =>

@@ -37,7 +37,7 @@ namespace Etherna.MongODM.Core.Serialization.Mapping
         private readonly Dictionary<Type, IMap> _maps = new(); //model type -> map
         private readonly Dictionary<string, IMemberMap> _memberMapsById = new();
 
-        private readonly Dictionary<Type, BsonElement> activeModelMapIdBsonElement = new();
+        private readonly Dictionary<Type, BsonElement> activeSchemaIdBsonElement = new();
         private IDbContextEngine dbContextEngine = null!;
         private ILogger logger = null!;
         private readonly Dictionary<IModelMap, Dictionary<string, List<IMemberMap>>> memberMapsByElementPath = new(); //model map -> element path -> member map[]
@@ -96,7 +96,7 @@ namespace Etherna.MongODM.Core.Serialization.Mapping
                 return modelMap;
             });
 
-        public BsonElement GetActiveModelMapIdBsonElement(Type modelType)
+        public BsonElement GetActiveSchemaIdBsonElement(Type modelType)
         {
             ArgumentNullException.ThrowIfNull(modelType);
 
@@ -106,7 +106,7 @@ namespace Etherna.MongODM.Core.Serialization.Mapping
              * Use of this cache dictionary avoids checks and creation of new bson elements
              * for each serialization.
              */
-            return activeModelMapIdBsonElement[modelType];
+            return activeSchemaIdBsonElement[modelType];
         }
 
         public IBsonSerializer GetMappedSerializer(Type modelType)
@@ -261,11 +261,11 @@ namespace Etherna.MongODM.Core.Serialization.Mapping
                     MapMemberMapsByRootModelMapAndElementPath(memberMap);
                 }
 
-                // Generate active model maps id bson elements.
-                activeModelMapIdBsonElement.Add(
+                // Generate active schema id bson elements.
+                activeSchemaIdBsonElement.Add(
                     modelMap.ModelType,
                     new BsonElement(
-                        dbContextEngine.Options.ModelMapVersion.ElementName,
+                        dbContextEngine.Options.ModelMapSchemaId.ElementName,
                         new BsonString(modelMap.ActiveSchema.Id)));
             }
 

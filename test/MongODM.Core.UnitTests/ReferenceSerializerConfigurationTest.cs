@@ -37,8 +37,8 @@ namespace Etherna.MongODM.Core
         {
             dbContextEngineMock.Setup(e => e.MapRegistry)
                 .Returns(new MapRegistry());
-            dbContextEngineMock.Setup(e => e.Options.ModelMapVersion)
-                .Returns(new ModelMapVersionOptions());
+            dbContextEngineMock.Setup(e => e.Options.ModelMapSchemaId)
+                .Returns(new ModelMapSchemaIdOptions());
             dbContextEngineMock.Setup(e => e.ProxyGenerator.CreateInstance(It.IsAny<Type>(), It.IsAny<object[]>()))
                 .Returns<Type, object[]>((type, arguments) => Activator.CreateInstance(
                     type,
@@ -54,10 +54,10 @@ namespace Etherna.MongODM.Core
         {
             // Setup.
             var configuration = BuildConfiguration(config =>
-                config.AddModelMap<FakeModel>("activeMapId", mm => mm.MapMember(m => m.StringProp)));
+                config.AddModelMap<FakeModel>("activeSchemaId", mm => mm.MapMember(m => m.StringProp)));
 
             // Action.
-            var serializer = configuration.GetSerializer(typeof(FakeModel), "unknownMapId");
+            var serializer = configuration.GetSerializer(typeof(FakeModel), "unknownSchemaId");
 
             // Assert.
             //without a mapped id and no conventional "_id" element, nothing is read:
@@ -77,13 +77,13 @@ namespace Etherna.MongODM.Core
             // Setup.
             var configuration = BuildConfiguration(config =>
             {
-                config.AddModelMap<FakeEntityModelBase<string>>("baseMapId", mm => mm.MapIdMember(m => m.Id));
-                config.AddModelMap<FakeModel>("activeMapId", mm => mm.MapMember(m => m.IntegerProp))
+                config.AddModelMap<FakeEntityModelBase<string>>("baseSchemaId", mm => mm.MapIdMember(m => m.Id));
+                config.AddModelMap<FakeModel>("activeSchemaId", mm => mm.MapMember(m => m.IntegerProp))
                     .AddFallbackSchema(mm => mm.MapMember(m => m.StringProp));
             });
 
             // Action.
-            var serializer = configuration.GetSerializer(typeof(FakeModel), "unknownMapId");
+            var serializer = configuration.GetSerializer(typeof(FakeModel), "unknownSchemaId");
 
             // Assert.
             //the fallback schema deserializes its mapped members, not only the id
@@ -107,13 +107,13 @@ namespace Etherna.MongODM.Core
 
             var configuration = BuildConfiguration(config =>
             {
-                config.AddModelMap<FakeEntityModelBase<string>>("baseMapId", mm => mm.MapIdMember(m => m.Id));
-                config.AddModelMap<FakeModel>("activeMapId", mm => mm.MapMember(m => m.IntegerProp))
+                config.AddModelMap<FakeEntityModelBase<string>>("baseSchemaId", mm => mm.MapIdMember(m => m.Id));
+                config.AddModelMap<FakeModel>("activeSchemaId", mm => mm.MapMember(m => m.IntegerProp))
                     .AddFallbackCustomSerializer(fallbackSerializer);
             });
 
             // Action.
-            var serializer = configuration.GetSerializer(typeof(FakeModel), "unknownMapId");
+            var serializer = configuration.GetSerializer(typeof(FakeModel), "unknownSchemaId");
 
             // Assert.
             Assert.Same(fallbackSerializer, serializer);
@@ -125,13 +125,13 @@ namespace Etherna.MongODM.Core
             // Setup.
             var configuration = BuildConfiguration(config =>
             {
-                config.AddModelMap<FakeEntityModelBase<string>>("baseMapId", mm => mm.MapIdMember(m => m.Id));
-                config.AddModelMap<FakeModel>("activeMapId", mm => mm.MapMember(m => m.StringProp))
-                    .AddSecondarySchema("secondaryMapId", mm => mm.MapMember(m => m.IntegerProp));
+                config.AddModelMap<FakeEntityModelBase<string>>("baseSchemaId", mm => mm.MapIdMember(m => m.Id));
+                config.AddModelMap<FakeModel>("activeSchemaId", mm => mm.MapMember(m => m.StringProp))
+                    .AddSecondarySchema("secondarySchemaId", mm => mm.MapMember(m => m.IntegerProp));
             });
 
             // Action.
-            var serializer = configuration.GetSerializer(typeof(FakeModel), "secondaryMapId");
+            var serializer = configuration.GetSerializer(typeof(FakeModel), "secondarySchemaId");
 
             // Assert.
             var model = DeserializeFakeModel(serializer, new BsonDocument
@@ -150,12 +150,12 @@ namespace Etherna.MongODM.Core
             // Setup.
             var configuration = BuildConfiguration(config =>
             {
-                config.AddModelMap<FakeEntityModelBase<string>>("baseMapId", mm => mm.MapMember(m => m.Id).SetElementName("_id"));
-                config.AddModelMap<FakeModel>("activeMapId", mm => mm.MapMember(m => m.StringProp));
+                config.AddModelMap<FakeEntityModelBase<string>>("baseSchemaId", mm => mm.MapMember(m => m.Id).SetElementName("_id"));
+                config.AddModelMap<FakeModel>("activeSchemaId", mm => mm.MapMember(m => m.StringProp));
             });
 
             // Action.
-            var serializer = configuration.GetSerializer(typeof(FakeModel), "unknownMapId");
+            var serializer = configuration.GetSerializer(typeof(FakeModel), "unknownSchemaId");
 
             // Assert.
             //the conventional "_id" element is read also without a mapped id member
@@ -171,14 +171,14 @@ namespace Etherna.MongODM.Core
 
         [Theory]
         [InlineData(null)]
-        [InlineData("unknownMapId")]
+        [InlineData("unknownSchemaId")]
         public void GetSerializerUsesIdOnlyFallbackWithUnrecognizedSchemaId(string? modelMapSchemaId)
         {
             // Setup.
             var configuration = BuildConfiguration(config =>
             {
-                config.AddModelMap<FakeEntityModelBase<string>>("baseMapId", mm => mm.MapIdMember(m => m.Id));
-                config.AddModelMap<FakeModel>("activeMapId", mm => mm.MapMember(m => m.StringProp));
+                config.AddModelMap<FakeEntityModelBase<string>>("baseSchemaId", mm => mm.MapIdMember(m => m.Id));
+                config.AddModelMap<FakeModel>("activeSchemaId", mm => mm.MapMember(m => m.StringProp));
             });
 
             // Action.

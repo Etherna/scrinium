@@ -45,6 +45,9 @@ namespace Etherna.MongODM.Core.Options
         /// </summary>
         public bool IsReadOnly { get; }
 
-        public ModelMapVersionOptions ModelMapVersion { get; }
+        /// <summary>
+        /// Configuration of the document element carrying the model map schema id.
+        /// </summary>
+        public ModelMapSchemaIdOptions ModelMapSchemaId { get; }
     }
 }

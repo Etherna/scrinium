@@ -82,7 +82,7 @@ namespace Etherna.MongODM.IntegrationTests
 
             var rawAuthor = rawMessage["Author"].AsBsonDocument;
             Assert.Equal("Web3Account", ActualTypeDiscriminator(rawAuthor["_t"]));
-            Assert.Equal("06d4e4c1-1e57-4bd0-a071-90fe7d3dbc2a", rawAuthor["_m"].AsString); //summary schema of the new type
+            Assert.Equal("06d4e4c1-1e57-4bd0-a071-90fe7d3dbc2a", rawAuthor["_s"].AsString); //summary schema of the new type
             Assert.Equal("alice", rawAuthor["Username"].AsString);
             Assert.False(rawAuthor.Contains("EtherAddress")); //summaries keep only their summary members
 

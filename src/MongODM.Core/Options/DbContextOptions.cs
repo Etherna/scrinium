@@ -32,7 +32,7 @@ namespace Etherna.MongODM.Core.Options
         public string? Identifier { get; set; }
         public ImplicitLazyLoadMode ImplicitLazyLoad { get; set; } = ImplicitLazyLoadMode.Warn;
         public bool IsReadOnly { get; set; }
-        public ModelMapVersionOptions ModelMapVersion { get; set; } = new ModelMapVersionOptions();
+        public ModelMapSchemaIdOptions ModelMapSchemaId { get; set; } = new();
         public IEnumerable<Type> ChildDbContextTypes => _childDbContextTypes;
 
         // Methods.

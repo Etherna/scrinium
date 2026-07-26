@@ -120,11 +120,11 @@ namespace Etherna.MongODM.IntegrationTests
 
             //the refreshed summaries keep the reference schema shape, on plain and array members
             var rawLastPost = rawBlog["LastPost"].AsBsonDocument;
-            Assert.Equal("8fa8f258-70b2-464f-8b57-11de27ca0b81", rawLastPost["_m"].AsString);
+            Assert.Equal("8fa8f258-70b2-464f-8b57-11de27ca0b81", rawLastPost["_s"].AsString);
             Assert.False(rawLastPost.Contains("Content")); //summaries keep only their summary members
 
             var rawReferencedPost = rawBlog["Posts"].AsBsonArray[0].AsBsonDocument;
-            Assert.Equal("e7d1fe44-c5d7-4e5b-8ab6-898295619131", rawReferencedPost["_m"].AsString);
+            Assert.Equal("e7d1fe44-c5d7-4e5b-8ab6-898295619131", rawReferencedPost["_s"].AsString);
             Assert.False(rawReferencedPost.Contains("Title")); //id only reference
         }
 
@@ -271,7 +271,7 @@ namespace Etherna.MongODM.IntegrationTests
                 "Author",
                 new BsonDocument
                 {
-                    { "_m", "00000000-0000-0000-0000-000000000000" },
+                    { "_s", "00000000-0000-0000-0000-000000000000" },
                     { "_t", "Web2Account" },
                     { "_id", ObjectId.Parse(author.Id) }
                 }));
@@ -287,7 +287,7 @@ namespace Etherna.MongODM.IntegrationTests
 
             // Assert.
             var rawAuthor = (await messagesCollection.Find(IdFilter(message.Id)).SingleAsync())["Author"].AsBsonDocument;
-            Assert.Equal("f5825985-4d3a-43e0-a15a-e6f504c34e07", rawAuthor["_m"].AsString); //active summary schema
+            Assert.Equal("f5825985-4d3a-43e0-a15a-e6f504c34e07", rawAuthor["_s"].AsString); //active summary schema
             Assert.Equal("Web2Account", rawAuthor["_t"].AsString);
             Assert.Equal("alice", rawAuthor["Username"].AsString);
         }
@@ -396,12 +396,12 @@ namespace Etherna.MongODM.IntegrationTests
 
             var rawAlice = rawWatchers.Single(w => w["_id"] == ObjectId.Parse(alice.Id)).AsBsonDocument;
             Assert.Equal("Web3Account", rawAlice["_t"].AsString);
-            Assert.Equal("06d4e4c1-1e57-4bd0-a071-90fe7d3dbc2a", rawAlice["_m"].AsString); //summary schema of the new type
+            Assert.Equal("06d4e4c1-1e57-4bd0-a071-90fe7d3dbc2a", rawAlice["_s"].AsString); //summary schema of the new type
             Assert.Equal("alice", rawAlice["Username"].AsString);
 
             var rawBob = rawWatchers.Single(w => w["_id"] == ObjectId.Parse(bob.Id)).AsBsonDocument;
             Assert.Equal("Web2Account", rawBob["_t"].AsString);
-            Assert.Equal("f5825985-4d3a-43e0-a15a-e6f504c34e07", rawBob["_m"].AsString); //untouched original summary
+            Assert.Equal("f5825985-4d3a-43e0-a15a-e6f504c34e07", rawBob["_s"].AsString); //untouched original summary
             Assert.Equal("bob", rawBob["Username"].AsString);
         }
 
