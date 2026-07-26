@@ -77,7 +77,7 @@ namespace Etherna.MongODM.Core
         private readonly Mock<IDbContextEngine> dbContextEngineMock = new();
         private readonly Mock<IDiscriminatorRegistry> discriminatorRegistryMock = new();
         private readonly Mock<IModelMap> modelMapMock = new();
-        private readonly ModelMapVersionOptions modelMapVersionOptions = new();
+        private readonly ModelMapSchemaIdOptions modelMapSchemaIdOptions = new();
         private readonly Mock<IMapRegistry> mapRegistryMock = new();
         private readonly Mock<ISerializerModifierAccessor> serializerModifierAccessorMock = new();
 
@@ -95,8 +95,8 @@ namespace Etherna.MongODM.Core
                 .Returns(true);
             dbContextEngineMock.Setup(c => c.ProxyGenerator.PurgeProxyType(It.IsAny<Type>()))
                 .Returns<Type>(t => t);
-            dbContextEngineMock.Setup(c => c.Options.ModelMapVersion)
-                .Returns(() => modelMapVersionOptions);
+            dbContextEngineMock.Setup(c => c.Options.ModelMapSchemaId)
+                .Returns(() => modelMapSchemaIdOptions);
             dbContextEngineMock.Setup(c => c.MapRegistry)
                 .Returns(() => mapRegistryMock.Object);
             dbContextEngineMock.Setup(c => c.SerializerModifierAccessor)
@@ -165,6 +165,58 @@ namespace Etherna.MongODM.Core
 
             // Assert
             Assert.Equal(test.ExpectedModel, result, new FakeModelComparer());
+        }
+
+        [Theory]
+        [InlineData("_s")]
+        [InlineData("_m")]
+        public void DeserializeResolvesSchemaIdFromItsDocumentElement(string schemaIdElementName)
+        {
+            /* MODM-153: the schema id element name is "_s"; documents written with the
+             * previous "_m" name keep resolving their schema through the read fallback
+             * names. The recognized element is removed before the schema deserialization:
+             * an unremoved element would fail it, not matching any mapped member. */
+
+            // Setup.
+            var document = new BsonDocument(new BsonElement[]
+            {
+                new(schemaIdElementName, new BsonString("schemaId")),
+                new("_id", new BsonString("idVal")),
+                new("StringProp", new BsonString("ok"))
+            } as IEnumerable<BsonElement>);
+            var bsonReader = new BsonDocumentReader(document);
+            var classMap = new BsonClassMap<FakeModel>(cm => cm.AutoMap());
+            classMap.Freeze();
+            var serializer = new ModelMapSerializer<FakeModel>(dbContextEngineMock.Object);
+
+            //the resolved schema marks the deserialized model fixing a member value
+            var schemaMock = new Mock<IModelMapSchema>();
+            schemaMock.Setup(s => s.Serializer)
+                .Returns(classMap.ToSerializer());
+            schemaMock.Setup(s => s.FixDeserializedModelAsync(It.IsAny<object>()))
+                .Returns<object>(m =>
+                {
+                    ((FakeModel)m).IntegerProp = 42;
+                    return Task.FromResult(m);
+                });
+            modelMapMock.Setup(m => m.SchemasById)
+                .Returns(new Dictionary<string, IModelMapSchema> { ["schemaId"] = schemaMock.Object });
+            modelMapMock.Setup(s => s.ActiveSchema.Serializer)
+                .Returns(classMap.ToSerializer());
+            modelMapMock.Setup(s => s.ActiveSchema.FixDeserializedModelAsync(It.IsAny<object>()))
+                .Returns<object>(Task.FromResult);
+
+            // Action.
+            var result = serializer.Deserialize(
+                BsonDeserializationContext.CreateRoot(bsonReader),
+                new BsonDeserializationArgs { NominalType = typeof(FakeModel) });
+
+            // Assert.
+            //the schema identified by the element deserialized and fixed the model
+            Assert.NotNull(result);
+            Assert.Equal("idVal", result.Id);
+            Assert.Equal("ok", result.StringProp);
+            Assert.Equal(42, result.IntegerProp);
         }
 
         [Fact]
@@ -252,7 +304,7 @@ namespace Etherna.MongODM.Core
                         },
                         new BsonDocument(new BsonElement[]
                         {
-                            new("_m", new BsonString("mapId")),
+                            new("_s", new BsonString("schemaId")),
                             new("_id", new BsonString("idVal")),
                             new("CreationDateTime", new BsonDateTime(new DateTime())),
                             new("EnumerableProp", new BsonArray(
@@ -260,7 +312,7 @@ namespace Etherna.MongODM.Core
                                 new BsonDocument(new BsonElement[]
                                 {
                                     /*commented because serializer is not registered*/
-                                    //new BsonElement("_m", new BsonString("mapId")),
+                                    //new BsonElement("_s", new BsonString("schemaId")),
                                     new("_id", BsonNull.Value),
                                     new("CreationDateTime", new BsonDateTime(new DateTime())),
                                     new("EnumerableProp", BsonNull.Value),
@@ -274,7 +326,7 @@ namespace Etherna.MongODM.Core
                             new("ObjectProp", new BsonDocument(new BsonElement[]
                             {
                                 /*commented because serializer is not registered*/
-                                //new BsonElement("_m", new BsonString("mapId")),
+                                //new BsonElement("_s", new BsonString("schemaId")),
                                 new("_id", BsonNull.Value),
                                 new("CreationDateTime", new BsonDateTime(new DateTime())),
                                 new("EnumerableProp", BsonNull.Value),
@@ -301,10 +353,10 @@ namespace Etherna.MongODM.Core
             modelMapMock.Setup(s => s.ActiveSchema.Serializer)
                 .Returns(() => classMap.ToSerializer());
             modelMapMock.Setup(s => s.ActiveSchema.Id)
-                .Returns("mapId");
+                .Returns("schemaId");
 
-            mapRegistryMock.Setup(sr => sr.GetActiveModelMapIdBsonElement(typeof(FakeModel)))
-                .Returns(new BsonElement("_m", new BsonString("mapId")));
+            mapRegistryMock.Setup(sr => sr.GetActiveSchemaIdBsonElement(typeof(FakeModel)))
+                .Returns(new BsonElement("_s", new BsonString("schemaId")));
 
             // Action
             test.PreAction(test.BsonWriter);
@@ -323,7 +375,7 @@ namespace Etherna.MongODM.Core
         {
             /* MODM-189: proxy types have no registered model maps: a proxy instance serializes
              * through the model map of its purged type, writing the same document of a plain
-             * instance - same members, same model map id, no proxy type traces. */
+             * instance - same members, same schema id, no proxy type traces. */
 
             // Setup.
             var classMap = new BsonClassMap<FakeModel>(cm => cm.AutoMap());
@@ -332,8 +384,8 @@ namespace Etherna.MongODM.Core
 
             modelMapMock.Setup(s => s.ActiveSchema.Serializer)
                 .Returns(() => classMap.ToSerializer());
-            mapRegistryMock.Setup(sr => sr.GetActiveModelMapIdBsonElement(typeof(FakeModel)))
-                .Returns(new BsonElement("_m", new BsonString("mapId")));
+            mapRegistryMock.Setup(sr => sr.GetActiveSchemaIdBsonElement(typeof(FakeModel)))
+                .Returns(new BsonElement("_s", new BsonString("schemaId")));
             dbContextEngineMock.Setup(c => c.ProxyGenerator.PurgeProxyType(typeof(FakeModelProxy)))
                 .Returns(typeof(FakeModel));
 

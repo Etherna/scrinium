@@ -282,7 +282,7 @@ namespace Etherna.MongODM.IntegrationTests
             await blogsCollection.UpdateOneAsync(
                 Builders<BsonDocument>.Filter.Eq("_id", ObjectId.Parse(blog.Id)),
                 Builders<BsonDocument>.Update
-                    .Set("LastPost._m", "unknown-schema-id")
+                    .Set("LastPost._s", "unknown-schema-id")
                     .Set("LastPost.Title", 42)
                     .Set("LastPost.Content", "legacy content"));
 

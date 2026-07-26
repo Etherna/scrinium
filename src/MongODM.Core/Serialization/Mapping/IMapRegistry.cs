@@ -56,11 +56,11 @@ namespace Etherna.MongODM.Core.Serialization.Mapping
             Action<BsonClassMap<TModel>>? activeModelMapSchemaInitializer = null);
 
         /// <summary>
-        /// Return bson element for represent a model map id
+        /// Return the bson element carrying the active model map schema id of a model type
         /// </summary>
         /// <param name="modelType">The model type</param>
-        /// <returns>The model map id bson element</returns>
-        BsonElement GetActiveModelMapIdBsonElement(Type modelType);
+        /// <returns>The active schema id bson element</returns>
+        BsonElement GetActiveSchemaIdBsonElement(Type modelType);
 
         IBsonSerializer GetMappedSerializer(Type modelType);
 

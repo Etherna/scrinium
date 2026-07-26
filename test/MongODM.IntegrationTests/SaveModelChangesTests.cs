@@ -107,7 +107,7 @@ namespace Etherna.MongODM.IntegrationTests
             var postsCollection = dbContext.Engine.Database.GetCollection<BsonDocument>("posts");
             var postFilter = Builders<BsonDocument>.Filter.Eq("_id", ObjectId.Parse(post.Id));
             await postsCollection.UpdateOneAsync(postFilter,
-                Builders<BsonDocument>.Update.Set("_m", "legacy-schema-id"));
+                Builders<BsonDocument>.Update.Set("_s", "legacy-schema-id"));
 
             // Action.
             var loadedPost = await dbContext.Posts.FindOneAsync(post.Id);
@@ -117,7 +117,7 @@ namespace Etherna.MongODM.IntegrationTests
             // Assert.
             //the document has been migrated to the active schema, with the change persisted
             var rawPost = await postsCollection.Find(postFilter).SingleAsync();
-            Assert.NotEqual("legacy-schema-id", rawPost["_m"].AsString);
+            Assert.NotEqual("legacy-schema-id", rawPost["_s"].AsString);
             Assert.Equal("updated content", rawPost["Content"].AsString);
             Assert.Equal("title", rawPost["Title"].AsString);
         }

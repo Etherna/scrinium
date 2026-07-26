@@ -67,7 +67,7 @@ namespace Etherna.MongODM.Core.Serialization.Serializers
     }
 
     /// <summary>
-    /// Use ActiveModelMap.BsonClassMap definition in specific configuration to serialize reference documents.
+    /// Use the active model map schema definition from its specific configuration to serialize reference documents.
     /// </summary>
     /// <typeparam name="TModelBase">Nominal model type</typeparam>
     /// <typeparam name="TKey">Model Id type</typeparam>
@@ -165,13 +165,8 @@ namespace Etherna.MongODM.Core.Serialization.Serializers
             //deserialize on document
             var bsonDocument = BsonDocumentSerializer.Instance.Deserialize(context, args);
 
-            //get model map id
-            string? modelMapId = null;
-            if (bsonDocument.TryGetElement(dbContextEngine.Options.ModelMapVersion.ElementName, out BsonElement modelMapIdElement))
-            {
-                modelMapId = BsonValueToModelMapId(modelMapIdElement.Value);
-                bsonDocument.RemoveElement(modelMapIdElement); //don't report into extra elements
-            }
+            //get model map schema id
+            var schemaId = ModelMapSchemaIdHelper.ExtractSchemaId(bsonDocument, dbContextEngine.Options.ModelMapSchemaId);
 
             // Initialize localContext.
             using var bsonReader = new BsonDocumentReader(bsonDocument);
@@ -195,7 +190,7 @@ namespace Etherna.MongODM.Core.Serialization.Serializers
             TModelBase? model;
             try
             {
-                var serializer = Configuration.GetSerializer(actualType, modelMapId);
+                var serializer = Configuration.GetSerializer(actualType, schemaId);
                 model = serializer.Deserialize(localContext, args) as TModelBase;
             }
             finally
@@ -306,11 +301,11 @@ namespace Etherna.MongODM.Core.Serialization.Serializers
             serializer.Serialize(localContext, args, value);
 
             // Add additional data.
-            //add model map id
-            if (bsonDocument.Contains(dbContextEngine.Options.ModelMapVersion.ElementName))
-                bsonDocument.Remove(dbContextEngine.Options.ModelMapVersion.ElementName);
-            var modelMapIdElement = Configuration.GetActiveModelMapIdBsonElement(actualType);
-            bsonDocument.InsertAt(0, modelMapIdElement);
+            //add model map schema id
+            if (bsonDocument.Contains(dbContextEngine.Options.ModelMapSchemaId.ElementName))
+                bsonDocument.Remove(dbContextEngine.Options.ModelMapSchemaId.ElementName);
+            var schemaIdElement = Configuration.GetActiveSchemaIdBsonElement(actualType);
+            bsonDocument.InsertAt(0, schemaIdElement);
 
             // Serialize document.
             BsonDocumentSerializer.Instance.Serialize(context, args, bsonDocument);
@@ -339,14 +334,5 @@ namespace Etherna.MongODM.Core.Serialization.Serializers
             serializationInfo = null!;
             return false;
         }
-
-        // Helpers.
-        private static string? BsonValueToModelMapId(BsonValue bsonValue) =>
-            bsonValue switch
-            {
-                BsonNull _ => null,
-                BsonString bsonString => bsonString.AsString,
-                _ => throw new NotSupportedException(),
-            };
     }
 }

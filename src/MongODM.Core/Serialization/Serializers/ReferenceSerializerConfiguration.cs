@@ -30,7 +30,7 @@ namespace Etherna.MongODM.Core.Serialization.Serializers
         // Fields.
         private readonly Dictionary<Type, IModelMap> _modelMaps = new();
 
-        private readonly Dictionary<Type, BsonElement> activeModelMapIdBsonElement = new();
+        private readonly Dictionary<Type, BsonElement> activeSchemaIdBsonElement = new();
         private readonly IDbContextEngine dbContextEngine;
         private readonly Dictionary<Type, IBsonSerializer> defaultFallbackSerializers = [];
 
@@ -67,7 +67,7 @@ namespace Etherna.MongODM.Core.Serialization.Serializers
                 return modelMap;
             });
 
-        public BsonElement GetActiveModelMapIdBsonElement(Type modelType)
+        public BsonElement GetActiveSchemaIdBsonElement(Type modelType)
         {
             ArgumentNullException.ThrowIfNull(modelType);
 
@@ -77,7 +77,7 @@ namespace Etherna.MongODM.Core.Serialization.Serializers
              * Use of this cache dictionary avoids checks and creation of new bson elements
              * for each serialization.
              */
-            return activeModelMapIdBsonElement[modelType];
+            return activeSchemaIdBsonElement[modelType];
         }
 
         public IBsonSerializer GetSerializer(Type modelType, string? modelMapSchemaId)
@@ -116,11 +116,11 @@ namespace Etherna.MongODM.Core.Serialization.Serializers
                 // Freeze model map.
                 modelMap.Freeze();
 
-                // Generate active model maps id bson elements.
-                activeModelMapIdBsonElement.Add(
+                // Generate active schema id bson elements.
+                activeSchemaIdBsonElement.Add(
                     modelMap.ModelType,
                     new BsonElement(
-                        dbContextEngine.Options.ModelMapVersion.ElementName,
+                        dbContextEngine.Options.ModelMapSchemaId.ElementName,
                         new BsonString(modelMap.ActiveSchema.Id)));
 
                 // Generate default fallback serializers.

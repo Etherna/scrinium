@@ -56,7 +56,7 @@ namespace Etherna.MongODM.IntegrationTests
              * serializes through the class map of its purged concrete type. Replacing an
              * untouched loaded model (a proxy of the derived type, read from the base
              * typed repository) must rewrite a document identical to the created one:
-             * same members, same model map id, and the derived type discriminator -
+             * same members, same schema id, and the derived type discriminator -
              * never the proxy type name. */
 
             // Setup.
@@ -93,7 +93,7 @@ namespace Etherna.MongODM.IntegrationTests
             /* MODM-189: reference serializer configurations too have no proxy model maps: a
              * reference member valued with a loaded (proxy) instance writes the same reference
              * document written by a plain instance - the summary members of the reference
-             * schema, with the referenced model map id. */
+             * schema, with the reference schema id. */
 
             // Setup.
             //blog referencing the plain created post

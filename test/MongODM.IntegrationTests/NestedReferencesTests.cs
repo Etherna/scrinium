@@ -72,7 +72,7 @@ namespace Etherna.MongODM.IntegrationTests
             // Assert.
             var rawNestedPost = (await GetRawBookmarkAsync(bookmark.Id))["Blog"]["LastPost"].AsBsonDocument;
             Assert.Equal("updated title", rawNestedPost["Title"].AsString);
-            Assert.Equal("8fa8f258-70b2-464f-8b57-11de27ca0b81", rawNestedPost["_m"].AsString);
+            Assert.Equal("8fa8f258-70b2-464f-8b57-11de27ca0b81", rawNestedPost["_s"].AsString);
             Assert.False(rawNestedPost.Contains("Content")); //summaries keep only their summary members
         }
 
@@ -88,13 +88,13 @@ namespace Etherna.MongODM.IntegrationTests
 
             // Assert.
             var rawBlogSummary = (await GetRawBookmarkAsync(bookmark.Id))["Blog"].AsBsonDocument;
-            Assert.Equal("9c1d4e7f-2b8a-4c6d-b3e9-7a5f0d8c2b4e", rawBlogSummary["_m"].AsString);
+            Assert.Equal("9c1d4e7f-2b8a-4c6d-b3e9-7a5f0d8c2b4e", rawBlogSummary["_s"].AsString);
             Assert.Equal(ObjectId.Parse(blog.Id), rawBlogSummary["_id"].AsObjectId);
             Assert.Equal("blog title", rawBlogSummary["Title"].AsString);
             Assert.False(rawBlogSummary.Contains("Posts")); //not a summary member
 
             var rawNestedPost = rawBlogSummary["LastPost"].AsBsonDocument;
-            Assert.Equal("8fa8f258-70b2-464f-8b57-11de27ca0b81", rawNestedPost["_m"].AsString);
+            Assert.Equal("8fa8f258-70b2-464f-8b57-11de27ca0b81", rawNestedPost["_s"].AsString);
             Assert.Equal(ObjectId.Parse(post.Id), rawNestedPost["_id"].AsObjectId);
             Assert.Equal("post title", rawNestedPost["Title"].AsString);
             Assert.False(rawNestedPost.Contains("Content")); //not a summary member

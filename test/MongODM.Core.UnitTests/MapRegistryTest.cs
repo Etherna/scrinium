@@ -57,8 +57,8 @@ namespace Etherna.MongODM.Core
                 .Returns(new Mock<IDiscriminatorRegistry>().Object);
             dbContextEngineMock.Setup(e => e.Options.DbName)
                 .Returns("fakeDb");
-            dbContextEngineMock.Setup(e => e.Options.ModelMapVersion)
-                .Returns(new ModelMapVersionOptions());
+            dbContextEngineMock.Setup(e => e.Options.ModelMapSchemaId)
+                .Returns(new ModelMapSchemaIdOptions());
             dbContextEngineMock.Setup(e => e.SerializerRegistry)
                 .Returns(new BsonSerializerRegistry());
 
@@ -77,8 +77,8 @@ namespace Etherna.MongODM.Core
             dbContextEngineMock.Setup(e => e.ProxyGenerator.CreateInstance(typeof(FakeModel), It.IsAny<object[]>()))
                 .Returns(proxyInstance);
 
-            var entityModelMap = (IModelMap)mapRegistry.AddModelMap<FakeModel>("fakeModelMapId");
-            var otherModelMap = (IModelMap)mapRegistry.AddModelMap<FirstModel>("firstModelMapId");
+            var entityModelMap = (IModelMap)mapRegistry.AddModelMap<FakeModel>("fakeSchemaId");
+            var otherModelMap = (IModelMap)mapRegistry.AddModelMap<FirstModel>("firstSchemaId");
             mapRegistry.Freeze();
 
             // Action.
@@ -100,7 +100,7 @@ namespace Etherna.MongODM.Core
              * create proxy instances, and proxy types have no maps of their own. */
 
             // Setup.
-            mapRegistry.AddModelMap<FakeModel>("fakeModelMapId");
+            mapRegistry.AddModelMap<FakeModel>("fakeSchemaId");
 
             // Action.
             mapRegistry.Freeze();
@@ -229,8 +229,8 @@ namespace Etherna.MongODM.Core
 
             // Assert.
             Assert.True(mapRegistry.IsFrozen);
-            Assert.Equal("first", mapRegistry.GetActiveModelMapIdBsonElement(typeof(FirstModel)).Value.AsString);
-            Assert.Equal("second", mapRegistry.GetActiveModelMapIdBsonElement(typeof(SecondModel)).Value.AsString);
+            Assert.Equal("first", mapRegistry.GetActiveSchemaIdBsonElement(typeof(FirstModel)).Value.AsString);
+            Assert.Equal("second", mapRegistry.GetActiveSchemaIdBsonElement(typeof(SecondModel)).Value.AsString);
         }
 
         // Helpers.
