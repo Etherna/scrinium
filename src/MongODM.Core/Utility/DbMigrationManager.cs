@@ -194,7 +194,7 @@ namespace Etherna.MongODM.Core.Utility
 
             using var exclusiveAccess = new ExclusiveAccessHandler(dbContext.Engine.ExecutionContext);
 
-            // Paginate on Id: CreationDateTime is not persisted, and ObjectId ids embed the creation instant.
+            // Paginate on Id: ObjectId ids embed the creation instant.
             return await dbContext.DbOperations.QueryElementsAsync(elements =>
                 elements.OfType<DbMigrationOperation>()
                         .Where(op => op.DbContextName == dbContext.Engine.Identifier)

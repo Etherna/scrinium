@@ -12,18 +12,13 @@
 // You should have received a copy of the GNU Lesser General Public License along with MongODM.
 // If not, see <https://www.gnu.org/licenses/>.
 
-using Etherna.MongoDB.Bson;
-using Etherna.MongoDB.Bson.Serialization.Attributes;
 using Etherna.MongODM.Core.Domain.Models;
-using System;
 
 namespace Etherna.MongODM.Core.Models
 {
     public abstract class FakeEntityModelBase<TKey> : ModelBase, IEntityModel<TKey>
     {
         public virtual TKey Id { get; set; } = default!;
-        [BsonRepresentation(BsonType.DateTime)]
-        public virtual DateTimeOffset CreationDateTime { get; private set; }
 
         public virtual void DisposeForDelete() { }
     }

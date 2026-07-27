@@ -12,21 +12,14 @@
 // You should have received a copy of the GNU Lesser General Public License along with MongODM.
 // If not, see <https://www.gnu.org/licenses/>.
 
-using System;
 using System.Collections.Generic;
 
 namespace Etherna.MongODM.Core.Domain.Models
 {
     public abstract class EntityModelBase : ModelBase, IEntityModel
     {
-        // Fields.
-        private DateTimeOffset _creationDateTime = DateTimeOffset.UtcNow;
-
         // Dispose.
         public virtual void DisposeForDelete() { }
-
-        // Properties.
-        public virtual DateTimeOffset CreationDateTime { get => _creationDateTime; protected set => _creationDateTime = value; }
     }
 
     public abstract class EntityModelBase<TKey> : EntityModelBase, IEntityModel<TKey>

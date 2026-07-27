@@ -13,21 +13,12 @@
 // If not, see <https://www.gnu.org/licenses/>.
 
 using Etherna.MongODM.Core.Domain.Models;
-using System;
 
 namespace Etherna.MongODM.AspNetCoreSample.Models
 {
     public abstract class EntityModelBase<TKey> : ModelBase, IEntityModel<TKey>
     {
-#pragma warning disable CS8618 // Non-nullable field must contain a non-null value when exiting constructor. Consider declaring as nullable.
-        protected EntityModelBase()
-#pragma warning restore CS8618 // Non-nullable field must contain a non-null value when exiting constructor. Consider declaring as nullable.
-        {
-            CreationDateTime = DateTimeOffset.UtcNow;
-        }
-
-        public virtual TKey Id { get; protected set; }
-        public virtual DateTimeOffset CreationDateTime { get; protected set; }
+        public virtual TKey Id { get; protected set; } = default!;
 
         public virtual void DisposeForDelete() { }
     }
