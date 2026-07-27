@@ -21,24 +21,15 @@ using System.Collections.Generic;
 
 namespace Etherna.MongODM.Core.Serialization.Serializers
 {
-    public class EntityModelSerializerAdapter<TExternalModel, TInternalModel, TKey> :
+    public class EntityModelSerializerAdapter<TExternalModel, TInternalModel, TKey>(
+        IBsonSerializer<TInternalModel> serializerBase) :
         SerializerBase<TExternalModel>,
-        IBsonSerializer<TExternalModel>,
         IBsonDocumentSerializer,
         IBsonIdProvider,
         IModelMapsHandlingSerializer
         where TInternalModel : class, IEntityModel<TKey>
         where TExternalModel : class, IEntityModel<TKey>
     {
-        // Fields.
-        private readonly IBsonSerializer<TInternalModel> serializerBase;
-
-        // Constructors.
-        public EntityModelSerializerAdapter(IBsonSerializer<TInternalModel> serializerBase)
-        {
-            this.serializerBase = serializerBase;
-        }
-
         // Properties.
         public IEnumerable<IModelMap> HandledModelMaps => (serializerBase as IModelMapsHandlingSerializer)?.HandledModelMaps ?? Array.Empty<IModelMap>();
 
