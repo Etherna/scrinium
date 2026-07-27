@@ -18,6 +18,7 @@ using Etherna.MongoDB.Bson.Serialization;
 using Etherna.MongODM.Core.Conventions;
 using Etherna.MongODM.Core.Domain.Models;
 using Etherna.MongODM.Core.ExecContext.AsyncLocal;
+using Etherna.MongODM.Core.Extensions;
 using Etherna.MongODM.Core.Models;
 using Etherna.MongODM.Core.Options;
 using Etherna.MongODM.Core.ProxyModels;
@@ -103,9 +104,141 @@ namespace Etherna.MongODM.Core
         }
 
         [Fact]
-        public void DeserializeMarksProxyModelAsSummaryWithItsSettedMembers()
+        public void DeserializeDoesNotMarkMemberAppliedByDefaultValueAsLoaded()
         {
-            /* A model deserialized as reference is a summary: only the members setted by the
+            /* A member missing from the reference document assigns its specified default value
+             * during deserialization, but carries no summary loaded data: it stays out of the
+             * summary loaded member names, lazy loading the actual value from the origin
+             * document at its first get. */
+
+            // Setup.
+            var serializer = BuildSerializer(mm =>
+            {
+                mm.AutoMap();
+                mm.MapMember(m => m.IntegerProp).SetDefaultValue(42);
+            });
+            dbContextEngineMock.Setup(e => e.ProxyGenerator.CreateInstance(typeof(FakeModel), It.IsAny<object[]>()))
+                .Returns(new FakeModelProxy());
+            dbContextEngineMock.Setup(e => e.ProxyGenerator.IsProxyType(typeof(FakeModelProxy)))
+                .Returns(true);
+
+            var document = new BsonDocument
+            {
+                { "_s", "activeSchemaId" },
+                { "_id", "idVal" },
+                { "StringProp", "ok" }
+            };
+            var bsonReader = new BsonDocumentReader(document);
+
+            // Action.
+            var result = serializer.Deserialize(
+                BsonDeserializationContext.CreateRoot(bsonReader),
+                new BsonDeserializationArgs { NominalType = typeof(FakeModel) });
+
+            // Assert.
+            var referenceableResult = Assert.IsAssignableFrom<IReferenceable>(result);
+            Assert.True(referenceableResult.IsSummary);
+            Assert.Contains("StringProp", referenceableResult.SettedMemberNames);
+            Assert.DoesNotContain("IntegerProp", referenceableResult.SettedMemberNames);
+        }
+
+        [Fact]
+        public void DeserializeKeepsObservedSettedMembersWithCustomFallbackSerializer()
+        {
+            /* A custom fallback serializer deserializes without a schema mapping document
+             * elements to members: the members observed as setted through the proxy overrides
+             * stay the only available source for the summary loaded member names. */
+
+            // Setup.
+            var fallbackClassMap = new BsonClassMap<FakeModel>(cm =>
+            {
+                cm.AutoMap();
+                cm.SetCreator(() => new FakeModelProxy());
+            });
+            fallbackClassMap.Freeze();
+
+            var serializer = new ReferenceSerializer<FakeModel, string>(dbContextEngineMock.Object, config =>
+            {
+                config.AddModelMap<ModelBase>("modelBaseSchemaId");
+                config.AddModelMap<FakeEntityModelBase<string>>("baseSchemaId", mm => mm.MapIdMember(m => m.Id));
+                config.AddModelMap<FakeModel>("activeSchemaId")
+                    .AddFallbackCustomSerializer((IBsonSerializer<FakeModel>)fallbackClassMap.ToSerializer());
+            });
+            dbContextEngineMock.Setup(e => e.ProxyGenerator.IsProxyType(typeof(FakeModelProxy)))
+                .Returns(true);
+
+            var document = new BsonDocument
+            {
+                { "_s", "unknownSchemaId" },
+                { "_id", "idVal" },
+                { "StringProp", "ok" }
+            };
+            var bsonReader = new BsonDocumentReader(document);
+
+            // Action.
+            var result = serializer.Deserialize(
+                BsonDeserializationContext.CreateRoot(bsonReader),
+                new BsonDeserializationArgs { NominalType = typeof(FakeModel) });
+
+            // Assert.
+            var referenceableResult = Assert.IsAssignableFrom<IReferenceable>(result);
+            Assert.True(referenceableResult.IsSummary);
+            Assert.Contains("StringProp", referenceableResult.SettedMemberNames);
+            Assert.DoesNotContain("Id", referenceableResult.SettedMemberNames);
+            Assert.Equal("idVal", result.Id);
+        }
+
+        [Fact]
+        public void DeserializeMarksNotObservableSetterMemberAsSummaryLoaded()
+        {
+            /* A set through a private setter is not observable by the proxy member overrides.
+             * The summary loaded member names derive from the reference document, so the
+             * member reports as loaded anyway, without triggering a spurious full load at
+             * its first get. */
+
+            // Setup.
+            var serializer = new ReferenceSerializer<FakeModelWithPrivateSetter, string>(dbContextEngineMock.Object, config =>
+            {
+                config.AddModelMap<ModelBase>("modelBaseSchemaId");
+                config.AddModelMap<FakeEntityModelBase<string>>("baseSchemaId", mm => mm.MapIdMember(m => m.Id));
+                config.AddModelMap<FakeModelWithPrivateSetter>("privateSetterSchemaId", mm =>
+                {
+                    mm.AutoMap();
+                    mm.MapMember(m => m.PrivateSetterProp);
+                });
+            });
+            dbContextEngineMock.Setup(e => e.ProxyGenerator.CreateInstance(typeof(FakeModelWithPrivateSetter), It.IsAny<object[]>()))
+                .Returns(new FakeModelWithPrivateSetterProxy());
+            dbContextEngineMock.Setup(e => e.ProxyGenerator.IsProxyType(typeof(FakeModelWithPrivateSetterProxy)))
+                .Returns(true);
+
+            var document = new BsonDocument
+            {
+                { "_s", "privateSetterSchemaId" },
+                { "_id", "idVal" },
+                { "ObservableProp", "observedVal" },
+                { "PrivateSetterProp", "notObservedVal" }
+            };
+            var bsonReader = new BsonDocumentReader(document);
+
+            // Action.
+            var result = serializer.Deserialize(
+                BsonDeserializationContext.CreateRoot(bsonReader),
+                new BsonDeserializationArgs { NominalType = typeof(FakeModelWithPrivateSetter) });
+
+            // Assert.
+            var referenceableResult = Assert.IsAssignableFrom<IReferenceable>(result);
+            Assert.True(referenceableResult.IsSummary);
+            Assert.Contains("ObservableProp", referenceableResult.SettedMemberNames);
+            Assert.Contains("PrivateSetterProp", referenceableResult.SettedMemberNames);
+            //a get of the loaded member reads the summary value, without a full load attempt
+            Assert.Equal("notObservedVal", result.PrivateSetterProp);
+        }
+
+        [Fact]
+        public void DeserializeMarksProxyModelAsSummaryWithDocumentMembers()
+        {
+            /* A model deserialized as reference is a summary: only the members carried by the
              * summary document are loaded. The id never joins the summary member names,
              * definitionally present on any instance. */
 
