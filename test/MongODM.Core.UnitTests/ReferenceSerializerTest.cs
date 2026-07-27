@@ -20,10 +20,13 @@ using Etherna.MongODM.Core.Domain.Models;
 using Etherna.MongODM.Core.ExecContext.AsyncLocal;
 using Etherna.MongODM.Core.Models;
 using Etherna.MongODM.Core.Options;
+using Etherna.MongODM.Core.ProxyModels;
 using Etherna.MongODM.Core.Serialization.Mapping;
+using Etherna.MongODM.Core.Serialization.Modifiers;
 using Etherna.MongODM.Core.Serialization.Serializers;
 using Moq;
 using System;
+using System.Collections.Generic;
 using System.Reflection;
 using Xunit;
 
@@ -34,6 +37,7 @@ namespace Etherna.MongODM.Core
         // Fields.
         private readonly Mock<IDbContextEngine> dbContextEngineMock = new();
         private readonly Mock<IDiscriminatorRegistry> discriminatorRegistryMock = new();
+        private readonly Mock<ISerializerModifierAccessor> serializerModifierAccessorMock = new();
 
         // Constructor.
         public ReferenceSerializerTest()
@@ -58,6 +62,10 @@ namespace Etherna.MongODM.Core
                     null)!);
             dbContextEngineMock.Setup(e => e.ProxyGenerator.IsProxyType(It.IsAny<Type>()))
                 .Returns(false);
+            dbContextEngineMock.Setup(e => e.ProxyGenerator.PurgeProxyType(It.IsAny<Type>()))
+                .Returns<Type>(t => t);
+            dbContextEngineMock.Setup(e => e.SerializerModifierAccessor)
+                .Returns(() => serializerModifierAccessorMock.Object);
         }
 
         // Tests.
@@ -71,13 +79,7 @@ namespace Etherna.MongODM.Core
              * data is never needed with references. */
 
             // Setup.
-            var serializer = new ReferenceSerializer<FakeModel, string>(dbContextEngineMock.Object, config =>
-            {
-                //the auto mapped ModelBase map carries the extra elements member, as in real configurations
-                config.AddModelMap<ModelBase>("modelBaseSchemaId");
-                config.AddModelMap<FakeEntityModelBase<string>>("baseSchemaId", mm => mm.MapIdMember(m => m.Id));
-                config.AddModelMap<FakeModel>("activeSchemaId", mm => mm.AutoMap());
-            });
+            var serializer = BuildSerializer();
             var document = new BsonDocument
             {
                 { "_s", "activeSchemaId" },
@@ -99,5 +101,229 @@ namespace Etherna.MongODM.Core
             Assert.NotNull(result.ExtraElements);
             Assert.Empty(result.ExtraElements);
         }
+
+        [Fact]
+        public void DeserializeMarksProxyModelAsSummaryWithItsSettedMembers()
+        {
+            /* A model deserialized as reference is a summary: only the members setted by the
+             * summary document are loaded. The id never joins the summary member names,
+             * definitionally present on any instance. */
+
+            // Setup.
+            var serializer = BuildSerializer();
+            dbContextEngineMock.Setup(e => e.ProxyGenerator.CreateInstance(typeof(FakeModel), It.IsAny<object[]>()))
+                .Returns(new FakeModelProxy());
+            dbContextEngineMock.Setup(e => e.ProxyGenerator.IsProxyType(typeof(FakeModelProxy)))
+                .Returns(true);
+
+            var document = new BsonDocument
+            {
+                { "_s", "activeSchemaId" },
+                { "_id", "idVal" },
+                { "StringProp", "ok" }
+            };
+            var bsonReader = new BsonDocumentReader(document);
+
+            // Action.
+            var result = serializer.Deserialize(
+                BsonDeserializationContext.CreateRoot(bsonReader),
+                new BsonDeserializationArgs { NominalType = typeof(FakeModel) });
+
+            // Assert.
+            var referenceableResult = Assert.IsAssignableFrom<IReferenceable>(result);
+            Assert.True(referenceableResult.IsSummary);
+            Assert.Contains("StringProp", referenceableResult.SettedMemberNames);
+            Assert.DoesNotContain("Id", referenceableResult.SettedMemberNames);
+            Assert.Equal("idVal", result.Id);
+        }
+
+        [Fact]
+        public void DeserializeReadsOnlyIdWithReadOnlyReferencedIdModifier()
+        {
+            // Setup.
+            var serializer = BuildSerializer();
+            dbContextEngineMock.Setup(e => e.ProxyGenerator.CreateInstance(typeof(FakeModel), It.IsAny<object[]>()))
+                .Returns(new FakeModelProxy());
+            dbContextEngineMock.Setup(e => e.ProxyGenerator.IsProxyType(typeof(FakeModelProxy)))
+                .Returns(true);
+            serializerModifierAccessorMock.Setup(a => a.IsReadOnlyReferencedIdEnabled)
+                .Returns(true);
+
+            var document = new BsonDocument
+            {
+                { "_s", "activeSchemaId" },
+                { "_id", "idVal" },
+                { "StringProp", "ok" }
+            };
+            var bsonReader = new BsonDocumentReader(document);
+
+            // Action.
+            var result = serializer.Deserialize(
+                BsonDeserializationContext.CreateRoot(bsonReader),
+                new BsonDeserializationArgs { NominalType = typeof(FakeModel) });
+
+            // Assert.
+            //the summary keeps no setted member: any member get reloads, only the id stays readable
+            var referenceableResult = Assert.IsAssignableFrom<IReferenceable>(result);
+            Assert.True(referenceableResult.IsSummary);
+            Assert.Empty(referenceableResult.SettedMemberNames);
+            Assert.Equal("idVal", result.Id);
+        }
+
+        [Fact]
+        public void DeserializeReturnsNullWithNullValue()
+        {
+            // Setup.
+            var serializer = BuildSerializer();
+            var document = new BsonDocument(new BsonElement("elem", BsonNull.Value));
+            var bsonReader = new BsonDocumentReader(document);
+            bsonReader.ReadStartDocument();
+            bsonReader.ReadName();
+
+            // Action.
+            var result = serializer.Deserialize(
+                BsonDeserializationContext.CreateRoot(bsonReader),
+                new BsonDeserializationArgs { NominalType = typeof(FakeModel) });
+            bsonReader.ReadEndDocument();
+
+            // Assert.
+            Assert.Null(result);
+        }
+
+        [Fact]
+        public void DeserializeReturnsNullWithProxyModelWithoutId()
+        {
+            /* A reference missing its id can't be resolved to its origin document: the
+             * referred instance is ignored. */
+
+            // Setup.
+            var serializer = BuildSerializer();
+            dbContextEngineMock.Setup(e => e.ProxyGenerator.CreateInstance(typeof(FakeModel), It.IsAny<object[]>()))
+                .Returns(new FakeModelProxy());
+            dbContextEngineMock.Setup(e => e.ProxyGenerator.IsProxyType(typeof(FakeModelProxy)))
+                .Returns(true);
+
+            var document = new BsonDocument
+            {
+                { "_s", "activeSchemaId" },
+                { "StringProp", "ok" }
+            };
+            var bsonReader = new BsonDocumentReader(document);
+
+            // Action.
+            var result = serializer.Deserialize(
+                BsonDeserializationContext.CreateRoot(bsonReader),
+                new BsonDeserializationArgs { NominalType = typeof(FakeModel) });
+
+            // Assert.
+            Assert.Null(result);
+        }
+
+        [Fact]
+        public void DeserializeThrowsWithNotDocumentValue()
+        {
+            // Setup.
+            var serializer = BuildSerializer();
+            var document = new BsonDocument(new BsonElement("elem", new BsonInt32(42)));
+            var bsonReader = new BsonDocumentReader(document);
+            bsonReader.ReadStartDocument();
+            bsonReader.ReadName();
+
+            // Action.
+            var exception = Assert.Throws<InvalidOperationException>(() => serializer.Deserialize(
+                BsonDeserializationContext.CreateRoot(bsonReader),
+                new BsonDeserializationArgs { NominalType = typeof(FakeModel) }));
+
+            // Assert.
+            Assert.Contains("Expected a nested document", exception.Message, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void SerializeClearsExtraElementsBeforeWriting()
+        {
+            /* The persistence side protection of the extra data: a reference write drops the
+             * bag content, both from the model and from the written document. */
+
+            // Setup.
+            var serializer = BuildSerializer(mm => mm.MapMember(m => m.StringProp));
+            dbContextEngineMock.Setup(e => e.ProxyGenerator.PurgeProxyType(typeof(FakeModelWithExtraElements)))
+                .Returns(typeof(FakeModel));
+
+            var model = new FakeModelWithExtraElements { Id = "idVal", StringProp = "ok" };
+            model.SetExtraElements(new Dictionary<string, object> { ["removedProp"] = "extraVal" });
+
+            var serializedDocument = new BsonDocument();
+            using var bsonWriter = new BsonDocumentWriter(serializedDocument);
+
+            // Action.
+            serializer.Serialize(
+                BsonSerializationContext.CreateRoot(bsonWriter),
+                new BsonSerializationArgs { NominalType = typeof(FakeModel) },
+                model);
+
+            // Assert.
+            Assert.NotNull(model.ExtraElements);
+            Assert.Empty(model.ExtraElements);
+            Assert.False(serializedDocument.Contains("removedProp"));
+        }
+
+        [Fact]
+        public void SerializeWritesNullWithNullModel()
+        {
+            // Setup.
+            var serializer = BuildSerializer();
+            var serializedDocument = new BsonDocument();
+            using var bsonWriter = new BsonDocumentWriter(serializedDocument);
+            bsonWriter.WriteStartDocument();
+            bsonWriter.WriteName("elem");
+
+            // Action.
+            serializer.Serialize(
+                BsonSerializationContext.CreateRoot(bsonWriter),
+                new BsonSerializationArgs { NominalType = typeof(FakeModel) },
+                null!);
+            bsonWriter.WriteEndDocument();
+
+            // Assert.
+            Assert.Equal(0, serializedDocument.CompareTo(new BsonDocument(new BsonElement("elem", BsonNull.Value))));
+        }
+
+        [Fact]
+        public void SerializeWritesSummaryDocumentWithActiveSchemaId()
+        {
+            /* A reference document carries only the members mapped by the active reference
+             * schema, stamped with its schema id: the summary shape, not the full model. */
+
+            // Setup.
+            var serializer = BuildSerializer(mm => mm.MapMember(m => m.StringProp));
+            var model = new FakeModel { Id = "idVal", IntegerProp = 42, StringProp = "ok" };
+            var serializedDocument = new BsonDocument();
+            using var bsonWriter = new BsonDocumentWriter(serializedDocument);
+
+            // Action.
+            serializer.Serialize(
+                BsonSerializationContext.CreateRoot(bsonWriter),
+                new BsonSerializationArgs { NominalType = typeof(FakeModel) },
+                model);
+
+            // Assert.
+            var expectedDocument = new BsonDocument
+            {
+                { "_s", "activeSchemaId" },
+                { "_id", "idVal" },
+                { "StringProp", "ok" }
+            };
+            Assert.Equal(0, serializedDocument.CompareTo(expectedDocument));
+        }
+
+        // Helpers.
+        private ReferenceSerializer<FakeModel, string> BuildSerializer(Action<BsonClassMap<FakeModel>>? fakeModelInitializer = null) =>
+            new(dbContextEngineMock.Object, config =>
+            {
+                //the auto mapped ModelBase map carries the extra elements member, as in real configurations
+                config.AddModelMap<ModelBase>("modelBaseSchemaId");
+                config.AddModelMap<FakeEntityModelBase<string>>("baseSchemaId", mm => mm.MapIdMember(m => m.Id));
+                config.AddModelMap<FakeModel>("activeSchemaId", fakeModelInitializer ?? (mm => mm.AutoMap()));
+            });
     }
 }

@@ -17,6 +17,7 @@ using Etherna.MongoDB.Bson.IO;
 using Etherna.MongoDB.Bson.Serialization;
 using Etherna.MongODM.Core.Comparers;
 using Etherna.MongODM.Core.Conventions;
+using Etherna.MongODM.Core.Domain.Models;
 using Etherna.MongODM.Core.ExecContext.AsyncLocal;
 using Etherna.MongODM.Core.Extensions;
 using Etherna.MongODM.Core.Models;
@@ -24,6 +25,7 @@ using Etherna.MongODM.Core.Options;
 using Etherna.MongODM.Core.Serialization.Mapping;
 using Etherna.MongODM.Core.Serialization.Modifiers;
 using Etherna.MongODM.Core.Serialization.Serializers;
+using Etherna.MongODM.Core.Utility;
 using Moq;
 using System;
 using System.Collections.Generic;
@@ -70,6 +72,8 @@ namespace Etherna.MongODM.Core
             public BsonDocument SerializedDocument { get; } = new();
         }
 
+        public class DerivedFakeModel : FakeModel
+        { }
         public class FakeModelProxy : FakeModel
         { }
 
@@ -209,6 +213,202 @@ namespace Etherna.MongODM.Core
             Assert.Empty(result.ExtraElements);
         }
 
+        [Fact]
+        public void DeserializeFallsBackToActiveSchemaWithUnknownSchemaId()
+        {
+            // Setup.
+            var document = new BsonDocument(new BsonElement[]
+            {
+                new("_s", new BsonString("unknownSchemaId")),
+                new("_id", new BsonString("idVal")),
+                new("StringProp", new BsonString("ok"))
+            } as IEnumerable<BsonElement>);
+            var bsonReader = new BsonDocumentReader(document);
+            var classMap = new BsonClassMap<FakeModel>(cm => cm.AutoMap());
+            classMap.Freeze();
+            var serializer = new ModelMapSerializer<FakeModel>(dbContextEngineMock.Object);
+
+            //no schema matches the id, and no fallback is configured
+            modelMapMock.Setup(m => m.SchemasById)
+                .Returns(new Dictionary<string, IModelMapSchema>());
+            modelMapMock.Setup(s => s.ActiveSchema.Serializer)
+                .Returns(classMap.ToSerializer());
+            modelMapMock.Setup(s => s.ActiveSchema.FixDeserializedModelAsync(It.IsAny<object>()))
+                .Returns<object>(Task.FromResult);
+
+            // Action.
+            var result = serializer.Deserialize(
+                BsonDeserializationContext.CreateRoot(bsonReader),
+                new BsonDeserializationArgs { NominalType = typeof(FakeModel) });
+
+            // Assert.
+            Assert.NotNull(result);
+            Assert.Equal("idVal", result.Id);
+            Assert.Equal("ok", result.StringProp);
+        }
+
+        [Fact]
+        public void DeserializeHonorsFallbackSchemaWithUnknownSchemaId()
+        {
+            // Setup.
+            var document = new BsonDocument(new BsonElement[]
+            {
+                new("_s", new BsonString("unknownSchemaId")),
+                new("_id", new BsonString("idVal")),
+                new("StringProp", new BsonString("ok"))
+            } as IEnumerable<BsonElement>);
+            var bsonReader = new BsonDocumentReader(document);
+            var classMap = new BsonClassMap<FakeModel>(cm => cm.AutoMap());
+            classMap.Freeze();
+            var serializer = new ModelMapSerializer<FakeModel>(dbContextEngineMock.Object);
+
+            //the fallback schema marks the deserialized model fixing a member value
+            var fallbackSchemaMock = new Mock<IModelMapSchema>();
+            fallbackSchemaMock.Setup(s => s.Serializer)
+                .Returns(classMap.ToSerializer());
+            fallbackSchemaMock.Setup(s => s.FixDeserializedModelAsync(It.IsAny<object>()))
+                .Returns<object>(m =>
+                {
+                    ((FakeModel)m).IntegerProp = 42;
+                    return Task.FromResult(m);
+                });
+            modelMapMock.Setup(m => m.SchemasById)
+                .Returns(new Dictionary<string, IModelMapSchema>());
+            modelMapMock.Setup(m => m.FallbackSchema)
+                .Returns(fallbackSchemaMock.Object);
+            modelMapMock.Setup(s => s.ActiveSchema.Serializer)
+                .Returns(classMap.ToSerializer());
+
+            // Action.
+            var result = serializer.Deserialize(
+                BsonDeserializationContext.CreateRoot(bsonReader),
+                new BsonDeserializationArgs { NominalType = typeof(FakeModel) });
+
+            // Assert.
+            //the fallback schema deserialized and fixed the model
+            Assert.NotNull(result);
+            Assert.Equal("idVal", result.Id);
+            Assert.Equal("ok", result.StringProp);
+            Assert.Equal(42, result.IntegerProp);
+        }
+
+        [Fact]
+        public void DeserializeHonorsFallbackSerializerWithUnknownSchemaId()
+        {
+            // Setup.
+            var document = new BsonDocument(new BsonElement[]
+            {
+                new("_s", new BsonString("unknownSchemaId")),
+                new("_id", new BsonString("idVal"))
+            } as IEnumerable<BsonElement>);
+            var bsonReader = new BsonDocumentReader(document);
+            var classMap = new BsonClassMap<FakeModel>(cm => cm.AutoMap());
+            classMap.Freeze();
+            var serializer = new ModelMapSerializer<FakeModel>(dbContextEngineMock.Object);
+
+            //the custom fallback serializer output is returned as is, with no fix applied
+            var fallbackModel = new FakeModel { Id = "fallbackId" };
+            var fallbackSerializerMock = new Mock<IBsonSerializer>();
+            fallbackSerializerMock.Setup(s => s.Deserialize(It.IsAny<BsonDeserializationContext>(), It.IsAny<BsonDeserializationArgs>()))
+                .Returns(fallbackModel);
+            modelMapMock.Setup(m => m.SchemasById)
+                .Returns(new Dictionary<string, IModelMapSchema>());
+            modelMapMock.Setup(m => m.FallbackSerializer)
+                .Returns(fallbackSerializerMock.Object);
+            modelMapMock.Setup(s => s.ActiveSchema.Serializer)
+                .Returns(classMap.ToSerializer());
+
+            // Action.
+            var result = serializer.Deserialize(
+                BsonDeserializationContext.CreateRoot(bsonReader),
+                new BsonDeserializationArgs { NominalType = typeof(FakeModel) });
+
+            // Assert.
+            Assert.Same(fallbackModel, result);
+        }
+
+        [Fact]
+        public void DeserializeRegistersLoadedModelWithItsBaselineOnCurrentScope()
+        {
+            /* A full load inside a db context scope registers the fresh instance as the loaded
+             * model of its document, capturing the change tracking baseline from the just
+             * deserialized document. */
+
+            // Setup.
+            var document = new BsonDocument(new BsonElement[]
+            {
+                new("_id", new BsonString("idVal")),
+                new("StringProp", new BsonString("ok"))
+            } as IEnumerable<BsonElement>);
+            var bsonReader = new BsonDocumentReader(document);
+            var classMap = new BsonClassMap<FakeModel>(cm => cm.AutoMap());
+            classMap.Freeze();
+            var serializer = new ModelMapSerializer<FakeModel>(dbContextEngineMock.Object);
+
+            modelMapMock.Setup(s => s.ActiveSchema.Serializer)
+                .Returns(classMap.ToSerializer());
+            modelMapMock.Setup(s => s.ActiveSchema.FixDeserializedModelAsync(It.IsAny<object>()))
+                .Returns<object>(Task.FromResult);
+
+            var dbContextMock = new Mock<IDbContext>();
+            dbContextMock.Setup(c => c.Engine)
+                .Returns(dbContextEngineMock.Object);
+            using var dbExecutionContext = new DbExecutionContextHandler(dbContextMock.Object);
+
+            // Action.
+            var result = serializer.Deserialize(
+                BsonDeserializationContext.CreateRoot(bsonReader),
+                new BsonDeserializationArgs { NominalType = typeof(FakeModel) });
+
+            // Assert.
+            Assert.NotNull(result);
+            dbContextMock.Verify(c => c.RegisterLoadedModel("idVal", result), Times.Once());
+            dbContextMock.Verify(c => c.SetModelBsonDocument(result, It.IsAny<BsonDocument>()), Times.Once());
+        }
+
+        [Fact]
+        public void DeserializeReplacesOutdatedLoadedInstanceOnTypeChange()
+        {
+            /* The document changed type after the loaded instance materialized, and an instance
+             * type can't upgrade: the fresh instance replaces the outdated one as the loaded
+             * model, and is the returned one. */
+
+            // Setup.
+            var document = new BsonDocument(new BsonElement[]
+            {
+                new("_id", new BsonString("idVal")),
+                new("StringProp", new BsonString("ok"))
+            } as IEnumerable<BsonElement>);
+            var bsonReader = new BsonDocumentReader(document);
+            var classMap = new BsonClassMap<FakeModel>(cm => cm.AutoMap());
+            classMap.Freeze();
+            var serializer = new ModelMapSerializer<FakeModel>(dbContextEngineMock.Object);
+
+            modelMapMock.Setup(s => s.ActiveSchema.Serializer)
+                .Returns(classMap.ToSerializer());
+            modelMapMock.Setup(s => s.ActiveSchema.FixDeserializedModelAsync(It.IsAny<object>()))
+                .Returns<object>(Task.FromResult);
+
+            var outdatedModel = new DerivedFakeModel { Id = "idVal" };
+            var dbContextMock = new Mock<IDbContext>();
+            dbContextMock.Setup(c => c.Engine)
+                .Returns(dbContextEngineMock.Object);
+            dbContextMock.Setup(c => c.TryGetLoadedModel(typeof(FakeModel), It.IsAny<object>()))
+                .Returns(outdatedModel);
+            using var dbExecutionContext = new DbExecutionContextHandler(dbContextMock.Object);
+
+            // Action.
+            var result = serializer.Deserialize(
+                BsonDeserializationContext.CreateRoot(bsonReader),
+                new BsonDeserializationArgs { NominalType = typeof(FakeModel) });
+
+            // Assert.
+            Assert.NotNull(result);
+            Assert.NotSame(outdatedModel, result);
+            dbContextMock.Verify(c => c.ReplaceOutdatedLoadedModel("idVal", outdatedModel, result), Times.Once());
+            dbContextMock.Verify(c => c.SetModelBsonDocument(result, It.IsAny<BsonDocument>()), Times.Once());
+        }
+
         [Theory]
         [InlineData("_s")]
         [InlineData("_m")]
@@ -259,6 +459,46 @@ namespace Etherna.MongODM.Core
             Assert.Equal("idVal", result.Id);
             Assert.Equal("ok", result.StringProp);
             Assert.Equal(42, result.IntegerProp);
+        }
+
+        [Fact]
+        public void DeserializeReturnsAlreadyLoadedInstanceOfSameType()
+        {
+            /* One document materializes one instance inside a scope: a full load of a document
+             * with an already loaded instance of the same type returns the existing one. */
+
+            // Setup.
+            var document = new BsonDocument(new BsonElement[]
+            {
+                new("_id", new BsonString("idVal")),
+                new("StringProp", new BsonString("ok"))
+            } as IEnumerable<BsonElement>);
+            var bsonReader = new BsonDocumentReader(document);
+            var classMap = new BsonClassMap<FakeModel>(cm => cm.AutoMap());
+            classMap.Freeze();
+            var serializer = new ModelMapSerializer<FakeModel>(dbContextEngineMock.Object);
+
+            modelMapMock.Setup(s => s.ActiveSchema.Serializer)
+                .Returns(classMap.ToSerializer());
+            modelMapMock.Setup(s => s.ActiveSchema.FixDeserializedModelAsync(It.IsAny<object>()))
+                .Returns<object>(Task.FromResult);
+
+            var loadedModel = new FakeModel { Id = "idVal", StringProp = "already loaded" };
+            var dbContextMock = new Mock<IDbContext>();
+            dbContextMock.Setup(c => c.Engine)
+                .Returns(dbContextEngineMock.Object);
+            dbContextMock.Setup(c => c.TryGetLoadedModel(typeof(FakeModel), It.IsAny<object>()))
+                .Returns(loadedModel);
+            using var dbExecutionContext = new DbExecutionContextHandler(dbContextMock.Object);
+
+            // Action.
+            var result = serializer.Deserialize(
+                BsonDeserializationContext.CreateRoot(bsonReader),
+                new BsonDeserializationArgs { NominalType = typeof(FakeModel) });
+
+            // Assert.
+            Assert.Same(loadedModel, result);
+            dbContextMock.Verify(c => c.RegisterLoadedModel(It.IsAny<object>(), It.IsAny<IEntityModel>()), Times.Never());
         }
 
         [Fact]
@@ -407,6 +647,42 @@ namespace Etherna.MongODM.Core
 
             // Assert
             Assert.Equal(0, test.SerializedDocument.CompareTo(test.ExpectedDocument));
+        }
+
+        [Fact]
+        public void SerializeClearsExtraElementsBeforeWriting()
+        {
+            /* The persistence side protection of the extra data: whatever populated the bag,
+             * a whole document write drops it, both from the model and from the document. */
+
+            // Setup.
+            var classMap = new BsonClassMap<FakeModel>(cm => cm.AutoMap());
+            classMap.Freeze();
+            var serializer = new ModelMapSerializer<FakeModel>(dbContextEngineMock.Object);
+
+            modelMapMock.Setup(s => s.ActiveSchema.Serializer)
+                .Returns(() => classMap.ToSerializer());
+            mapRegistryMock.Setup(sr => sr.GetActiveSchemaIdBsonElement(typeof(FakeModel)))
+                .Returns(new BsonElement("_s", new BsonString("schemaId")));
+            dbContextEngineMock.Setup(c => c.ProxyGenerator.PurgeProxyType(typeof(FakeModelWithExtraElements)))
+                .Returns(typeof(FakeModel));
+
+            var model = new FakeModelWithExtraElements { Id = "idVal", StringProp = "ok" };
+            model.SetExtraElements(new Dictionary<string, object> { ["removedProp"] = "extraVal" });
+
+            var serializedDocument = new BsonDocument();
+            using var bsonWriter = new BsonDocumentWriter(serializedDocument);
+
+            // Action.
+            serializer.Serialize(
+                BsonSerializationContext.CreateRoot(bsonWriter),
+                new BsonSerializationArgs { NominalType = typeof(FakeModel) },
+                model);
+
+            // Assert.
+            Assert.NotNull(model.ExtraElements);
+            Assert.Empty(model.ExtraElements);
+            Assert.False(serializedDocument.Contains("removedProp"));
         }
 
         [Fact]
