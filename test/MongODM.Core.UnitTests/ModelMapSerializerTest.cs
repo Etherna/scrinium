@@ -306,7 +306,6 @@ namespace Etherna.MongODM.Core
                         {
                             new("_s", new BsonString("schemaId")),
                             new("_id", new BsonString("idVal")),
-                            new("CreationDateTime", new BsonDateTime(new DateTime())),
                             new("EnumerableProp", new BsonArray(
                             [
                                 new BsonDocument(new BsonElement[]
@@ -314,7 +313,6 @@ namespace Etherna.MongODM.Core
                                     /*commented because serializer is not registered*/
                                     //new BsonElement("_s", new BsonString("schemaId")),
                                     new("_id", BsonNull.Value),
-                                    new("CreationDateTime", new BsonDateTime(new DateTime())),
                                     new("EnumerableProp", BsonNull.Value),
                                     new("IntegerProp", new BsonInt32(0)),
                                     new("ObjectProp", BsonNull.Value),
@@ -328,7 +326,6 @@ namespace Etherna.MongODM.Core
                                 /*commented because serializer is not registered*/
                                 //new BsonElement("_s", new BsonString("schemaId")),
                                 new("_id", BsonNull.Value),
-                                new("CreationDateTime", new BsonDateTime(new DateTime())),
                                 new("EnumerableProp", BsonNull.Value),
                                 new("IntegerProp", new BsonInt32(0)),
                                 new("ObjectProp", BsonNull.Value),
