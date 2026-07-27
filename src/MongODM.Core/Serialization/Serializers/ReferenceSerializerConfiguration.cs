@@ -104,6 +104,42 @@ namespace Etherna.MongODM.Core.Serialization.Serializers
             return defaultFallbackSerializers[modelType];
         }
 
+        /// <summary>
+        /// Derive the summary loaded member names carried by a reference document, mapping its
+        /// element names through the member maps of the schema deserializing it, resolved with
+        /// the same fallback chain of <see cref="GetSerializer"/>. The id member never joins the
+        /// summary member names. Returns null with a custom fallback serializer, which has no
+        /// schema mapping elements to members.
+        /// </summary>
+        public IEnumerable<string>? TryGetSummaryLoadedMemberNames(
+            Type modelType,
+            string? modelMapSchemaId,
+            BsonDocument referenceDocument)
+        {
+            ArgumentNullException.ThrowIfNull(modelType);
+            ArgumentNullException.ThrowIfNull(referenceDocument);
+
+            Freeze(); //needed for initialization
+
+            if (!_modelMaps.TryGetValue(modelType, out var modelMap))
+                throw new InvalidOperationException("Can't identify registered schema for type " + modelType.Name);
+
+            //if a correct model map schema is identified with its id, map document elements with its member maps
+            if (modelMapSchemaId is not null && modelMap.SchemasById.TryGetValue(modelMapSchemaId, out var modelMapSchema))
+                return GetSummaryLoadedMemberNamesHelper(modelMapSchema, referenceDocument);
+
+            //else, a custom fallback serializer deserializes without a schema mapping elements to members
+            if (modelMap.FallbackSerializer is not null)
+                return null;
+
+            //else, map document elements with the configured fallback model map schema, if any exists
+            if (modelMap.FallbackSchema is not null)
+                return GetSummaryLoadedMemberNamesHelper(modelMap.FallbackSchema, referenceDocument);
+
+            //else, the default fallback serializer reads only the reference id
+            return [];
+        }
+
         // Protected methods.
         protected override void FreezeAction()
         {
@@ -173,6 +209,15 @@ namespace Etherna.MongODM.Core.Serialization.Serializers
 
             return modelSchema;
         }
+
+        private static IEnumerable<string> GetSummaryLoadedMemberNamesHelper(
+            IModelMapSchema modelMapSchema,
+            BsonDocument referenceDocument) =>
+            modelMapSchema.AllMemberMaps
+                .Where(mm => !mm.IsIdMember() &&
+                             mm != modelMapSchema.ExtraElementsMemberMap &&
+                             referenceDocument.Contains(mm.ElementName))
+                .Select(mm => mm.MemberName);
 
         private void LinkBaseModelMaps()
         {

@@ -226,7 +226,16 @@ namespace Etherna.MongODM.Core.Serialization.Serializers
                 }
                 else
                 {
-                    ((IReferenceable)model).SetAsSummary(((IReferenceable)model).SettedMemberNames);
+                    /* The summary loaded member names derive from the reference document itself:
+                     * the proxy overrides can't observe a set through a not overridable (private,
+                     * or non virtual) setter, and a member assigned by a specified default value
+                     * carries no loaded data. Only a custom fallback serializer, without a schema
+                     * mapping elements to members, keeps the observed setted members as source. */
+                    var summaryMemberNames =
+                        Configuration.TryGetSummaryLoadedMemberNames(actualType, schemaId, bsonDocument) ??
+                        [.. ((IReferenceable)model).SettedMemberNames];
+                    ((IReferenceable)model).ClearSettedMembers();
+                    ((IReferenceable)model).SetAsSummary(summaryMemberNames);
                 }
 
                 // Deduplicate model instance on the current db context scope.

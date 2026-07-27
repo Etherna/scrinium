@@ -197,6 +197,120 @@ namespace Etherna.MongODM.Core
             Assert.Null(model.StringProp);
         }
 
+        [Fact]
+        public void TryGetSummaryLoadedMemberNamesMapsDocumentElementsWithKnownSchemaId()
+        {
+            // Setup.
+            var configuration = BuildConfiguration(config =>
+            {
+                config.AddModelMap<FakeEntityModelBase<string>>("baseSchemaId", mm => mm.MapIdMember(m => m.Id));
+                config.AddModelMap<FakeModel>("activeSchemaId", mm =>
+                {
+                    mm.MapMember(m => m.IntegerProp);
+                    mm.MapMember(m => m.StringProp);
+                });
+            });
+            var document = new BsonDocument
+            {
+                { "_s", "activeSchemaId" },
+                { "_id", "idVal" },
+                { "StringProp", "ok" },
+                { "removedProp", "extraVal" }
+            };
+
+            // Action.
+            var memberNames = configuration.TryGetSummaryLoadedMemberNames(typeof(FakeModel), "activeSchemaId", document);
+
+            // Assert.
+            Assert.NotNull(memberNames);
+            Assert.Contains("StringProp", memberNames);
+            //the id never joins the summary member names
+            Assert.DoesNotContain("Id", memberNames);
+            //a mapped member absent from the document is not loaded
+            Assert.DoesNotContain("IntegerProp", memberNames);
+            //an unmapped element maps to no member
+            Assert.DoesNotContain("removedProp", memberNames);
+        }
+
+        [Fact]
+        public void TryGetSummaryLoadedMemberNamesMapsWithFallbackSchemaWithUnknownSchemaId()
+        {
+            // Setup.
+            var configuration = BuildConfiguration(config =>
+            {
+                config.AddModelMap<FakeEntityModelBase<string>>("baseSchemaId", mm => mm.MapIdMember(m => m.Id));
+                config.AddModelMap<FakeModel>("activeSchemaId", mm => mm.MapMember(m => m.IntegerProp))
+                    .AddFallbackSchema(mm => mm.MapMember(m => m.StringProp));
+            });
+            var document = new BsonDocument
+            {
+                { "_id", "idVal" },
+                { "IntegerProp", 42 },
+                { "StringProp", "ok" }
+            };
+
+            // Action.
+            var memberNames = configuration.TryGetSummaryLoadedMemberNames(typeof(FakeModel), "unknownSchemaId", document);
+
+            // Assert.
+            //only the members mapped by the fallback schema join, not the active schema ones
+            Assert.NotNull(memberNames);
+            Assert.Contains("StringProp", memberNames);
+            Assert.DoesNotContain("Id", memberNames);
+            Assert.DoesNotContain("IntegerProp", memberNames);
+        }
+
+        [Fact]
+        public void TryGetSummaryLoadedMemberNamesReturnsEmptyWithIdOnlyFallback()
+        {
+            // Setup.
+            var configuration = BuildConfiguration(config =>
+            {
+                config.AddModelMap<FakeEntityModelBase<string>>("baseSchemaId", mm => mm.MapIdMember(m => m.Id));
+                config.AddModelMap<FakeModel>("activeSchemaId", mm => mm.MapMember(m => m.StringProp));
+            });
+            var document = new BsonDocument
+            {
+                { "_id", "idVal" },
+                { "StringProp", "ok" }
+            };
+
+            // Action.
+            var memberNames = configuration.TryGetSummaryLoadedMemberNames(typeof(FakeModel), "unknownSchemaId", document);
+
+            // Assert.
+            //the default fallback reads only the reference id, never joining the summary member names
+            Assert.NotNull(memberNames);
+            Assert.Empty(memberNames);
+        }
+
+        [Fact]
+        public void TryGetSummaryLoadedMemberNamesReturnsNullWithFallbackSerializer()
+        {
+            // Setup.
+            var classMap = new BsonClassMap<FakeModel>(cm => cm.AutoMap());
+            classMap.Freeze();
+
+            var configuration = BuildConfiguration(config =>
+            {
+                config.AddModelMap<FakeEntityModelBase<string>>("baseSchemaId", mm => mm.MapIdMember(m => m.Id));
+                config.AddModelMap<FakeModel>("activeSchemaId", mm => mm.MapMember(m => m.IntegerProp))
+                    .AddFallbackCustomSerializer((IBsonSerializer<FakeModel>)classMap.ToSerializer());
+            });
+            var document = new BsonDocument
+            {
+                { "_id", "idVal" },
+                { "StringProp", "ok" }
+            };
+
+            // Action.
+            var memberNames = configuration.TryGetSummaryLoadedMemberNames(typeof(FakeModel), "unknownSchemaId", document);
+
+            // Assert.
+            //a custom fallback serializer has no schema mapping elements to members
+            Assert.Null(memberNames);
+        }
+
         // Helpers.
         private ReferenceSerializerConfiguration BuildConfiguration(Action<ReferenceSerializerConfiguration> configure) =>
             new ReferenceSerializer<FakeModel, string>(dbContextEngineMock.Object, configure).Configuration;
