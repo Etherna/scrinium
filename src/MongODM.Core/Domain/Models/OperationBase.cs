@@ -23,7 +23,6 @@ namespace Etherna.MongODM.Core.Domain.Models
         {
             ArgumentNullException.ThrowIfNull(dbContextEngine);
 
-            CreationDateTime = DateTime.Now;
             DbContextName = dbContextEngine.Identifier;
         }
         protected OperationBase() { }

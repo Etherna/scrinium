@@ -12,9 +12,12 @@
 // You should have received a copy of the GNU Lesser General Public License along with MongODM.
 // If not, see <https://www.gnu.org/licenses/>.
 
+using Etherna.MongoDB.Bson;
+using Etherna.MongoDB.Bson.Serialization.Serializers;
 using Etherna.MongODM.Core.Domain.Models;
 using Etherna.MongODM.Core.Domain.Models.DbMigrationOpAgg;
 using Etherna.MongODM.Core.Serialization;
+using System;
 
 namespace Etherna.MongODM.Core.Domain.ModelMaps
 {
@@ -23,10 +26,26 @@ namespace Etherna.MongODM.Core.Domain.ModelMaps
         public void Register(IDbContextEngine dbContextEngine)
         {
             dbContextEngine.MapRegistry.AddModelMap<BuildNewIndexesMigrationLog>("555eed70-62e2-4d85-ac47-75bae10eefa9");
-            dbContextEngine.MapRegistry.AddModelMap<DbMigrationOperation>("afdb63c9-791b-41f8-8216-556e233df0de");
+            dbContextEngine.MapRegistry.AddModelMap<DbMigrationOperation>("afdb63c9-791b-41f8-8216-556e233df0de",
+                mm =>
+                {
+                    mm.AutoMap();
+
+                    // Set dates representation.
+                    mm.GetMemberMap(m => m.CompletedDateTime).SetSerializer(
+                        new NullableSerializer<DateTimeOffset>(new DateTimeOffsetSerializer(BsonType.DateTime)));
+                });
             dbContextEngine.MapRegistry.AddModelMap<DeleteOldIndexesMigrationLog>("ac9d8011-6247-4365-b8ca-ac8401f838a1");
             dbContextEngine.MapRegistry.AddModelMap<DocumentMigrationLog>("d2b49514-464e-4b28-8b38-ad2d0cc69d3e");
-            dbContextEngine.MapRegistry.AddModelMap<MigrationLogBase>("1696c0c9-d615-44d9-ab9b-4e3618164185");
+            dbContextEngine.MapRegistry.AddModelMap<MigrationLogBase>("1696c0c9-d615-44d9-ab9b-4e3618164185",
+                mm =>
+                {
+                    mm.AutoMap();
+
+                    // Set dates representation.
+                    mm.GetMemberMap(m => m.CreationDateTime).SetSerializer(
+                        new DateTimeOffsetSerializer(BsonType.DateTime));
+                });
             
             //obsolete
 #pragma warning disable CS0618 // Type or member is obsolete

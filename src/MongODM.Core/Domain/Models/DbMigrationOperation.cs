@@ -42,7 +42,7 @@ namespace Etherna.MongODM.Core.Domain.Models
         protected DbMigrationOperation() { }
 
         // Properties.
-        public virtual DateTime? CompletedDateTime { get; protected set; }
+        public virtual DateTimeOffset? CompletedDateTime { get; protected set; }
         public virtual Status CurrentStatus { get; protected set; }
         public virtual IEnumerable<MigrationLogBase> Logs
         {
@@ -72,7 +72,7 @@ namespace Etherna.MongODM.Core.Domain.Models
             if (CurrentStatus != Status.Running)
                 throw new InvalidOperationException();
 
-            CompletedDateTime = DateTime.Now;
+            CompletedDateTime = DateTimeOffset.UtcNow;
             CurrentStatus = Status.Completed;
         }
 

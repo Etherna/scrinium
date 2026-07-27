@@ -30,13 +30,13 @@ namespace Etherna.MongODM.Core.Domain.Models.DbMigrationOpAgg
         // Constructors.
         protected MigrationLogBase(ExecutionState state)
         {
-            CreationDateTime = DateTime.Now;
+            CreationDateTime = DateTimeOffset.UtcNow;
             State = state;
         }
         protected MigrationLogBase() { }
 
         // Properties.
         public virtual ExecutionState State { get; protected set; }
-        public virtual DateTime CreationDateTime { get; protected set; }
+        public virtual DateTimeOffset CreationDateTime { get; protected set; }
     }
 }

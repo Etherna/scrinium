@@ -19,18 +19,14 @@ namespace Etherna.MongODM.Core.Domain.Models
 {
     public abstract class EntityModelBase : ModelBase, IEntityModel
     {
-        private DateTime _creationDateTime;
+        // Fields.
+        private DateTimeOffset _creationDateTime = DateTimeOffset.UtcNow;
 
-        // Constructors and dispose.
-        protected EntityModelBase()
-        {
-            _creationDateTime = DateTime.Now;
-        }
-
+        // Dispose.
         public virtual void DisposeForDelete() { }
 
         // Properties.
-        public virtual DateTime CreationDateTime { get => _creationDateTime; protected set => _creationDateTime = value; }
+        public virtual DateTimeOffset CreationDateTime { get => _creationDateTime; protected set => _creationDateTime = value; }
     }
 
     public abstract class EntityModelBase<TKey> : EntityModelBase, IEntityModel<TKey>

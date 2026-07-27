@@ -18,7 +18,7 @@ namespace Etherna.MongODM.Core.Domain.Models
 {
     public interface IEntityModel : IModel
     {
-        DateTime CreationDateTime { get; }
+        DateTimeOffset CreationDateTime { get; }
 
         void DisposeForDelete();
     }
