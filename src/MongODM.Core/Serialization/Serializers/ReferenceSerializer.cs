@@ -198,6 +198,12 @@ namespace Etherna.MongODM.Core.Serialization.Serializers
                 originDbExecContextHandler?.Dispose();
             }
 
+            // Clear extra elements. They are never needed with references.
+            /* Also a recognized schema can find unmapped elements: members can be added and
+             * removed without a schema id change, so a document written when a since removed
+             * member was still serialized populates the bag of the loaded summary. */
+            model?.ExtraElements?.Clear();
+
             // Process model (if proxy).
             /* Proxy models enable different features. Anyway, if the model as not been created as a proxy
              * (for example for tests scope) these additional operations are not possible or required.
