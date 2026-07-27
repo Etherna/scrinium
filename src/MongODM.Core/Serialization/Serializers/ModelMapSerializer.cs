@@ -235,7 +235,15 @@ namespace Etherna.MongODM.Core.Serialization.Serializers
             var model = (TModel)modelMapSchema.Serializer.Deserialize(context, args);
 
             // Fix model.
-            return (TModel)await modelMapSchema.FixDeserializedModelAsync(model).ConfigureAwait(false);
+            model = (TModel)await modelMapSchema.FixDeserializedModelAsync(model).ConfigureAwait(false);
+
+            // Clear extra elements.
+            /* The fix is the consumer of the extra data: once executed, unmapped elements
+             * would only be useless weight carried in memory by the loaded model. */
+            if (model is IModel fixedModel)
+                fixedModel.ExtraElements?.Clear();
+
+            return model;
         }
     }
 }

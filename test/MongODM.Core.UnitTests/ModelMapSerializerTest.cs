@@ -167,6 +167,48 @@ namespace Etherna.MongODM.Core
             Assert.Equal(test.ExpectedModel, result, new FakeModelComparer());
         }
 
+        [Fact]
+        public void DeserializeClearsExtraElementsAfterModelFix()
+        {
+            /* MODM-3: unmapped document elements populate the extra elements bag, read by
+             * the model fix during deserialization. After the fix the bag is emptied: a
+             * loaded model doesn't carry the extra data around for its whole lifetime. */
+
+            // Setup.
+            var document = new BsonDocument(new BsonElement[]
+            {
+                new("_id", new BsonString("idVal")),
+                new("StringProp", new BsonString("ok")),
+                new("removedProp", new BsonString("extraVal"))
+            } as IEnumerable<BsonElement>);
+            var bsonReader = new BsonDocumentReader(document);
+            var classMap = new BsonClassMap<FakeModel>(cm => cm.AutoMap());
+            classMap.Freeze();
+            var serializer = new ModelMapSerializer<FakeModel>(dbContextEngineMock.Object);
+
+            //the fix reads the extra element, pinning its availability before the clear
+            string? extraValueReadByFix = null;
+            modelMapMock.Setup(s => s.ActiveSchema.Serializer)
+                .Returns(classMap.ToSerializer());
+            modelMapMock.Setup(s => s.ActiveSchema.FixDeserializedModelAsync(It.IsAny<object>()))
+                .Returns<object>(m =>
+                {
+                    extraValueReadByFix = ((FakeModel)m).ExtraElements.TryGetExtraElementValue<string>("removedProp");
+                    return Task.FromResult(m);
+                });
+
+            // Action.
+            var result = serializer.Deserialize(
+                BsonDeserializationContext.CreateRoot(bsonReader),
+                new BsonDeserializationArgs { NominalType = typeof(FakeModel) });
+
+            // Assert.
+            Assert.NotNull(result);
+            Assert.Equal("extraVal", extraValueReadByFix);
+            Assert.NotNull(result.ExtraElements);
+            Assert.Empty(result.ExtraElements);
+        }
+
         [Theory]
         [InlineData("_s")]
         [InlineData("_m")]
