@@ -32,6 +32,10 @@ namespace Etherna.MongODM.AspNetCoreSample.Models.ModelMaps
 
                 schema.IdMemberMap.SetSerializer(new StringSerializer(BsonType.ObjectId))
                                     .SetIdGenerator(new StringObjectIdGenerator());
+
+                // Set dates representation.
+                schema.GetMemberMap(m => m.CreationDateTime).SetSerializer(
+                    new DateTimeOffsetSerializer(BsonType.DateTime));
             });
         }
     }

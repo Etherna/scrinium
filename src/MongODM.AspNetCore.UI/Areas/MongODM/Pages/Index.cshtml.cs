@@ -116,7 +116,7 @@ namespace Etherna.MongODM.AspNetCore.UI.Areas.MongODM.Pages
             id = operation.Id,
             status = operation.CurrentStatus.ToString(),
             //CreationDateTime is not persisted, derive the creation instant from the ObjectId
-            creationDateTime = ObjectId.TryParse(operation.Id, out var objectId) ? objectId.CreationTime : (DateTime?)null,
+            creationDateTime = ObjectId.TryParse(operation.Id, out var objectId) ? new DateTimeOffset(objectId.CreationTime) : (DateTimeOffset?)null,
             completedDateTime = operation.CompletedDateTime,
             logs = operation.Logs.Select(log => new
             {

@@ -23,11 +23,11 @@ namespace Etherna.MongODM.AspNetCoreSample.Models
         protected EntityModelBase()
 #pragma warning restore CS8618 // Non-nullable field must contain a non-null value when exiting constructor. Consider declaring as nullable.
         {
-            CreationDateTime = DateTime.Now;
+            CreationDateTime = DateTimeOffset.UtcNow;
         }
 
         public virtual TKey Id { get; protected set; }
-        public virtual DateTime CreationDateTime { get; protected set; }
+        public virtual DateTimeOffset CreationDateTime { get; protected set; }
 
         public virtual void DisposeForDelete() { }
     }
