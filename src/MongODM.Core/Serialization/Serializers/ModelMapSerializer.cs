@@ -129,7 +129,7 @@ namespace Etherna.MongODM.Core.Serialization.Serializers
                         currentDbContext.TryGetLoadedModel(typeof(TModel), id);
                     if (loadedModel is null)
                     {
-                        //capture the change tracking baseline from the just deserialized document.
+                        //capture the model document from the just deserialized document.
                         currentDbContext.RegisterLoadedModel(id, (IEntityModel)model);
                         currentDbContext.SetModelBsonDocument((IEntityModel)model, bsonDocument);
                     }

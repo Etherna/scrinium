@@ -19,6 +19,7 @@ For these reasons SQL databases are often still prefered to documentals, because
 Here is a non exhaustive list of implemented features by MongODM:
 
 - Create relation between documents, and fine configuration of serialized properties with document denormalization
+- Auto creation of new referred models at save time: link a not yet persisted model, and it is created into its repository transparently, with complete references
 - Transparent lazy loading of unloaded properties on related documents, configurable (warn, silent, or deny), with explicit batch preloading for performance sensitive code
 - Manage repositories with database contexts
 - Execute ACID transactions with automatic enlistment of repository operations

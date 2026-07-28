@@ -472,7 +472,7 @@ namespace Etherna.MongODM.Core
 
         private static void MarkModelChanged(IDbContext targetDbContext, IEntityModel model)
         {
-            //track the model with a baseline, then flag it changed, like a mutation would
+            //track the model with a model document, then flag it changed, like a mutation would
             targetDbContext.SetModelBsonDocument(model, []);
             targetDbContext.MarkChangeCandidate(model);
         }

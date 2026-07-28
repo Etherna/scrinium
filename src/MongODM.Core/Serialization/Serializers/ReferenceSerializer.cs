@@ -253,7 +253,7 @@ namespace Etherna.MongODM.Core.Serialization.Serializers
                             currentDbContext.TryGetLoadedModel(typeof(TModelBase), id);
                         if (loadedModel is null)
                         {
-                            //capture the change tracking baseline from the just deserialized summary document.
+                            //capture the model document from the just deserialized summary document.
                             currentDbContext.RegisterLoadedModel(id, model);
                             currentDbContext.SetModelBsonDocument(model, bsonDocument);
                         }
@@ -294,6 +294,30 @@ namespace Etherna.MongODM.Core.Serialization.Serializers
             {
                 context.Writer.WriteNull();
                 return;
+            }
+
+            // Handle a referred model without id.
+            /* An entity model referred with a null id is a new model, not yet persisted, and a
+             * reference document without id deserializes to null: writing it would silently lose
+             * the link. During a new referred models discovery pass, collect the model with the
+             * source repository resolved for this reference member: the caller creates the
+             * collected models before persisting the referencing document, so the reference
+             * serializes complete. Any other serialization fails loudly. */
+            if (value.Id is null)
+            {
+                if (NewReferredModelsCollector.TryGetCurrent(dbContextEngine.ExecutionContext) is { } newModelsCollector)
+                {
+                    var currentDbContext = DbExecutionContextHandler.TryGetCurrentDbContext(dbContextEngine.ExecutionContext);
+                    newModelsCollector.Collect(
+                        value,
+                        currentDbContext is not null ? sourceRepositorySelector?.Invoke(currentDbContext) : null);
+                }
+                else
+                {
+                    throw new InvalidOperationException(
+                        $"Can't serialize a reference to a new model of type {dbContextEngine.ProxyGenerator.PurgeProxyType(value.GetType()).Name} without id: " +
+                        "persist the referencing model with a repository write to auto create it, or create it explicitly in its repository");
+                }
             }
 
             // Clear extra elements. They are never needed with references.

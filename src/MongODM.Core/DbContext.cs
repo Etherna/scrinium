@@ -41,8 +41,8 @@ namespace Etherna.MongODM.Core
         : IDbContext, IDbContextBuilder
     {
         // Fields.
-        /* Change tracking state keyed by reference identity: a model is tracked by the baseline
-         * of its serialized members captured at load, and a proxy signals its mutations marking
+        /* Change tracking state keyed by reference identity: a model is tracked by its
+         * serialized model document captured at load, and a proxy signals its mutations marking
          * itself a change candidate. Non proxy tracked models can't self signal, so they are all
          * diffed at save. EntityModelBase equates by id, so an id based comparer would collapse
          * distinct instances: identity is the required key here. */
@@ -310,8 +310,8 @@ namespace Etherna.MongODM.Core
             bool marked;
             lock (trackingLock)
             {
-                /* Ignore the mark until the model has a baseline: the member sets replayed while
-                 * deserializing run before the baseline capture, and must not be tracked. Ignore
+                /* Ignore the mark until the model has a model document: the member sets replayed
+                 * while deserializing run before the model document capture, and must not be tracked. Ignore
                  * it while merging loaded data into a model too, keeping the merges out of the
                  * unit of work. */
                 if (changeTrackingSuppressions > 0 || !modelBsonDocuments.ContainsKey(model))
@@ -397,7 +397,7 @@ namespace Etherna.MongODM.Core
             // Commit updated models replacement.
             /* The models to save are the change candidates flagged by proxy mutations, plus every
              * non proxy tracked model: a non proxy instance can't self signal its mutations, so
-             * it's always diffed against its baseline. Diffs with no change save nothing. */
+             * it's always diffed against its model document. Diffs with no change save nothing. */
             var modelsToSave = GetModelsToSave();
             logger.DbContextSavingChanges(engine.Options.DbName, modelsToSave.Count);
 
