@@ -20,6 +20,7 @@ using Etherna.MongODM.IntegrationTests.Fixtures;
 using Etherna.MongODM.IntegrationTests.Models;
 using Microsoft.Extensions.DependencyInjection;
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using Xunit;
@@ -293,6 +294,54 @@ namespace Etherna.MongODM.IntegrationTests
         }
 
         [Fact]
+        public async Task RefreshesSummariesInBulkWithoutPerDocumentRoundTrips()
+        {
+            /* Summaries refresh with a bulk update operation per reference id path: the
+             * count of issued update commands doesn't depend on the count of referencing
+             * documents, and no per document findAndModify round trip is issued. */
+
+            // Setup.
+            using var contextHandler = AsyncLocalContext.Instance.InitAsyncLocalContext();
+            fixture.TaskRunner.ClearPending();
+
+            var post = new Post("original title", "content");
+            await dbContext.Posts.CreateAsync(post);
+
+            List<Blog> blogs = [];
+            for (int i = 0; i < 10; i++)
+            {
+                var blog = new Blog($"blog {i}");
+                blog.AddPost(post);
+                await dbContext.Blogs.CreateAsync(blog);
+                blogs.Add(blog);
+            }
+
+            //enqueue only the propagation of the post change
+            fixture.TaskRunner.ClearPending();
+            var loadedPost = await dbContext.Posts.FindOneAsync(post.Id);
+            loadedPost.Title = "updated title";
+            await dbContext.SaveChangesAsync();
+
+            // Action: execute the enqueued task, counting the issued server commands.
+            var commandsBefore = await GetServerCommandCountersAsync();
+            await fixture.TaskRunner.ExecutePendingAsync(fixture.ServiceProvider);
+            var commandsAfter = await GetServerCommandCountersAsync();
+
+            // Assert.
+            //every summary is refreshed
+            var blogsCollection = dbContext.Engine.Database.GetCollection<BsonDocument>("blogs");
+            foreach (var blog in blogs)
+            {
+                var rawBlog = await blogsCollection.Find(IdFilter(blog.Id)).SingleAsync();
+                Assert.Equal("updated title", rawBlog["LastPost"]["Title"].AsString);
+            }
+
+            //bulk update commands, not scaling with the referencing documents count
+            Assert.Equal(0, commandsAfter.FindAndModify - commandsBefore.FindAndModify);
+            Assert.InRange(commandsAfter.Update - commandsBefore.Update, 1, blogs.Count - 1);
+        }
+
+        [Fact]
         public async Task UnknownMemberMapIdentifiersAreSkipped()
         {
             /* A scheduled task can execute against a configuration different from the
@@ -406,6 +455,15 @@ namespace Etherna.MongODM.IntegrationTests
         }
 
         // Helpers.
+        private async Task<(long FindAndModify, long Update)> GetServerCommandCountersAsync()
+        {
+            var serverStatus = await dbContext.Engine.Database.RunCommandAsync<BsonDocument>(
+                new BsonDocument("serverStatus", 1));
+            var commandCounters = serverStatus["metrics"]["commands"].AsBsonDocument;
+            return (commandCounters["findAndModify"]["total"].ToInt64(),
+                    commandCounters["update"]["total"].ToInt64());
+        }
+
         private static FilterDefinition<BsonDocument> IdFilter(string id) =>
             Builders<BsonDocument>.Filter.Eq("_id", ObjectId.Parse(id));
     }

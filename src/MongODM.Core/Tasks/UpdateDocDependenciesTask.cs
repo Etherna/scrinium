@@ -145,57 +145,29 @@ namespace Etherna.MongODM.Core.Tasks
                         accumulator => accumulator.Item1))
                     .ToDictionary(pair => pair.Item1, pair => pair.Item2));
 
-            // Find Ids of documents that may need to be updated.
-            /*
-             * Use all Id paths to find all Ids of existing documents that may need to be updated.
-             * Only already existing documents may require an update, so to limit actions on these documents is safe.
-             * 
-             * This permits to execute FindAndUpdate actions to an enumerable set of documents.
-             */
-            var updatableDocumentsIdByRepository = new Dictionary<IRepository, IEnumerable<object>>();
-            foreach (var repositoryGroup in repositoryDictionary)
-            {
-                var repository = repositoryGroup.Key;
-                var selectedIdMemberMaps = repositoryGroup.Value.Keys;
-
-                var originModelType = repository.ModelType;
-                var originIdType = repository.KeyType;
-
-                var result = typeof(UpdateDocDependenciesTask).GetMethod(nameof(FindUpdatableDocumentsIdAsync), BindingFlags.NonPublic | BindingFlags.Static)!
-                    .MakeGenericMethod(originModelType, originIdType)
-                    .Invoke(null, [repository, selectedIdMemberMaps, referencedModelId]);
-
-                updatableDocumentsIdByRepository.Add(repository, await ((Task<IEnumerable<object>>)result!).ConfigureAwait(false));
-            }
-
             // Update models.
             /*
-             * Update one document at time using FindOneAndUpdate.
-             * Iterate on repositories, updatable documents, and Id member maps on different paths.
+             * Update the referencing documents of each repository with a single UpdateMany
+             * operation per Id member map path: the server rewrites all the matching
+             * documents in one command, and no document content needs to flow back.
              */
             foreach (var repoPair in repositoryDictionary)
             {
                 var repository = repoPair.Key;
 
-                var originModelType = repository.ModelType;
-                var originIdType = repository.KeyType;
-                var findAndUpdateAsyncMethodInfo = typeof(UpdateDocDependenciesTask)
-                    .GetMethod(nameof(FindAndUpdateAsync), BindingFlags.NonPublic | BindingFlags.Static)!
-                    .MakeGenericMethod(originModelType, originIdType);
+                var updateManyAsyncMethodInfo = typeof(UpdateDocDependenciesTask)
+                    .GetMethod(nameof(UpdateManyAsync), BindingFlags.NonPublic | BindingFlags.Static)!
+                    .MakeGenericMethod(repository.ModelType, repository.KeyType);
 
-                foreach (var updatableDocumentId in updatableDocumentsIdByRepository[repository])
+                foreach (var memberMapPair in repoPair.Value)
                 {
-                    foreach (var memberMapPair in repoPair.Value)
-                    {
-                        await ((Task<bool>)findAndUpdateAsyncMethodInfo.Invoke(null,
-                        [
-                            repository,
-                            memberMapPair.Key,
-                            memberMapPair.Value,
-                            updatableDocumentId,
-                            referencedModelId
-                        ])!).ConfigureAwait(false);
-                    }
+                    await ((Task)updateManyAsyncMethodInfo.Invoke(null,
+                    [
+                        repository,
+                        memberMapPair.Key,
+                        memberMapPair.Value,
+                        referencedModelId
+                    ])!).ConfigureAwait(false);
                 }
             }
 
@@ -203,11 +175,10 @@ namespace Etherna.MongODM.Core.Tasks
         }
 
         // Helpers.
-        private static async Task<bool> FindAndUpdateAsync<TOriginModel, TOriginKey>(
+        private static async Task UpdateManyAsync<TOriginModel, TOriginKey>(
             IRepository<TOriginModel, TOriginKey> repository,
             IMemberMap idMemberMap,
             BsonDocument updatedSubDocument,
-            TOriginKey originModelId,
             object referencedModelId)
             where TOriginModel : class, IEntityModel<TOriginKey>
         {
@@ -217,16 +188,12 @@ namespace Etherna.MongODM.Core.Tasks
              * This case is possibile, for example, with dictionary serialization in document representation.
              */
             if (idMemberMap.ElementPathHasUndefinedDocumentElement)
-                return false;
+                return;
 
             var subDocumentMemberMap = idMemberMap.ParentMemberMap!;
 
-            // Define find filter.
-            var filter = Builders<TOriginModel>.Filter.And(new[]
-            {
-                Builders<TOriginModel>.Filter.Eq(m => m.Id, originModelId),
-                new MemberMapEqFilterDefinition<TOriginModel, object>(idMemberMap, referencedModelId)
-            });
+            // Define update filter.
+            var filter = new MemberMapEqFilterDefinition<TOriginModel, object>(idMemberMap, referencedModelId);
 
             // Define update operator.
             var lastUndefinedArrayElement = subDocumentMemberMap.MemberMapPath
@@ -277,36 +244,10 @@ namespace Etherna.MongODM.Core.Tasks
                         new BsonDocument("$eq", updatedSubDocument.GetValue(idMemberMap.BsonMemberMap.ElementName)))));
 
             // Exec update.
-            var model = await repository.AccessToCollectionAsync(collection =>
-                collection.FindOneAndUpdateAsync(
-                    filter,
-                    update,
-                    new FindOneAndUpdateOptions<TOriginModel> { ArrayFilters = arrayFilters })).ConfigureAwait(false);
-
-            return model is not null;
-        }
-
-        private static async Task<IEnumerable<object>> FindUpdatableDocumentsIdAsync<TOriginModel, TOriginKey>(
-            IRepository<TOriginModel, TOriginKey> repository,
-            IEnumerable<IMemberMap> idMemberMaps,
-            object referencedModelId)
-            where TOriginModel : class, IEntityModel<TOriginKey>
-        {
-            using var cursor = await repository.FindAsync(
-                Builders<TOriginModel>.Filter.Or(
-                    idMemberMaps.Where(idmm => !idmm.ElementPathHasUndefinedDocumentElement) //clean out unrenderable member map filters
-                                .Select(idmm => new MemberMapEqFilterDefinition<TOriginModel, object>(idmm, referencedModelId))),
-                new FindOptions<TOriginModel, TOriginModel>
-                {
-                    NoCursorTimeout = true,
-                    Projection = Builders<TOriginModel>.Projection.Include(m => m.Id) //we need only Id
-                }).ConfigureAwait(false);
-
-            List<object> ids = new();
-            while (await cursor.MoveNextAsync().ConfigureAwait(false))
-                ids.AddRange(cursor.Current.Select(m => (object)m.Id!));
-
-            return ids;
+            await repository.UpdateManyAsync(
+                filter,
+                update,
+                new UpdateOptions { ArrayFilters = arrayFilters }).ConfigureAwait(false);
         }
     }
 }
