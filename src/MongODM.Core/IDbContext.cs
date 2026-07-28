@@ -34,7 +34,7 @@ namespace Etherna.MongODM.Core
         /// <summary>
         /// List of proxy models flagged as change candidates by their mutations on this db
         /// context instance. The actual changes are computed at save by diffing each model
-        /// serialization against its baseline; non proxy tracked models don't appear here, but
+        /// serialization against its model document; non proxy tracked models don't appear here, but
         /// their changes are still saved.
         /// </summary>
         IReadOnlyCollection<IEntityModel> ChangedModelsList { get; }
@@ -162,14 +162,14 @@ namespace Etherna.MongODM.Core
 
         /// <summary>
         /// Remove a model from the change candidates of this db context instance, after its
-        /// changes have been saved. Its baseline is kept, so following mutations are tracked.
+        /// changes have been saved. Its model document is kept, so following mutations are tracked.
         /// </summary>
         /// <param name="model">The model to clear</param>
         void ClearChangeCandidate(IEntityModel model);
 
         /// <summary>
         /// Flag a proxy model as a change candidate on this db context instance, invoked by
-        /// change tracking on a mutation. The mark is ignored until the model has a baseline
+        /// change tracking on a mutation. The mark is ignored until the model has a model document
         /// (skipping the deserialization sets) and while change tracking is suppressed.
         /// </summary>
         /// <param name="model">The mutated model</param>
@@ -207,7 +207,7 @@ namespace Etherna.MongODM.Core
 
         /// <summary>
         /// Remove a model from the change tracking of this db context instance, dropping its
-        /// baseline and its change candidate flag, keeping it out of the next changes save.
+        /// model document and its change candidate flag, keeping it out of the next changes save.
         /// </summary>
         /// <param name="model">The model to remove</param>
         void RemoveModelTracking(IEntityModel model);
@@ -254,12 +254,12 @@ namespace Etherna.MongODM.Core
         Task<DbMigrationOperation?> TryStartMigrationAsync();
 
         /// <summary>
-        /// Set the change tracking baseline of a model on this db context instance: the
-        /// serialized form its loaded members are diffed against at save. Captured at load and
+        /// Set the model document of a model on this db context instance: the serialized
+        /// form its loaded members are diffed against at save. Captured at load and
         /// create, and refreshed after each save.
         /// </summary>
         /// <param name="model">The tracked model</param>
-        /// <param name="bsonDocument">The serialized document, used as the diff baseline</param>
+        /// <param name="bsonDocument">The serialized model document, diffed against at save</param>
         void SetModelBsonDocument(IEntityModel model, BsonDocument bsonDocument);
 
         /// <summary>
@@ -280,10 +280,10 @@ namespace Etherna.MongODM.Core
         IDisposable SuppressChangeTracking();
 
         /// <summary>
-        /// Try to get the change tracking baseline of a model on this db context instance.
+        /// Try to get the model document of a model on this db context instance.
         /// </summary>
         /// <param name="model">The tracked model</param>
-        /// <returns>The baseline document, or null when the model is not tracked</returns>
+        /// <returns>The model document, or null when the model is not tracked</returns>
         BsonDocument? TryGetModelBsonDocument(IEntityModel model);
 
         /// <summary>

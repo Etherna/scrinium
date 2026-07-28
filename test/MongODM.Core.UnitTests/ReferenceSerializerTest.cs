@@ -401,6 +401,33 @@ namespace Etherna.MongODM.Core
         }
 
         [Fact]
+        public void SerializeThrowsOnReferredModelWithoutId()
+        {
+            /* MODM-164: a reference document without id deserializes to null, so writing it
+             * would silently lose the link. Outside of a new referred models discovery pass
+             * (where the model is collected for auto creation instead), serializing a
+             * reference to a model without id fails loudly. */
+
+            // Setup.
+            var serializer = BuildSerializer();
+            var model = new FakeModel { StringProp = "ok" }; //no id assigned
+
+            var serializedDocument = new BsonDocument();
+            using var bsonWriter = new BsonDocumentWriter(serializedDocument);
+
+            // Action.
+            var exception = Assert.Throws<InvalidOperationException>(() =>
+                serializer.Serialize(
+                    BsonSerializationContext.CreateRoot(bsonWriter),
+                    new BsonSerializationArgs { NominalType = typeof(FakeModel) },
+                    model));
+
+            // Assert.
+            Assert.Contains("without id", exception.Message, StringComparison.Ordinal);
+            Assert.Contains(nameof(FakeModel), exception.Message, StringComparison.Ordinal);
+        }
+
+        [Fact]
         public void SerializeWritesNullWithNullModel()
         {
             // Setup.

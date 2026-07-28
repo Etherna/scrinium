@@ -35,6 +35,7 @@ namespace Etherna.MongODM.Core.Repositories
 {
     public class Repository<TModel, TKey>(RepositoryOptions<TModel> options) :
         IFullModelsLoader,
+        INewReferredModelsCreator,
         IRepository<TModel, TKey>
         where TModel : class, IEntityModel<TKey>
     {
@@ -125,19 +126,23 @@ namespace Etherna.MongODM.Core.Repositories
         public virtual async Task CreateAsync(IEnumerable<TModel> models, CancellationToken cancellationToken = default)
         {
             ArgumentNullException.ThrowIfNull(models);
+            TModel[] modelList = [.. models];
 
-            await CreateOnDBAsync(models, cancellationToken).ConfigureAwait(false);
+            // Auto create the new referred models, before the insert serializes the references.
+            /* The creating model ids are assigned upfront: references back to them from the new
+             * referred models serialize complete, cycles between new models included. */
+            foreach (var model in modelList)
+                TryAssignModelId(model, DbContext.Engine);
+            List<(IEntityModel Model, IRepository? SourceRepository)> discoveredNewModels = [];
+            foreach (var model in modelList)
+                discoveredNewModels.AddRange(DiscoverNewReferredModels(model));
+            await CreateNewReferredModelsAsync(discoveredNewModels, modelList, cancellationToken).ConfigureAwait(false);
 
-            logger.RepositoryCreatedDocuments(Name, DbContext.Engine.Options.DbName, models.Select(m => m.Id!.ToString()!));
+            await CreateOnDBAsync(modelList, cancellationToken).ConfigureAwait(false);
 
-            //capture the change tracking baselines of the created models, so their later changes are saved.
-            using (new DbExecutionContextHandler(DbContext))
-                foreach (var model in models)
-                    if (TrySerializeModelBsonDocument(model) is { } baseline)
-                    {
-                        DbContext.SetModelBsonDocument(model, baseline);
-                        DbContext.SetModelSourceRepository(model, this);
-                    }
+            logger.RepositoryCreatedDocuments(Name, DbContext.Engine.Options.DbName, modelList.Select(m => m.Id!.ToString()!));
+
+            CaptureCreatedModelsDocuments(modelList);
 
             await DbContext.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
         }
@@ -146,17 +151,17 @@ namespace Etherna.MongODM.Core.Repositories
         {
             ArgumentNullException.ThrowIfNull(model);
 
+            // Auto create the new referred models, before the insert serializes the references.
+            /* The creating model id is assigned upfront: references back to it from the new
+             * referred models serialize complete, cycles between new models included. */
+            TryAssignModelId(model, DbContext.Engine);
+            await CreateNewReferredModelsAsync(DiscoverNewReferredModels(model), [model], cancellationToken).ConfigureAwait(false);
+
             await CreateOnDBAsync(model, cancellationToken).ConfigureAwait(false);
 
             logger.RepositoryCreatedDocument(Name, DbContext.Engine.Options.DbName, model.Id!.ToString()!);
 
-            //capture the change tracking baseline of the created model, so its later changes are saved.
-            using (new DbExecutionContextHandler(DbContext))
-                if (TrySerializeModelBsonDocument(model) is { } baseline)
-                {
-                    DbContext.SetModelBsonDocument(model, baseline);
-                    DbContext.SetModelSourceRepository(model, this);
-                }
+            CaptureCreatedModelsDocuments([model]);
 
             await DbContext.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
         }
@@ -412,16 +417,16 @@ namespace Etherna.MongODM.Core.Repositories
             if (model is not TModel castedModel)
                 throw new MongodmInvalidEntityTypeException("Invalid model type");
 
-            var baseline = DbContext.TryGetModelBsonDocument(model);
-            if (baseline is null)
+            var modelDocument = DbContext.TryGetModelBsonDocument(model);
+            if (modelDocument is null)
             {
-                //no baseline to diff against: persist with a whole document replace.
+                //no model document to diff against: persist with a whole document replace.
                 logger.RepositorySaveFellBackToDocumentReplace(Name, DbContext.Engine.Options.DbName, castedModel.Id!.ToString()!, "model is not change tracked");
                 await ReplaceAsync(castedModel, cancellationToken: cancellationToken).ConfigureAwait(false);
                 return;
             }
 
-            // Build the changed members update diffing the model against its baseline.
+            // Build the changed members update diffing the model against its model document.
             /* Members serialization needs the ambient db execution context, like the
              * documents serialization inside collection accesses. */
             using var dbExecutionContext = new DbExecutionContextHandler(DbContext);
@@ -441,28 +446,48 @@ namespace Etherna.MongODM.Core.Repositories
                 membersToDiff = membersToDiff.Where(mm => !ReferenceEquals(mm, extraElementsMemberMap));
 
             //reading the model members to diff them must not flag it a change candidate.
-            var changedMembers = new List<MemberInfo>();
-            var setDocument = new BsonDocument();
-            var unsetDocument = new BsonDocument();
-            using (DbContext.SuppressChangeTracking())
-                foreach (var memberMap in membersToDiff)
+            /* The changed members serialization doubles as the new referred models discovery:
+             * entity models referred with a null id are new models, created into their source
+             * repositories before persisting this update. After a creation the diff recomputes,
+             * serializing the references complete with their assigned ids. */
+            List<MemberInfo> changedMembers;
+            BsonDocument setDocument;
+            BsonDocument unsetDocument;
+            while (true)
+            {
+                changedMembers = [];
+                setDocument = [];
+                unsetDocument = [];
+
+                IReadOnlyCollection<(IEntityModel Model, IRepository? SourceRepository)> discoveredNewModels;
+                using (var newModelsCollector = new NewReferredModelsCollector(DbContext.Engine.ExecutionContext))
                 {
-                    var memberValue = memberMap.Getter(castedModel);
-                    var currentValue = memberMap.ShouldSerialize(castedModel, memberValue)
-                        ? SerializeMemberValue(memberMap, memberValue)
-                        : null;
-                    var baselineValue = baseline.TryGetValue(memberMap.ElementName, out var bv) ? bv : null;
+                    using (DbContext.SuppressChangeTracking())
+                        foreach (var memberMap in membersToDiff)
+                        {
+                            var memberValue = memberMap.Getter(castedModel);
+                            var currentValue = memberMap.ShouldSerialize(castedModel, memberValue)
+                                ? SerializeMemberValue(memberMap, memberValue)
+                                : null;
+                            var modelDocumentValue = modelDocument.TryGetValue(memberMap.ElementName, out var bv) ? bv : null;
 
-                    // Skip unchanged members.
-                    if (currentValue is null ? baselineValue is null : currentValue.Equals(baselineValue))
-                        continue;
+                            // Skip unchanged members.
+                            if (currentValue is null ? modelDocumentValue is null : currentValue.Equals(modelDocumentValue))
+                                continue;
 
-                    changedMembers.Add(memberMap.MemberInfo);
-                    if (currentValue is not null)
-                        setDocument[memberMap.ElementName] = currentValue;
-                    else
-                        unsetDocument[memberMap.ElementName] = 1;
+                            changedMembers.Add(memberMap.MemberInfo);
+                            if (currentValue is not null)
+                                setDocument[memberMap.ElementName] = currentValue;
+                            else
+                                unsetDocument[memberMap.ElementName] = 1;
+                        }
+                    discoveredNewModels = newModelsCollector.Models;
                 }
+
+                if (discoveredNewModels.Count == 0)
+                    break;
+                await CreateNewReferredModelsAsync(discoveredNewModels, [castedModel], cancellationToken).ConfigureAwait(false);
+            }
 
             var update = new BsonDocument();
             if (setDocument.ElementCount > 0)
@@ -529,9 +554,9 @@ namespace Etherna.MongODM.Core.Repositories
             else
                 RefreshModel(DbContext, castedModel, updatedModel);
 
-            // Refresh the baseline: the saved model now matches the persisted document.
-            if (TrySerializeModelBsonDocument(castedModel) is { } newBaseline)
-                DbContext.SetModelBsonDocument(model, newBaseline);
+            // Refresh the model document: the saved model now matches the persisted document.
+            if (TrySerializeModelBsonDocument(castedModel) is { } newModelDocument)
+                DbContext.SetModelBsonDocument(model, newModelDocument);
 
             // Update dependent documents.
             DbContext.Engine.DbMaintainer.OnUpdatedModel<TKey>(castedModel, changedMembers, this);
@@ -765,6 +790,19 @@ namespace Etherna.MongODM.Core.Repositories
                 cancellationToken);
 
         // Internals.
+        async Task INewReferredModelsCreator.CreateNewReferredModelAsync(IEntityModel model, CancellationToken cancellationToken)
+        {
+            ArgumentNullException.ThrowIfNull(model);
+            if (model is not TModel castedModel)
+                throw new MongodmInvalidEntityTypeException("Invalid model type");
+
+            await CreateOnDBAsync(castedModel, cancellationToken).ConfigureAwait(false);
+
+            logger.RepositoryCreatedDocument(Name, DbContext.Engine.Options.DbName, castedModel.Id!.ToString()!);
+
+            CaptureCreatedModelsDocuments([castedModel]);
+        }
+
         Task IFullModelsLoader.LoadFullModelsAsync(IEnumerable<IEntityModel> models, CancellationToken cancellationToken)
         {
             ArgumentNullException.ThrowIfNull(models);
@@ -786,6 +824,97 @@ namespace Etherna.MongODM.Core.Repositories
         }
 
         // Helpers.
+        private void CaptureCreatedModelsDocuments(IEnumerable<TModel> models)
+        {
+            //capture the model documents of the created models, so their later changes are saved.
+            using (new DbExecutionContextHandler(DbContext))
+                foreach (var model in models)
+                    if (TrySerializeModelBsonDocument(model) is { } modelDocument)
+                    {
+                        DbContext.SetModelBsonDocument(model, modelDocument);
+                        DbContext.SetModelSourceRepository(model, this);
+                    }
+        }
+
+        private async Task CreateNewReferredModelsAsync(
+            IReadOnlyCollection<(IEntityModel Model, IRepository? SourceRepository)> discoveredModels,
+            IEnumerable<TModel> persistingModels,
+            CancellationToken cancellationToken)
+        {
+            if (discoveredModels.Count == 0)
+                return;
+
+            // Assign every id first, then insert.
+            /* With the ids assigned before any insert, references between the new models
+             * serialize complete in any creation order, cycles included. Each new model
+             * discovers its own referred models in turn, before the inserts. The persisting
+             * models are handled by the ongoing operation: they never auto create, also when
+             * discovered back from a reference of a new model. */
+            var visitedModels = new HashSet<object>(persistingModels, ReferenceEqualityComparer.Instance);
+            var modelsToCreate = new List<(IEntityModel Model, IRepository SourceRepository)>();
+            var discoveredQueue = new Queue<(IEntityModel Model, IRepository? SourceRepository)>(discoveredModels);
+            while (discoveredQueue.Count > 0)
+            {
+                var (model, sourceRepository) = discoveredQueue.Dequeue();
+                if (!visitedModels.Add(model))
+                    continue;
+
+                var modelType = DbContext.Engine.ProxyGenerator.PurgeProxyType(model.GetType());
+                if (sourceRepository is null)
+                    throw new InvalidOperationException(
+                        $"Can't auto create the new referred model of type {modelType.Name}: " +
+                        "the reference member doesn't resolve a source repository on this db context. " +
+                        "Create the model explicitly in its repository before saving");
+                if (!TryAssignModelId(model, sourceRepository.DbContext.Engine))
+                    throw new InvalidOperationException(
+                        $"Can't auto create the new referred model of type {modelType.Name}: " +
+                        "its id member doesn't configure an id generator. " +
+                        "Create the model explicitly in its repository before saving");
+
+                foreach (var nestedDiscovered in DiscoverNewReferredModels(model))
+                    discoveredQueue.Enqueue(nestedDiscovered);
+
+                modelsToCreate.Add((model, sourceRepository));
+            }
+
+            foreach (var (model, sourceRepository) in modelsToCreate)
+            {
+                if (sourceRepository is INewReferredModelsCreator newModelsCreator)
+                    await newModelsCreator.CreateNewReferredModelAsync(model, cancellationToken).ConfigureAwait(false);
+                else //a custom repository implementation creates with its public api
+                    await sourceRepository.CreateAsync(model, cancellationToken).ConfigureAwait(false);
+            }
+
+            if (modelsToCreate.Count > 0)
+                logger.RepositoryAutoCreatedNewReferredModels(Name, DbContext.Engine.Options.DbName, modelsToCreate.Count);
+        }
+
+        private IReadOnlyCollection<(IEntityModel Model, IRepository? SourceRepository)> DiscoverNewReferredModels(
+            IEntityModel model)
+        {
+            /* Serialize the model into a throwaway document with an ambient collector: the
+             * reference serializers report every serialized entity model without id, with
+             * the source repository resolved for its reference member. */
+            var modelType = DbContext.Engine.ProxyGenerator.PurgeProxyType(model.GetType());
+            if (!DbContext.Engine.MapRegistry.TryGetMappedSerializer(modelType, out var serializer) ||
+                serializer is null)
+                return [];
+
+            //reading the model members to serialize must not flag it a change candidate.
+            using var newModelsCollector = new NewReferredModelsCollector(DbContext.Engine.ExecutionContext);
+            using (new DbExecutionContextHandler(DbContext))
+            using (DbContext.SuppressChangeTracking())
+            using (var bsonWriter = new BsonDocumentWriter([]))
+            {
+                var context = BsonSerializationContext.CreateRoot(bsonWriter);
+                bsonWriter.WriteStartDocument();
+                bsonWriter.WriteName("model");
+                serializer.Serialize(context, model);
+                bsonWriter.WriteEndDocument();
+            }
+            return newModelsCollector.Models;
+        }
+
         private static void RefreshModel(IDbContext dbContext, TModel model, TModel updatedModel)
         {
             /* Suppress change tracking on the refresh: the copied members are the just persisted
@@ -810,6 +939,26 @@ namespace Etherna.MongODM.Core.Repositories
             memberMap.GetSerializer().Serialize(context, memberValue);
             bsonWriter.WriteEndDocument();
             return document["value"];
+        }
+
+        private static bool TryAssignModelId(IEntityModel model, IDbContextEngine engine)
+        {
+            /* Mirror the driver id assignment of the insert operations: read the id through
+             * the id provider of the mapped serializer, and generate it when empty. Returns
+             * whether the model has an id after the call. */
+            if (!engine.MapRegistry.TryGetMappedSerializer(engine.ProxyGenerator.PurgeProxyType(model.GetType()), out var serializer) ||
+                serializer is not IBsonIdProvider idProvider ||
+                !idProvider.GetDocumentId(model, out var id, out _, out var idGenerator))
+                return false;
+
+            if (!(idGenerator?.IsEmpty(id) ?? id is null))
+                return true; //already assigned
+
+            if (idGenerator is null)
+                return false;
+
+            idProvider.SetDocumentId(model, idGenerator.GenerateId(container: null!, document: model));
+            return true;
         }
 
         private BsonDocument? TrySerializeModelBsonDocument(TModel model)
@@ -891,15 +1040,19 @@ namespace Etherna.MongODM.Core.Repositories
                 return model;
             });
 
-        private Task ReplaceHelperAsync(
+        private async Task ReplaceHelperAsync(
             TModel model,
             IClientSessionHandle? session,
             bool updateDependentDocuments,
-            CancellationToken cancellationToken) =>
-            AccessToCollectionAsync(async collection =>
-            {
-                ArgumentNullException.ThrowIfNull(model);
+            CancellationToken cancellationToken)
+        {
+            ArgumentNullException.ThrowIfNull(model);
 
+            // Auto create the new referred models, before the replace serializes the references.
+            await CreateNewReferredModelsAsync(DiscoverNewReferredModels(model), [model], cancellationToken).ConfigureAwait(false);
+
+            await AccessToCollectionAsync(async collection =>
+            {
                 // Replace on db.
                 ReplaceOneResult result;
                 if (session == null)
@@ -937,14 +1090,15 @@ namespace Etherna.MongODM.Core.Repositories
                 }
 
                 // Refresh the change tracking: the replaced document is now the model state.
-                if (TrySerializeModelBsonDocument(model) is { } newBaseline)
+                if (TrySerializeModelBsonDocument(model) is { } newModelDocument)
                 {
-                    DbContext.SetModelBsonDocument(model, newBaseline);
+                    DbContext.SetModelBsonDocument(model, newModelDocument);
                     DbContext.SetModelSourceRepository(model, this);
                 }
                 DbContext.ClearChangeCandidate(model);
 
                 logger.RepositoryReplacedDocument(Name, DbContext.Engine.Options.DbName, model.Id!.ToString()!);
-            });
+            }).ConfigureAwait(false);
+        }
     }
 }

@@ -20,7 +20,7 @@ namespace Etherna.MongODM.Core.Extensions
 {
     /*
      * Always group similar log delegates by type, always use incremental event ids.
-     * Last event id is: 46
+     * Last event id is: 47
      */
     public static class LoggerExtensions
     {
@@ -177,6 +177,12 @@ namespace Etherna.MongODM.Core.Extensions
                 LogLevel.Information,
                 new EventId(46, nameof(DbContextSeedingSkippedOnReadOnly)),
                 "DbContext {DbName} skipped seeding: the db context is read-only");
+
+        private static readonly Action<ILogger, string, string, int, Exception> _repositoryAutoCreatedNewReferredModels =
+            LoggerMessage.Define<string, string, int>(
+                LogLevel.Information,
+                new EventId(47, nameof(RepositoryAutoCreatedNewReferredModels)),
+                "Repository {RepositoryName} of DbContext {DbName} auto created {NewModelsCount} new referred models");
 
         private static readonly Action<ILogger, string, string, Exception> _repositoryBuiltIndexes =
             LoggerMessage.Define<string, string>(
@@ -353,6 +359,9 @@ namespace Etherna.MongODM.Core.Extensions
 
         public static void RepositoryAccessedCollection(this ILogger logger, string repositoryName, string dbName) =>
             _repositoryAccessedCollection(logger, repositoryName, dbName, null!);
+
+        public static void RepositoryAutoCreatedNewReferredModels(this ILogger logger, string repositoryName, string dbName, int newModelsCount) =>
+            _repositoryAutoCreatedNewReferredModels(logger, repositoryName, dbName, newModelsCount, null!);
 
         public static void RepositoryBuiltIndexes(this ILogger logger, string repositoryName, string dbName) =>
             _repositoryBuiltIndexes(logger, repositoryName, dbName, null!);

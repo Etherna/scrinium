@@ -328,11 +328,11 @@ namespace Etherna.MongODM.Core
         }
 
         [Fact]
-        public void DeserializeRegistersLoadedModelWithItsBaselineOnCurrentScope()
+        public void DeserializeRegistersLoadedModelWithItsDocumentOnCurrentScope()
         {
             /* A full load inside a db context scope registers the fresh instance as the loaded
-             * model of its document, capturing the change tracking baseline from the just
-             * deserialized document. */
+             * model of its document, capturing the model document from the just deserialized
+             * document. */
 
             // Setup.
             var document = new BsonDocument(new BsonElement[]
