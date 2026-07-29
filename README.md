@@ -27,7 +27,7 @@ Here is a non exhaustive list of implemented features by MongODM:
 - Execute database maintenance tasks with asynchronous task manager [Hangfire](https://www.hangfire.io/) by default, or with your custom one
 - Customizable database indexes
 - Handle different versioned document schemas with same database collection
-- Configurable data migration scripts between document schemas
+- Configurable data migration scripts between document schemas, with a dry run mode simulating the migration and reporting failing documents without persisting anything
 - Oriented to Dependency Injection for improve code testability
 - Native integration with Asp.NET Core and Hangfire
 

@@ -36,6 +36,7 @@ namespace Etherna.MongODM.IntegrationTests.Fixtures
         // Properties.
         public IImplicitSourceDbContext ImplicitSourceDbContext { get; private set; } = null!;
         public string ImplicitSourceDbName { get; } = "mongodm-it-implicit-" + Guid.NewGuid().ToString("N");
+        public string MigrationsDbName { get; } = "mongodm-it-migrations-" + Guid.NewGuid().ToString("N");
         public IMixedAccessDbContext MixedAccessDbContext { get; private set; } = null!;
         public string MongoDbUrl => mongoDb.DbUrl;
         public string ParentDbName { get; } = "mongodm-it-parent-" + Guid.NewGuid().ToString("N");
@@ -53,6 +54,7 @@ namespace Etherna.MongODM.IntegrationTests.Fixtures
             if (TestDbContext is not null)
             {
                 await TestDbContext.Engine.Client.DropDatabaseAsync(ImplicitSourceDbName);
+                await TestDbContext.Engine.Client.DropDatabaseAsync(MigrationsDbName);
                 await TestDbContext.Engine.Client.DropDatabaseAsync(ParentDbName);
                 await TestDbContext.Engine.Client.DropDatabaseAsync(TestDbName);
                 await TestDbContext.Engine.Client.DropDatabaseAsync(SecondDbName);
@@ -94,6 +96,13 @@ namespace Etherna.MongODM.IntegrationTests.Fixtures
                     options =>
                     {
                         options.ConnectionString = $"{mongoDb.DbUrl}/{ImplicitSourceDbName}";
+                    })
+                //dedicated context for the document migration tests, driving migrations directly
+                .AddDbContext<IMigrationsDbContext, MigrationsDbContext>(
+                    _ => new MigrationsDbContext(),
+                    options =>
+                    {
+                        options.ConnectionString = $"{mongoDb.DbUrl}/{MigrationsDbName}";
                     })
                 //read-only consumers of the database owned by SecondDbContext
                 .AddDbContext<IReadOnlyDbContext, ReadOnlyDbContext>(

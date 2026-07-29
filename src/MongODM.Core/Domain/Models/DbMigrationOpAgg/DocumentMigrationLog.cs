@@ -12,24 +12,39 @@
 // You should have received a copy of the GNU Lesser General Public License along with MongODM.
 // If not, see <https://www.gnu.org/licenses/>.
 
+using System.Collections.Generic;
+
 namespace Etherna.MongODM.Core.Domain.Models.DbMigrationOpAgg
 {
     public class DocumentMigrationLog : MigrationLogBase
     {
+        // Fields.
+        private List<DocumentMigrationError> _errors = [];
+
         // Constructors.
         public DocumentMigrationLog(
             string collectionName,
             ExecutionState state,
-            long totMigratedDocs)
+            long totMigratedDocs,
+            IEnumerable<DocumentMigrationError>? errors = null,
+            long totErrorDocs = 0)
             : base(state)
         {
             CollectionName = collectionName;
+            Errors = errors ?? [];
+            TotErrorDocs = totErrorDocs;
             TotMigratedDocs = totMigratedDocs;
         }
         protected DocumentMigrationLog() { }
 
         // Properties.
         public virtual string CollectionName { get; protected set; } = null!;
+        public virtual IEnumerable<DocumentMigrationError> Errors
+        {
+            get => _errors;
+            protected set => _errors = [.. value ?? []];
+        }
+        public virtual long TotErrorDocs { get; protected set; }
         public virtual long TotMigratedDocs { get; protected set; }
     }
 }

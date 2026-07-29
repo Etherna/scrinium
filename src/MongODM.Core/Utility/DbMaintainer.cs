@@ -82,6 +82,16 @@ namespace Etherna.MongODM.Core.Utility
             if (updatedModel is not IEntityModel<TKey>)
                 throw new ArgumentException($"Model is not of type {nameof(IEntityModel<TKey>)}", nameof(updatedModel));
 
+            // Skip the propagation on a dry run: simulated writes don't alter any document.
+            if (dbContextEngine.ExecutionContext.Items is not null &&
+                DryRunHandler.IsDryRunEnabled(dbContextEngine.ExecutionContext))
+            {
+                logger.DbMaintainerSkippedDependenciesUpdateOnDryRun(
+                    dbContextEngine.Options.DbName,
+                    ((IEntityModel<TKey>)updatedModel).Id!.ToString()!);
+                return;
+            }
+
             // Find all possibly involved member maps with changes, from all model maps. Select only referenced members.
             var referenceMemberMaps = changedMembers
                 .SelectMany(updatedMemberInfo => dbContextEngine.MapRegistry.GetMemberMapsFromMemberInfo(updatedMemberInfo))

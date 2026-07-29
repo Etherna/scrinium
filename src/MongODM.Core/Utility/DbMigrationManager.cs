@@ -68,32 +68,36 @@ namespace Etherna.MongODM.Core.Utility
 
                 // Remove old indexes.
                 /* Read-only repositories deny index management: their indexes belong to the
-                 * collection owner, so they stay out of the migration index steps. */
-                foreach (var repository in dbContext.RepositoryRegistry.Repositories.Where(r => !r.IsReadOnly))
+                 * collection owner, so they stay out of the migration index steps.
+                 * A dry run skips the index steps entirely: index management has no simulation. */
+                if (!dbMigrationOp.IsDryRun)
                 {
-                    dbMigrationOp.AddLog(new DeleteOldIndexesMigrationLog(
-                        repository.Name,
-                        MigrationLogBase.ExecutionState.Executing));
-                    await dbContext.SaveChangesAsync().ConfigureAwait(false);
-
-                    try
+                    foreach (var repository in dbContext.RepositoryRegistry.Repositories.Where(r => !r.IsReadOnly))
                     {
-                        await repository.DeleteOldIndexesAsync().ConfigureAwait(false);
-
                         dbMigrationOp.AddLog(new DeleteOldIndexesMigrationLog(
                             repository.Name,
-                            MigrationLogBase.ExecutionState.Succeded));
-                    }
-                    catch (Exception e)
-                    {
-                        errors.Add(e);
+                            MigrationLogBase.ExecutionState.Executing));
+                        await dbContext.SaveChangesAsync().ConfigureAwait(false);
 
-                        dbMigrationOp.AddLog(new DeleteOldIndexesMigrationLog(
-                            repository.Name,
-                            MigrationLogBase.ExecutionState.Failed));
-                    }
+                        try
+                        {
+                            await repository.DeleteOldIndexesAsync().ConfigureAwait(false);
 
-                    await dbContext.SaveChangesAsync().ConfigureAwait(false);
+                            dbMigrationOp.AddLog(new DeleteOldIndexesMigrationLog(
+                                repository.Name,
+                                MigrationLogBase.ExecutionState.Succeded));
+                        }
+                        catch (Exception e)
+                        {
+                            errors.Add(e);
+
+                            dbMigrationOp.AddLog(new DeleteOldIndexesMigrationLog(
+                                repository.Name,
+                                MigrationLogBase.ExecutionState.Failed));
+                        }
+
+                        await dbContext.SaveChangesAsync().ConfigureAwait(false);
+                    }
                 }
 
                 // Migrate documents.
@@ -109,11 +113,14 @@ namespace Etherna.MongODM.Core.Utility
                                 procDocs));
 
                             await dbContext.SaveChangesAsync().ConfigureAwait(false);
-                        }).ConfigureAwait(false);
+                        },
+                        dbMigrationOp.IsDryRun).ConfigureAwait(false);
 
                     if (!result.Succeded)
                         errors.Add(new MongodmDbMigrationException(
-                            $"Documents migration failed on \"{docMigration.SourceRepository.Name}\" repository"));
+                            result.TotDocumentErrors > 0
+                                ? $"Documents migration failed on \"{docMigration.SourceRepository.Name}\" repository with {result.TotDocumentErrors} document errors"
+                                : $"Documents migration failed on \"{docMigration.SourceRepository.Name}\" repository"));
 
                     //ended document migration log
                     dbMigrationOp.AddLog(new DocumentMigrationLog(
@@ -121,38 +128,43 @@ namespace Etherna.MongODM.Core.Utility
                         result.Succeded
                             ? MigrationLogBase.ExecutionState.Succeded
                             : MigrationLogBase.ExecutionState.Failed,
-                        result.MigratedDocuments));
+                        result.MigratedDocuments,
+                        result.DocumentErrors,
+                        result.TotDocumentErrors));
 
                     await dbContext.SaveChangesAsync().ConfigureAwait(false);
                 }
 
                 // Build new indexes.
-                //read-only repositories stay out of the index steps, like above
-                foreach (var repository in dbContext.RepositoryRegistry.Repositories.Where(r => !r.IsReadOnly))
+                //read-only repositories and dry runs stay out of the index steps, like above
+                if (!dbMigrationOp.IsDryRun)
                 {
-                    dbMigrationOp.AddLog(new BuildNewIndexesMigrationLog(
-                        repository.Name,
-                        MigrationLogBase.ExecutionState.Executing));
-                    await dbContext.SaveChangesAsync().ConfigureAwait(false);
-
-                    try
+                    foreach (var repository in dbContext.RepositoryRegistry.Repositories.Where(r => !r.IsReadOnly))
                     {
-                        await repository.BuildNewIndexesAsync().ConfigureAwait(false);
-
                         dbMigrationOp.AddLog(new BuildNewIndexesMigrationLog(
                             repository.Name,
-                            MigrationLogBase.ExecutionState.Succeded));
-                    }
-                    catch (Exception e)
-                    {
-                        errors.Add(e);
+                            MigrationLogBase.ExecutionState.Executing));
+                        await dbContext.SaveChangesAsync().ConfigureAwait(false);
 
-                        dbMigrationOp.AddLog(new BuildNewIndexesMigrationLog(
-                            repository.Name,
-                            MigrationLogBase.ExecutionState.Failed));
-                    }
+                        try
+                        {
+                            await repository.BuildNewIndexesAsync().ConfigureAwait(false);
 
-                    await dbContext.SaveChangesAsync().ConfigureAwait(false);
+                            dbMigrationOp.AddLog(new BuildNewIndexesMigrationLog(
+                                repository.Name,
+                                MigrationLogBase.ExecutionState.Succeded));
+                        }
+                        catch (Exception e)
+                        {
+                            errors.Add(e);
+
+                            dbMigrationOp.AddLog(new BuildNewIndexesMigrationLog(
+                                repository.Name,
+                                MigrationLogBase.ExecutionState.Failed));
+                        }
+
+                        await dbContext.SaveChangesAsync().ConfigureAwait(false);
+                    }
                 }
             }
             catch (Exception e)
@@ -233,7 +245,7 @@ namespace Etherna.MongODM.Core.Utility
             return migrateOp;
         }
 
-        public async Task<DbMigrationOperation?> TryStartDbContextMigrationAsync(IDbContext dbContext)
+        public async Task<DbMigrationOperation?> TryStartDbContextMigrationAsync(IDbContext dbContext, bool dryRun = false)
         {
             ArgumentNullException.ThrowIfNull(dbContext);
 
@@ -244,7 +256,7 @@ namespace Etherna.MongODM.Core.Utility
                 await IsMigrationRunningAsync(dbContext).ConfigureAwait(false) is not null)
                 return null;
 
-            var migrateOp = new DbMigrationOperation(dbContext.Engine);
+            var migrateOp = new DbMigrationOperation(dbContext.Engine, dryRun);
             await dbContext.DbOperations.CreateAsync(migrateOp).ConfigureAwait(false);
 
             taskRunner.RunMigrateDbTask(dbContext.GetType(), migrateOp.Id);

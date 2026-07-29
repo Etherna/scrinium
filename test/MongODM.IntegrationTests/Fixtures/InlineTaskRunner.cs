@@ -29,6 +29,7 @@ namespace Etherna.MongODM.IntegrationTests.Fixtures
     internal sealed class InlineTaskRunner : ITaskRunner, ITaskRunnerBuilder
     {
         // Fields.
+        private readonly List<object> pendingModelIds = [];
         private readonly List<Func<IServiceProvider, Task>> pendingTasks = [];
 
         // Properties.
@@ -41,11 +42,26 @@ namespace Etherna.MongODM.IntegrationTests.Fixtures
             }
         }
 
+        /// <summary>
+        /// The model ids of the pending dependencies update tasks.
+        /// </summary>
+        public IReadOnlyCollection<object> PendingModelIds
+        {
+            get
+            {
+                lock (pendingTasks)
+                    return [.. pendingModelIds];
+            }
+        }
+
         // Methods.
         public void ClearPending()
         {
             lock (pendingTasks)
+            {
+                pendingModelIds.Clear();
                 pendingTasks.Clear();
+            }
         }
 
         public async Task ExecutePendingAsync(IServiceProvider serviceProvider)
@@ -56,6 +72,7 @@ namespace Etherna.MongODM.IntegrationTests.Fixtures
             lock (pendingTasks)
             {
                 tasks = [.. pendingTasks];
+                pendingModelIds.Clear();
                 pendingTasks.Clear();
             }
 
@@ -80,6 +97,8 @@ namespace Etherna.MongODM.IntegrationTests.Fixtures
             var idMemberMapIdentifiersList = idMemberMapIdentifiers.ToArray();
 
             lock (pendingTasks)
+            {
+                pendingModelIds.Add(modelId);
                 pendingTasks.Add(serviceProvider =>
                     (Task)typeof(IUpdateDocDependenciesTask)
                         .GetMethod(nameof(IUpdateDocDependenciesTask.RunAsync))!
@@ -87,6 +106,7 @@ namespace Etherna.MongODM.IntegrationTests.Fixtures
                         .Invoke(
                             serviceProvider.GetRequiredService<IUpdateDocDependenciesTask>(),
                             [referenceRepositoryName, modelId, idMemberMapIdentifiersList])!);
+            }
         }
 
         public void SetMongODMOptions(MongODMOptions options) { }
