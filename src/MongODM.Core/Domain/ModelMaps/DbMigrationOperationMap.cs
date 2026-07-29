@@ -36,6 +36,7 @@ namespace Etherna.MongODM.Core.Domain.ModelMaps
                         new NullableSerializer<DateTimeOffset>(new DateTimeOffsetSerializer(BsonType.DateTime)));
                 });
             dbContextEngine.MapRegistry.AddModelMap<DeleteOldIndexesMigrationLog>("ac9d8011-6247-4365-b8ca-ac8401f838a1");
+            dbContextEngine.MapRegistry.AddModelMap<DocumentMigrationError>("15b8f6c8-8e94-4849-a3ce-4f0eb2cbb556");
             dbContextEngine.MapRegistry.AddModelMap<DocumentMigrationLog>("d2b49514-464e-4b28-8b38-ad2d0cc69d3e");
             dbContextEngine.MapRegistry.AddModelMap<MigrationLogBase>("1696c0c9-d615-44d9-ab9b-4e3618164185",
                 mm =>

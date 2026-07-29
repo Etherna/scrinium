@@ -12,6 +12,7 @@
 // You should have received a copy of the GNU Lesser General Public License along with MongODM.
 // If not, see <https://www.gnu.org/licenses/>.
 
+using Etherna.MongODM.Core.Domain.Models;
 using System;
 using System.Threading.Tasks;
 
@@ -26,9 +27,14 @@ namespace Etherna.MongODM.Core.Tasks
         {
             var dbContext = (TDbContext)serviceProvider.GetService(typeof(TDbContext))!;
 
-            // Run with exclusive access.
-            await dbContext.Engine.RunWithExclusiveAccessAsync(() =>
-                dbContext.ExecuteMigrationAsync(dbMigrationOpId, taskId)).ConfigureAwait(false);
+            var dbMigrationOp = (DbMigrationOperation)await dbContext.DbOperations.FindOneAsync(dbMigrationOpId).ConfigureAwait(false);
+
+            // A dry run doesn't persist anything: it runs without locking the db context.
+            if (dbMigrationOp.IsDryRun)
+                await dbContext.ExecuteMigrationAsync(dbMigrationOpId, taskId).ConfigureAwait(false);
+            else
+                await dbContext.Engine.RunWithExclusiveAccessAsync(() =>
+                    dbContext.ExecuteMigrationAsync(dbMigrationOpId, taskId)).ConfigureAwait(false);
         }
     }
 }

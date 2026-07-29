@@ -15,6 +15,7 @@
 using Etherna.MongODM.AspNetCoreSample.Models;
 using Etherna.MongODM.AspNetCoreSample.Models.ModelMaps;
 using Etherna.MongODM.Core;
+using Etherna.MongODM.Core.Migration;
 using Etherna.MongODM.Core.Repositories;
 using Etherna.MongODM.Core.Serialization;
 using System.Collections.Generic;
@@ -26,12 +27,13 @@ namespace Etherna.MongODM.AspNetCoreSample.Persistence
     {
         public IRepository<Cat, string> Cats { get; } = new Repository<Cat, string>("cats");
 
+        // Rewrite each cat document with the active schema. Try it from the admin dashboard,
+        // also as dry run: failing documents report into the operation logs without persisting.
+        public override IEnumerable<DocumentMigration> DocumentMigrationList =>
+            [new DocumentMigration<Cat, string>(Cats)];
+
         protected override IEnumerable<IModelMapsCollector> ModelMapsCollectors =>
-            new IModelMapsCollector[]
-            {
-                new ModelBaseMap(),
-                new CatMap()
-            };
+            [new ModelBaseMap(), new CatMap()];
 
         protected override Task SeedAsync()
         {

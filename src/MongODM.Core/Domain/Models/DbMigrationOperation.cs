@@ -34,16 +34,18 @@ namespace Etherna.MongODM.Core.Domain.Models
         private List<MigrationLogBase> _logs = [];
 
         // Constructors.
-        public DbMigrationOperation(IDbContextEngine dbContextEngine)
+        public DbMigrationOperation(IDbContextEngine dbContextEngine, bool isDryRun = false)
             : base(dbContextEngine)
         {
             CurrentStatus = Status.New;
+            IsDryRun = isDryRun;
         }
         protected DbMigrationOperation() { }
 
         // Properties.
         public virtual DateTimeOffset? CompletedDateTime { get; protected set; }
         public virtual Status CurrentStatus { get; protected set; }
+        public virtual bool IsDryRun { get; protected set; }
         public virtual IEnumerable<MigrationLogBase> Logs
         {
             get => _logs;

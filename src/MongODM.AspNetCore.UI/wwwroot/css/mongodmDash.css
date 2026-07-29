@@ -183,6 +183,11 @@ main.container {
   color: var(--info);
 }
 
+.status-badge.dry-run {
+  background-color: var(--info-bg);
+  color: var(--info);
+}
+
 @keyframes pulse {
   50% {
     opacity: 0.55;
@@ -203,6 +208,16 @@ main.container {
 
 .btn-start:hover:not(:disabled) {
   background-color: var(--accent-dark);
+}
+
+.btn-start.secondary {
+  background-color: transparent;
+  color: var(--accent);
+}
+
+.btn-start.secondary:hover:not(:disabled) {
+  background-color: var(--accent);
+  color: #fff;
 }
 
 .btn-start:disabled {
@@ -297,6 +312,17 @@ main.container {
 
 .log-entry.skipped .log-state {
   color: #9ca3af;
+}
+
+.log-errors {
+  color: #f87171;
+  padding: 0.15rem 0.25rem 0.15rem 1.5rem;
+}
+
+.log-errors ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
 }
 
 /* Migrations history

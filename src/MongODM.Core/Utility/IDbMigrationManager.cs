@@ -22,7 +22,9 @@ namespace Etherna.MongODM.Core.Utility
     {
         /// <summary>
         /// Execute a db context migration process: delete old indexes, migrate documents, and build new indexes.
-        /// The caller must already hold an exclusive access on the db context.
+        /// The caller must already hold an exclusive access on the db context, except for a dry
+        /// run operation, that simulates the document migrations without persisting anything,
+        /// skips the index steps, and reports failing documents into the operation logs.
         /// </summary>
         /// <param name="dbContext">The db context to migrate</param>
         /// <param name="dbMigrationOpId">Id of the migration operation to execute</param>
@@ -39,7 +41,10 @@ namespace Etherna.MongODM.Core.Utility
         /// <summary>
         /// Try to start a db context migration process, if no other migration is queued or running.
         /// </summary>
+        /// <param name="dbContext">The db context to migrate</param>
+        /// <param name="dryRun">If true, start a dry run: simulate the document migrations
+        /// without persisting anything, reporting failing documents into the operation logs</param>
         /// <returns>The new migration operation, or null if another one is already in progress</returns>
-        Task<DbMigrationOperation?> TryStartDbContextMigrationAsync(IDbContext dbContext);
+        Task<DbMigrationOperation?> TryStartDbContextMigrationAsync(IDbContext dbContext, bool dryRun = false);
     }
 }

@@ -86,7 +86,7 @@ namespace Etherna.MongODM.AspNetCore.UI.Areas.MongODM.Pages
             return new JsonResult(statuses);
         }
 
-        public async Task<IActionResult> OnPostStartMigrationAsync(string identifier)
+        public async Task<IActionResult> OnPostStartMigrationAsync(string identifier, bool dryRun = false)
         {
             InitializePage();
 
@@ -94,7 +94,7 @@ namespace Etherna.MongODM.AspNetCore.UI.Areas.MongODM.Pages
             if (dbContext is null)
                 return NotFound();
 
-            var migrationOperation = await dbContext.TryStartMigrationAsync().ConfigureAwait(false);
+            var migrationOperation = await dbContext.TryStartMigrationAsync(dryRun).ConfigureAwait(false);
 
             return new JsonResult(new
             {
@@ -114,6 +114,7 @@ namespace Etherna.MongODM.AspNetCore.UI.Areas.MongODM.Pages
         private static object ProjectOperation(DbMigrationOperation operation) => new
         {
             id = operation.Id,
+            isDryRun = operation.IsDryRun,
             status = operation.CurrentStatus.ToString(),
             //the ObjectId id embeds the creation instant
             creationDateTime = ObjectId.TryParse(operation.Id, out var objectId) ? new DateTimeOffset(objectId.CreationTime) : (DateTimeOffset?)null,
@@ -126,9 +127,15 @@ namespace Etherna.MongODM.AspNetCore.UI.Areas.MongODM.Pages
                 {
                     BuildNewIndexesMigrationLog buildLog => $"Build new indexes on \"{buildLog.Repository}\"",
                     DeleteOldIndexesMigrationLog deleteLog => $"Delete old indexes on \"{deleteLog.Repository}\"",
+                    DocumentMigrationLog { TotErrorDocs: > 0 } docLog => $"Migrate documents on \"{docLog.CollectionName}\" ({docLog.TotMigratedDocs} docs, {docLog.TotErrorDocs} errors)",
                     DocumentMigrationLog docLog => $"Migrate documents on \"{docLog.CollectionName}\" ({docLog.TotMigratedDocs} docs)",
                     _ => log.GetType().Name
-                }
+                },
+                errors = (log as DocumentMigrationLog)?.Errors.Select(error => new
+                {
+                    documentId = error.DocumentId,
+                    message = error.Message
+                })
             })
         };
     }

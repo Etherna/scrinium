@@ -16,26 +16,33 @@
 
     cards.forEach(function (card) {
         card.querySelector('[data-role="start"]').addEventListener('click', function () {
-            startMigration(card);
+            startMigration(card, false);
+        });
+        card.querySelector('[data-role="start-dry-run"]').addEventListener('click', function () {
+            startMigration(card, true);
         });
     });
 
     refreshStatus();
 
-    function startMigration(card) {
+    function startMigration(card, dryRun) {
         var identifier = card.dataset.identifier;
-        var message = 'Start migration on "' + identifier + '"?\n\n' +
-            'While the migration is running, the db context denies concurrent access to data.';
+        var message = dryRun
+            ? 'Start migration dry run on "' + identifier + '"?\n\n' +
+              'The dry run simulates the migration without persisting anything, reporting the ' +
+              'failing documents. Data stays accessible while it runs.'
+            : 'Start migration on "' + identifier + '"?\n\n' +
+              'While the migration is running, the db context denies concurrent access to data.';
         if (!window.confirm(message))
             return;
 
-        var startBtn = card.querySelector('[data-role="start"]');
-        startBtn.disabled = true;
+        card.querySelector('[data-role="start"]').disabled = true;
+        card.querySelector('[data-role="start-dry-run"]').disabled = true;
 
         fetch(baseUrl + '?handler=StartMigration', {
             method: 'POST',
             headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-            body: new URLSearchParams({ identifier: identifier })
+            body: new URLSearchParams({ identifier: identifier, dryRun: dryRun })
         }).then(function (response) {
             if (!response.ok)
                 throw new Error('HTTP ' + response.status);
@@ -92,7 +99,7 @@
 
         var badge = card.querySelector('[data-role="status"]');
         if (status.runningOperation) {
-            badge.textContent = 'Migrating';
+            badge.textContent = status.runningOperation.isDryRun ? 'Dry run' : 'Migrating';
             badge.className = 'status-badge running';
         } else if (status.isLocked) {
             badge.textContent = 'Locked';
@@ -103,13 +110,15 @@
         }
 
         card.querySelector('[data-role="start"]').disabled = status.isLocked;
+        card.querySelector('[data-role="start-dry-run"]').disabled = status.isLocked;
 
         var live = card.querySelector('[data-role="live"]');
         var logList = card.querySelector('[data-role="logs"]');
         if (status.runningOperation) {
             live.hidden = false;
             card.querySelector('[data-role="live-meta"]').textContent =
-                'Operation ' + status.runningOperation.id +
+                (status.runningOperation.isDryRun ? 'Dry run operation ' : 'Operation ') +
+                status.runningOperation.id +
                 ' — ' + status.runningOperation.status +
                 ' since ' + formatDateTime(status.runningOperation.creationDateTime);
             renderLogs(logList, status.runningOperation.logs, true);
@@ -141,6 +150,20 @@
             entry.appendChild(description);
 
             list.appendChild(entry);
+
+            //document errors reported by a dry run
+            if (log.errors && log.errors.length) {
+                var errorsEntry = document.createElement('li');
+                errorsEntry.className = 'log-errors';
+                var errorsList = document.createElement('ul');
+                log.errors.forEach(function (error) {
+                    var errorItem = document.createElement('li');
+                    errorItem.textContent = error.documentId + ' — ' + error.message;
+                    errorsList.appendChild(errorItem);
+                });
+                errorsEntry.appendChild(errorsList);
+                list.appendChild(errorsEntry);
+            }
         });
 
         if (scrollToBottom)
@@ -168,6 +191,13 @@
             badge.className = 'status-badge ' + historyBadgeClass(operation.status);
             badge.textContent = operation.status;
             summary.appendChild(badge);
+
+            if (operation.isDryRun) {
+                var dryRunBadge = document.createElement('span');
+                dryRunBadge.className = 'status-badge dry-run';
+                dryRunBadge.textContent = 'Dry run';
+                summary.appendChild(dryRunBadge);
+            }
 
             var dates = document.createElement('span');
             dates.className = 'history-dates';

@@ -13,12 +13,14 @@
 // If not, see <https://www.gnu.org/licenses/>.
 
 using Etherna.MongoDB.Bson;
+using Etherna.MongoDB.Bson.IO;
 using Etherna.MongoDB.Bson.Serialization;
 using Etherna.MongoDB.Driver;
 using Etherna.MongoDB.Driver.Search;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -33,7 +35,15 @@ namespace Etherna.MongODM.Core.Utility
      *
      * A read-only collection denies any write operation, index management included: the
      * write permission verification throws UnauthorizedAccessException. Reads keep
-     * working, exclusive access permitting. */
+     * working, exclusive access permitting.
+     *
+     * A dry run flow (marked by an ambient DryRunHandler) simulates writes: each write
+     * operation executes its client side work (filter and update rendering, document
+     * serialization) exactly as the real operation would before sending the command, and
+     * returns an acknowledged result without touching the server. Simulated single document
+     * write results report the matched document as existing, multi document ones report
+     * zero matches. Writes without a client side half (index management, aggregate to
+     * collection) can't be simulated and throw. */
     [SuppressMessage("Naming", "CA1711:Identifiers should not have incorrect suffix")]
     public class LimitedAccessMongoCollection<TDocument>(
         IDbContextEngine dbContextEngine,
@@ -74,7 +84,7 @@ namespace Etherna.MongODM.Core.Utility
                 return new LimitedAccessMongoIndexManager<TDocument>(
                     mongoCollection.Indexes,
                     VerifyReadPermission,
-                    VerifyWritePermission);
+                    VerifyIndexWritePermission);
             }
         }
         public IMongoSearchIndexManager SearchIndexes
@@ -85,7 +95,7 @@ namespace Etherna.MongODM.Core.Utility
                 return new LimitedAccessMongoSearchIndexManager(
                     mongoCollection.SearchIndexes,
                     VerifyReadPermission,
-                    VerifyWritePermission);
+                    VerifyIndexWritePermission);
             }
         }
         public MongoCollectionSettings Settings
@@ -147,6 +157,7 @@ namespace Etherna.MongODM.Core.Utility
             CancellationToken cancellationToken = new())
         {
             VerifyWritePermission();
+            VerifyDryRunSimulable("Aggregate to collection");
             if ((session ?? TryGetAmbientSession()) is { } effectiveSession)
                 mongoCollection.AggregateToCollection(effectiveSession, pipeline, options, cancellationToken);
             else
@@ -166,6 +177,7 @@ namespace Etherna.MongODM.Core.Utility
             CancellationToken cancellationToken = new())
         {
             VerifyWritePermission();
+            VerifyDryRunSimulable("Aggregate to collection");
             return (session ?? TryGetAmbientSession()) is { } effectiveSession
                 ? mongoCollection.AggregateToCollectionAsync(effectiveSession, pipeline, options, cancellationToken)
                 : mongoCollection.AggregateToCollectionAsync(pipeline, options, cancellationToken);
@@ -184,6 +196,8 @@ namespace Etherna.MongODM.Core.Utility
             CancellationToken cancellationToken = new())
         {
             VerifyWritePermission();
+            if (IsDryRun())
+                return SimulateBulkWrite(requests);
             return (session ?? TryGetAmbientSession()) is { } effectiveSession
                 ? mongoCollection.BulkWrite(effectiveSession, requests, options, cancellationToken)
                 : mongoCollection.BulkWrite(requests, options, cancellationToken);
@@ -202,6 +216,8 @@ namespace Etherna.MongODM.Core.Utility
             CancellationToken cancellationToken = new())
         {
             VerifyWritePermission();
+            if (IsDryRun())
+                return Task.FromResult(SimulateBulkWrite(requests));
             return (session ?? TryGetAmbientSession()) is { } effectiveSession
                 ? mongoCollection.BulkWriteAsync(effectiveSession, requests, options, cancellationToken)
                 : mongoCollection.BulkWriteAsync(requests, options, cancellationToken);
@@ -301,6 +317,11 @@ namespace Etherna.MongODM.Core.Utility
             CancellationToken cancellationToken = new())
         {
             VerifyWritePermission();
+            if (IsDryRun())
+            {
+                SimulateWrite(filter);
+                return new DeleteResult.Acknowledged(0);
+            }
             return (session ?? TryGetAmbientSession()) is { } effectiveSession
                 ? mongoCollection.DeleteMany(effectiveSession, filter, options, cancellationToken)
                 : mongoCollection.DeleteMany(filter, options, cancellationToken);
@@ -324,6 +345,11 @@ namespace Etherna.MongODM.Core.Utility
             CancellationToken cancellationToken = new())
         {
             VerifyWritePermission();
+            if (IsDryRun())
+            {
+                SimulateWrite(filter);
+                return Task.FromResult<DeleteResult>(new DeleteResult.Acknowledged(0));
+            }
             return (session ?? TryGetAmbientSession()) is { } effectiveSession
                 ? mongoCollection.DeleteManyAsync(effectiveSession, filter, options, cancellationToken)
                 : mongoCollection.DeleteManyAsync(filter, options, cancellationToken);
@@ -347,6 +373,11 @@ namespace Etherna.MongODM.Core.Utility
             CancellationToken cancellationToken = new())
         {
             VerifyWritePermission();
+            if (IsDryRun())
+            {
+                SimulateWrite(filter);
+                return new DeleteResult.Acknowledged(1);
+            }
             return (session ?? TryGetAmbientSession()) is { } effectiveSession
                 ? mongoCollection.DeleteOne(effectiveSession, filter, options, cancellationToken)
                 : mongoCollection.DeleteOne(filter, options, cancellationToken);
@@ -370,6 +401,11 @@ namespace Etherna.MongODM.Core.Utility
             CancellationToken cancellationToken = new())
         {
             VerifyWritePermission();
+            if (IsDryRun())
+            {
+                SimulateWrite(filter);
+                return Task.FromResult<DeleteResult>(new DeleteResult.Acknowledged(1));
+            }
             return (session ?? TryGetAmbientSession()) is { } effectiveSession
                 ? mongoCollection.DeleteOneAsync(effectiveSession, filter, options, cancellationToken)
                 : mongoCollection.DeleteOneAsync(filter, options, cancellationToken);
@@ -520,6 +556,11 @@ namespace Etherna.MongODM.Core.Utility
             CancellationToken cancellationToken = new())
         {
             VerifyWritePermission();
+            if (IsDryRun())
+            {
+                SimulateWrite(filter);
+                return default!;
+            }
             return (session ?? TryGetAmbientSession()) is { } effectiveSession
                 ? mongoCollection.FindOneAndDelete(effectiveSession, filter, options, cancellationToken)
                 : mongoCollection.FindOneAndDelete(filter, options, cancellationToken);
@@ -538,6 +579,11 @@ namespace Etherna.MongODM.Core.Utility
             CancellationToken cancellationToken = new())
         {
             VerifyWritePermission();
+            if (IsDryRun())
+            {
+                SimulateWrite(filter);
+                return Task.FromResult<TProjection>(default!);
+            }
             return (session ?? TryGetAmbientSession()) is { } effectiveSession
                 ? mongoCollection.FindOneAndDeleteAsync(effectiveSession, filter, options, cancellationToken)
                 : mongoCollection.FindOneAndDeleteAsync(filter, options, cancellationToken);
@@ -558,6 +604,11 @@ namespace Etherna.MongODM.Core.Utility
             CancellationToken cancellationToken = new())
         {
             VerifyWritePermission();
+            if (IsDryRun())
+            {
+                SimulateWrite(filter, documents: [replacement]);
+                return default!;
+            }
             return (session ?? TryGetAmbientSession()) is { } effectiveSession
                 ? mongoCollection.FindOneAndReplace(effectiveSession, filter, replacement, options, cancellationToken)
                 : mongoCollection.FindOneAndReplace(filter, replacement, options, cancellationToken);
@@ -578,6 +629,11 @@ namespace Etherna.MongODM.Core.Utility
             CancellationToken cancellationToken = new())
         {
             VerifyWritePermission();
+            if (IsDryRun())
+            {
+                SimulateWrite(filter, documents: [replacement]);
+                return Task.FromResult<TProjection>(default!);
+            }
             return (session ?? TryGetAmbientSession()) is { } effectiveSession
                 ? mongoCollection.FindOneAndReplaceAsync(effectiveSession, filter, replacement, options, cancellationToken)
                 : mongoCollection.FindOneAndReplaceAsync(filter, replacement, options, cancellationToken);
@@ -598,6 +654,11 @@ namespace Etherna.MongODM.Core.Utility
             CancellationToken cancellationToken = new())
         {
             VerifyWritePermission();
+            if (IsDryRun())
+            {
+                SimulateWrite(filter, update);
+                return default!;
+            }
             return (session ?? TryGetAmbientSession()) is { } effectiveSession
                 ? mongoCollection.FindOneAndUpdate(effectiveSession, filter, update, options, cancellationToken)
                 : mongoCollection.FindOneAndUpdate(filter, update, options, cancellationToken);
@@ -618,6 +679,11 @@ namespace Etherna.MongODM.Core.Utility
             CancellationToken cancellationToken = new())
         {
             VerifyWritePermission();
+            if (IsDryRun())
+            {
+                SimulateWrite(filter, update);
+                return Task.FromResult<TProjection>(default!);
+            }
             return (session ?? TryGetAmbientSession()) is { } effectiveSession
                 ? mongoCollection.FindOneAndUpdateAsync(effectiveSession, filter, update, options, cancellationToken)
                 : mongoCollection.FindOneAndUpdateAsync(filter, update, options, cancellationToken);
@@ -636,6 +702,11 @@ namespace Etherna.MongODM.Core.Utility
             CancellationToken cancellationToken = new())
         {
             VerifyWritePermission();
+            if (IsDryRun())
+            {
+                SimulateWrite(documents: [document]);
+                return;
+            }
             if ((session ?? TryGetAmbientSession()) is { } effectiveSession)
                 mongoCollection.InsertOne(effectiveSession, document, options, cancellationToken);
             else
@@ -662,6 +733,11 @@ namespace Etherna.MongODM.Core.Utility
             CancellationToken cancellationToken = new())
         {
             VerifyWritePermission();
+            if (IsDryRun())
+            {
+                SimulateWrite(documents: [document]);
+                return Task.CompletedTask;
+            }
             return (session ?? TryGetAmbientSession()) is { } effectiveSession
                 ? mongoCollection.InsertOneAsync(effectiveSession, document, options, cancellationToken)
                 : mongoCollection.InsertOneAsync(document, options, cancellationToken);
@@ -680,6 +756,11 @@ namespace Etherna.MongODM.Core.Utility
             CancellationToken cancellationToken = new())
         {
             VerifyWritePermission();
+            if (IsDryRun())
+            {
+                SimulateWrite(documents: documents);
+                return;
+            }
             if ((session ?? TryGetAmbientSession()) is { } effectiveSession)
                 mongoCollection.InsertMany(effectiveSession, documents, options, cancellationToken);
             else
@@ -699,6 +780,11 @@ namespace Etherna.MongODM.Core.Utility
             CancellationToken cancellationToken = new())
         {
             VerifyWritePermission();
+            if (IsDryRun())
+            {
+                SimulateWrite(documents: documents);
+                return Task.CompletedTask;
+            }
             return (session ?? TryGetAmbientSession()) is { } effectiveSession
                 ? mongoCollection.InsertManyAsync(effectiveSession, documents, options, cancellationToken)
                 : mongoCollection.InsertManyAsync(documents, options, cancellationToken);
@@ -778,6 +864,11 @@ namespace Etherna.MongODM.Core.Utility
             CancellationToken cancellationToken = new())
         {
             VerifyWritePermission();
+            if (IsDryRun())
+            {
+                SimulateWrite(filter, documents: [replacement]);
+                return new ReplaceOneResult.Acknowledged(1, 1, null);
+            }
             return (session ?? TryGetAmbientSession()) is { } effectiveSession
                 ? mongoCollection.ReplaceOne(effectiveSession, filter, replacement, options, cancellationToken)
                 : mongoCollection.ReplaceOne(filter, replacement, options, cancellationToken);
@@ -792,6 +883,11 @@ namespace Etherna.MongODM.Core.Utility
             CancellationToken cancellationToken = new())
         {
             VerifyWritePermission();
+            if (IsDryRun())
+            {
+                SimulateWrite(filter, documents: [replacement]);
+                return new ReplaceOneResult.Acknowledged(1, 1, null);
+            }
             return (session ?? TryGetAmbientSession()) is { } effectiveSession
                 ? mongoCollection.ReplaceOne(effectiveSession, filter, replacement, options, cancellationToken)
                 : mongoCollection.ReplaceOne(filter, replacement, options, cancellationToken);
@@ -820,6 +916,11 @@ namespace Etherna.MongODM.Core.Utility
             CancellationToken cancellationToken = new())
         {
             VerifyWritePermission();
+            if (IsDryRun())
+            {
+                SimulateWrite(filter, documents: [replacement]);
+                return Task.FromResult<ReplaceOneResult>(new ReplaceOneResult.Acknowledged(1, 1, null));
+            }
             return (session ?? TryGetAmbientSession()) is { } effectiveSession
                 ? mongoCollection.ReplaceOneAsync(effectiveSession, filter, replacement, options, cancellationToken)
                 : mongoCollection.ReplaceOneAsync(filter, replacement, options, cancellationToken);
@@ -834,6 +935,11 @@ namespace Etherna.MongODM.Core.Utility
             CancellationToken cancellationToken = new())
         {
             VerifyWritePermission();
+            if (IsDryRun())
+            {
+                SimulateWrite(filter, documents: [replacement]);
+                return Task.FromResult<ReplaceOneResult>(new ReplaceOneResult.Acknowledged(1, 1, null));
+            }
             return (session ?? TryGetAmbientSession()) is { } effectiveSession
                 ? mongoCollection.ReplaceOneAsync(effectiveSession, filter, replacement, options, cancellationToken)
                 : mongoCollection.ReplaceOneAsync(filter, replacement, options, cancellationToken);
@@ -854,6 +960,11 @@ namespace Etherna.MongODM.Core.Utility
             CancellationToken cancellationToken = new())
         {
             VerifyWritePermission();
+            if (IsDryRun())
+            {
+                SimulateWrite(filter, update);
+                return new UpdateResult.Acknowledged(0, 0, null);
+            }
             return (session ?? TryGetAmbientSession()) is { } effectiveSession
                 ? mongoCollection.UpdateMany(effectiveSession, filter, update, options, cancellationToken)
                 : mongoCollection.UpdateMany(filter, update, options, cancellationToken);
@@ -874,6 +985,11 @@ namespace Etherna.MongODM.Core.Utility
             CancellationToken cancellationToken = new())
         {
             VerifyWritePermission();
+            if (IsDryRun())
+            {
+                SimulateWrite(filter, update);
+                return Task.FromResult<UpdateResult>(new UpdateResult.Acknowledged(0, 0, null));
+            }
             return (session ?? TryGetAmbientSession()) is { } effectiveSession
                 ? mongoCollection.UpdateManyAsync(effectiveSession, filter, update, options, cancellationToken)
                 : mongoCollection.UpdateManyAsync(filter, update, options, cancellationToken);
@@ -894,6 +1010,11 @@ namespace Etherna.MongODM.Core.Utility
             CancellationToken cancellationToken = new())
         {
             VerifyWritePermission();
+            if (IsDryRun())
+            {
+                SimulateWrite(filter, update);
+                return new UpdateResult.Acknowledged(1, 1, null);
+            }
             return (session ?? TryGetAmbientSession()) is { } effectiveSession
                 ? mongoCollection.UpdateOne(effectiveSession, filter, update, options, cancellationToken)
                 : mongoCollection.UpdateOne(filter, update, options, cancellationToken);
@@ -914,6 +1035,11 @@ namespace Etherna.MongODM.Core.Utility
             CancellationToken cancellationToken = new())
         {
             VerifyWritePermission();
+            if (IsDryRun())
+            {
+                SimulateWrite(filter, update);
+                return Task.FromResult<UpdateResult>(new UpdateResult.Acknowledged(1, 1, null));
+            }
             return (session ?? TryGetAmbientSession()) is { } effectiveSession
                 ? mongoCollection.UpdateOneAsync(effectiveSession, filter, update, options, cancellationToken)
                 : mongoCollection.UpdateOneAsync(filter, update, options, cancellationToken);
@@ -976,8 +1102,62 @@ namespace Etherna.MongODM.Core.Utility
         }
 
         // Helpers.
+        private bool IsDryRun() =>
+            dbContextEngine.ExecutionContext.Items is not null &&
+            DryRunHandler.IsDryRunEnabled(dbContextEngine.ExecutionContext);
+
+        private BulkWriteResult<TDocument> SimulateBulkWrite(IEnumerable<WriteModel<TDocument>> requests)
+        {
+            var requestsList = requests.ToList();
+            foreach (var request in requestsList)
+            {
+                switch (request)
+                {
+                    case DeleteManyModel<TDocument> deleteMany: SimulateWrite(deleteMany.Filter); break;
+                    case DeleteOneModel<TDocument> deleteOne: SimulateWrite(deleteOne.Filter); break;
+                    case InsertOneModel<TDocument> insertOne: SimulateWrite(documents: [insertOne.Document]); break;
+                    case ReplaceOneModel<TDocument> replaceOne: SimulateWrite(replaceOne.Filter, documents: [replaceOne.Replacement]); break;
+                    case UpdateManyModel<TDocument> updateMany: SimulateWrite(updateMany.Filter, updateMany.Update); break;
+                    case UpdateOneModel<TDocument> updateOne: SimulateWrite(updateOne.Filter, updateOne.Update); break;
+                    default: throw new InvalidOperationException($"Write model {request.GetType().Name} can't be simulated by a dry run");
+                }
+            }
+            return new BulkWriteResult<TDocument>.Acknowledged(requestsList.Count, 0, 0, 0, 0, requestsList, []);
+        }
+
+        /* Execute the client side work of a write, exactly as the real operation would
+         * before sending the command to the server, then discard it. */
+        private void SimulateWrite(
+            FilterDefinition<TDocument>? filter = null,
+            UpdateDefinition<TDocument>? update = null,
+            IEnumerable<TDocument>? documents = null)
+        {
+            var renderArgs = new RenderArgs<TDocument>(mongoCollection.DocumentSerializer, dbContextEngine.SerializerRegistry);
+            filter?.Render(renderArgs);
+            update?.Render(renderArgs);
+            foreach (var document in documents ?? [])
+            {
+                var bsonDocument = new BsonDocument();
+                using var bsonWriter = new BsonDocumentWriter(bsonDocument);
+                var context = BsonSerializationContext.CreateRoot(bsonWriter);
+                mongoCollection.DocumentSerializer.Serialize(context, document);
+            }
+        }
+
         private IClientSessionHandle? TryGetAmbientSession() =>
             DbSessionHandler.TryGetCurrentSession(dbContextEngine);
+
+        private void VerifyDryRunSimulable(string operationDescription)
+        {
+            if (IsDryRun())
+                throw new InvalidOperationException($"{operationDescription} can't be simulated by a dry run");
+        }
+
+        private void VerifyIndexWritePermission()
+        {
+            VerifyWritePermission();
+            VerifyDryRunSimulable("Index management");
+        }
 
         private void VerifyReadPermission()
         {
