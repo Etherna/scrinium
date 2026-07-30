@@ -34,6 +34,8 @@ namespace Etherna.MongODM.IntegrationTests.Fixtures
         private ServiceProvider serviceProvider = null!;
 
         // Properties.
+        public ICustomIdDbContext CustomIdDbContext { get; private set; } = null!;
+        public string CustomIdDbName { get; } = "mongodm-it-customid-" + Guid.NewGuid().ToString("N");
         public IImplicitSourceDbContext ImplicitSourceDbContext { get; private set; } = null!;
         public string ImplicitSourceDbName { get; } = "mongodm-it-implicit-" + Guid.NewGuid().ToString("N");
         public string MigrationsDbName { get; } = "mongodm-it-migrations-" + Guid.NewGuid().ToString("N");
@@ -53,6 +55,7 @@ namespace Etherna.MongODM.IntegrationTests.Fixtures
         {
             if (TestDbContext is not null)
             {
+                await TestDbContext.Engine.Client.DropDatabaseAsync(CustomIdDbName);
                 await TestDbContext.Engine.Client.DropDatabaseAsync(ImplicitSourceDbName);
                 await TestDbContext.Engine.Client.DropDatabaseAsync(MigrationsDbName);
                 await TestDbContext.Engine.Client.DropDatabaseAsync(ParentDbName);
@@ -117,10 +120,18 @@ namespace Etherna.MongODM.IntegrationTests.Fixtures
                     options =>
                     {
                         options.ConnectionString = $"{mongoDb.DbUrl}/{SecondDbName}";
+                    })
+                //dedicated context for the custom serialized entity id tests (MODM-176)
+                .AddDbContext<ICustomIdDbContext, CustomIdDbContext>(
+                    _ => new CustomIdDbContext(),
+                    options =>
+                    {
+                        options.ConnectionString = $"{mongoDb.DbUrl}/{CustomIdDbName}";
                     });
 
             serviceProvider = services.BuildServiceProvider();
 
+            CustomIdDbContext = serviceProvider.GetRequiredService<ICustomIdDbContext>();
             ImplicitSourceDbContext = serviceProvider.GetRequiredService<IImplicitSourceDbContext>();
             MixedAccessDbContext = serviceProvider.GetRequiredService<IMixedAccessDbContext>();
             ReadOnlyDbContext = serviceProvider.GetRequiredService<IReadOnlyDbContext>();

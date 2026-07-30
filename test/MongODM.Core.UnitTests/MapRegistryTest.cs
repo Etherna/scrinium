@@ -15,11 +15,14 @@
 using Etherna.MongoDB.Bson;
 using Etherna.MongoDB.Bson.IO;
 using Etherna.MongoDB.Bson.Serialization;
+using Etherna.MongoDB.Bson.Serialization.Serializers;
 using Etherna.MongODM.Core.Domain.Models;
 using Etherna.MongODM.Core.Exceptions;
 using Etherna.MongODM.Core.Models;
 using Etherna.MongODM.Core.Options;
 using Etherna.MongODM.Core.Serialization.Mapping;
+using Etherna.MongODM.Core.Serialization.Providers;
+using Etherna.MongODM.Core.Serialization.Serializers;
 using Microsoft.Extensions.Logging;
 using Moq;
 using System;
@@ -35,6 +38,26 @@ namespace Etherna.MongODM.Core
         {
             public string? Name { get; set; }
         }
+        public sealed class KeyModel(string value)
+        {
+            public string Value { get; } = value;
+        }
+        public sealed class ForeignKeyModelSerializer : SerializerBase<KeyModel>
+        {
+            public override KeyModel Deserialize(BsonDeserializationContext context, BsonDeserializationArgs args) =>
+                new(context.Reader.ReadString());
+
+            public override void Serialize(BsonSerializationContext context, BsonSerializationArgs args, KeyModel value) =>
+                context.Writer.WriteString(value.Value);
+        }
+        public sealed class KeyModelSerializer : SerializerBase<KeyModel>
+        {
+            public override KeyModel Deserialize(BsonDeserializationContext context, BsonDeserializationArgs args) =>
+                new(context.Reader.ReadString());
+
+            public override void Serialize(BsonSerializationContext context, BsonSerializationArgs args, KeyModel value) =>
+                context.Writer.WriteString(value.Value);
+        }
         public class SecondModel
         {
             public string? Name { get; set; }
@@ -47,6 +70,7 @@ namespace Etherna.MongODM.Core
         // Fields.
         private readonly Mock<IDbContextEngine> dbContextEngineMock = new();
         private readonly MapRegistry mapRegistry = new();
+        private readonly BsonSerializerRegistry serializerRegistry = new();
 
         // Constructor.
         public MapRegistryTest()
@@ -60,7 +84,7 @@ namespace Etherna.MongODM.Core
             dbContextEngineMock.Setup(e => e.Options.ModelMapSchemaId)
                 .Returns(new ModelMapSchemaIdOptions());
             dbContextEngineMock.Setup(e => e.SerializerRegistry)
-                .Returns(new BsonSerializerRegistry());
+                .Returns(serializerRegistry);
 
             mapRegistry.Initialize(dbContextEngineMock.Object, new Mock<ILogger>().Object);
         }
@@ -91,6 +115,82 @@ namespace Etherna.MongODM.Core
             dbContextEngineMock.Verify(
                 e => e.ProxyGenerator.CreateInstance(typeof(FirstModel), It.IsAny<object[]>()),
                 Times.Never());
+        }
+
+        [Fact]
+        public void AddCustomSerializerMapClaimsSerializerRegistrySlot()
+        {
+            /* MODM-176: claiming the slot at registration makes later lookups resolve the
+             * custom serializer also for types otherwise served by the driver serialization
+             * providers (e.g. Guid, resolved as entity id type by the driver id generator
+             * convention at automap). */
+
+            // Setup.
+            var customSerializer = new KeyModelSerializer();
+
+            // Action.
+            mapRegistry.AddCustomSerializerMap<KeyModel>(customSerializer);
+
+            // Assert.
+            Assert.Same(customSerializer, serializerRegistry.GetSerializer<KeyModel>());
+        }
+
+        [Fact]
+        public void AddCustomSerializerMapFailsOverForeignRegisteredSerializer()
+        {
+            /* Only the adapter fabricated by the serialization provider, or an equal
+             * serializer, are accepted as already registered (driver serializer equality
+             * is type and configuration based): any other serializer registered for the
+             * type is a real conflict, surfacing at the map registration claiming the
+             * slot. */
+
+            // Setup.
+            serializerRegistry.RegisterSerializer(typeof(KeyModel), new ForeignKeyModelSerializer());
+
+            // Action.
+            var exception = Assert.Throws<BsonSerializationException>(() =>
+                mapRegistry.AddCustomSerializerMap<KeyModel>(new KeyModelSerializer()));
+
+            // Assert.
+            Assert.Contains("already a different serializer registered", exception.Message, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void FreezeAcceptsFabricatedSerializerCachedBeforeMapsRegistration()
+        {
+            /* MODM-176: a serializer lookup executed while maps are still registering
+             * (e.g. the driver id generator convention, resolving the id member serializer
+             * of an entity model at auto map) caches the serializer fabricated by the
+             * serialization provider. The freeze keeps it as the registered serializer:
+             * it delegates every operation to the mapped custom serializer. */
+
+            // Setup.
+            dbContextEngineMock.Setup(e => e.MapRegistry)
+                .Returns(mapRegistry);
+            serializerRegistry.RegisterSerializationProvider(new MapRegistrySerializationProvider(dbContextEngineMock.Object));
+
+            //the premature lookup caches the fabricated serializer
+            var fabricatedSerializer = serializerRegistry.GetSerializer<KeyModel>();
+            mapRegistry.AddCustomSerializerMap<KeyModel>(new KeyModelSerializer());
+
+            // Action.
+            mapRegistry.Freeze();
+
+            // Assert.
+            Assert.IsType<MappedSerializerAdapter<KeyModel>>(fabricatedSerializer);
+            Assert.Same(fabricatedSerializer, serializerRegistry.GetSerializer<KeyModel>());
+
+            //the registered serializer delegates to the mapped custom serializer
+            var serializedDocument = new BsonDocument();
+            using var bsonWriter = new BsonDocumentWriter(serializedDocument);
+            bsonWriter.WriteStartDocument();
+            bsonWriter.WriteName("key");
+            fabricatedSerializer.Serialize(
+                BsonSerializationContext.CreateRoot(bsonWriter),
+                new BsonSerializationArgs { NominalType = typeof(KeyModel) },
+                new KeyModel("keyVal"));
+            bsonWriter.WriteEndDocument();
+            Assert.Equal("keyVal", serializedDocument["key"].AsString);
         }
 
         [Fact]

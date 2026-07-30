@@ -72,6 +72,13 @@ namespace Etherna.MongODM.Core.Serialization.Mapping
                 var customSerializerMap = new CustomSerializerMap<TModel>(customSerializer);
                 _maps.Add(typeof(TModel), customSerializerMap);
 
+                // Claim the serializer registry slot.
+                /* Claiming the slot now makes later lookups resolve the custom serializer
+                 * also for types otherwise served by the driver serialization providers
+                 * (e.g. Guid, resolved as entity id type by the driver id generator
+                 * convention at automap). */
+                RegisterMappedSerializer(typeof(TModel), customSerializer);
+
                 return customSerializerMap;
             });
 
@@ -232,7 +239,7 @@ namespace Etherna.MongODM.Core.Serialization.Mapping
                 map.Freeze();
 
                 // Register active serializer.
-                ((BsonSerializerRegistry)dbContextEngine.SerializerRegistry).RegisterSerializer(map.ModelType, map.Serializer);
+                RegisterMappedSerializer(map.ModelType, map.Serializer);
 
                 // Register discriminators for all bson class maps.
                 if (map is IModelMap modelMap)
@@ -457,6 +464,27 @@ namespace Etherna.MongODM.Core.Serialization.Mapping
             }
 
             memberMapListByElementPath.Add(memberMap);
+        }
+
+        /* Serializer lookups can run while maps are still registering (e.g. the driver id
+         * generator convention, resolving the id member serializer of an entity model at
+         * automap), caching serializers before the maps freeze: the adapter fabricated by
+         * the serialization provider delegates to the serializer mapped here, so it can
+         * stay as the registered one. A serializer already registered by a previous claim
+         * of the same map is accepted as is; any other conflict is a real error. */
+        private void RegisterMappedSerializer(Type modelType, IBsonSerializer serializer)
+        {
+            var serializerRegistry = (BsonSerializerRegistry)dbContextEngine.SerializerRegistry;
+            try
+            {
+                serializerRegistry.TryRegisterSerializer(modelType, serializer);
+            }
+            catch (BsonSerializationException)
+            {
+                if (serializerRegistry.GetSerializer(modelType).GetType() !=
+                    typeof(MappedSerializerAdapter<>).MakeGenericType(modelType))
+                    throw;
+            }
         }
 
         /* Repositories, identity map and references address documents through the typed

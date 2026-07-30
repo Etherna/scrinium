@@ -232,7 +232,7 @@ namespace Etherna.MongODM.Core
         private void InitializeSerializerRegistry()
         {
             //order matters. It's in reverse order of how they'll get consumed
-            _serializerRegistry.RegisterSerializationProvider(new ModelMapSerializationProvider(this));
+            _serializerRegistry.RegisterSerializationProvider(new MapRegistrySerializationProvider(this));
             _serializerRegistry.RegisterSerializationProvider(new DiscriminatedInterfaceSerializationProvider());
             _serializerRegistry.RegisterSerializationProvider(new CollectionsSerializationProvider());
             _serializerRegistry.RegisterSerializationProvider(new PrimitiveSerializationProvider());
