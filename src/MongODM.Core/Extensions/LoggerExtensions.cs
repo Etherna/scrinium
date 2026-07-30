@@ -20,7 +20,7 @@ namespace Etherna.MongODM.Core.Extensions
 {
     /*
      * Always group similar log delegates by type, always use incremental event ids.
-     * Last event id is: 48
+     * Last event id is: 49
      */
     public static class LoggerExtensions
     {
@@ -195,6 +195,12 @@ namespace Etherna.MongODM.Core.Extensions
                 LogLevel.Information,
                 new EventId(12, nameof(RepositoryBuiltIndexes)),
                 "Repository {RepositoryName} of DbContext {DbName} built indexes");
+
+        private static readonly Action<ILogger, string, string, int, Exception> _repositoryCountedDocumentsBySchemaId =
+            LoggerMessage.Define<string, string, int>(
+                LogLevel.Information,
+                new EventId(49, nameof(RepositoryCountedDocumentsBySchemaId)),
+                "Repository {RepositoryName} of DbContext {DbName} counted documents by schema id, found {SchemaIdsCount} schema ids");
 
         private static readonly Action<ILogger, string, string, string, Exception> _repositoryCreatedDocument =
             LoggerMessage.Define<string, string, string>(
@@ -374,6 +380,9 @@ namespace Etherna.MongODM.Core.Extensions
 
         public static void RepositoryBuiltIndexes(this ILogger logger, string repositoryName, string dbName) =>
             _repositoryBuiltIndexes(logger, repositoryName, dbName, null!);
+
+        public static void RepositoryCountedDocumentsBySchemaId(this ILogger logger, string repositoryName, string dbName, int schemaIdsCount) =>
+            _repositoryCountedDocumentsBySchemaId(logger, repositoryName, dbName, schemaIdsCount, null!);
 
         public static void RepositoryCreatedDocument(this ILogger logger, string repositoryName, string dbName, string modelId) =>
             _repositoryCreatedDocument(logger, repositoryName, dbName, modelId, null!);

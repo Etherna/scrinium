@@ -41,6 +41,21 @@ namespace Etherna.MongODM.Core.Repositories
         Task BuildNewIndexesAsync(
             CancellationToken cancellationToken = default);
 
+        /// <summary>
+        /// Count the collection documents grouped by their model map schema id, read from the
+        /// current schema id element name or from a read fallback name. Schema ids not
+        /// registered on the db context report too.
+        /// The schema id is not indexable for this grouping: the count always scans the whole
+        /// collection, with a cost linear in its size. Prefer
+        /// <see cref="EstimatedDocumentCountAsync"/> to size a collection cheaply.
+        /// </summary>
+        /// <param name="cancellationToken">Cancellation token</param>
+        /// <returns>
+        /// Documents count by schema id, with the count of documents carrying no schema id element aside
+        /// </returns>
+        Task<(IReadOnlyDictionary<string, long> DocumentsBySchemaId, long DocumentsWithoutSchemaId)> CountDocumentsBySchemaIdAsync(
+            CancellationToken cancellationToken = default);
+
         Task CreateAsync(
             object model,
             CancellationToken cancellationToken = default);
@@ -54,6 +69,16 @@ namespace Etherna.MongODM.Core.Repositories
             CancellationToken cancellationToken = default);
         
         Task DeleteOldIndexesAsync(
+            CancellationToken cancellationToken = default);
+
+        /// <summary>
+        /// Get the total documents count of the collection from its metadata, without scanning
+        /// documents: a constant cost, whatever the collection size. The count can be inaccurate
+        /// after an unclean shutdown, and on a sharded cluster it includes orphaned documents.
+        /// </summary>
+        /// <param name="cancellationToken">Cancellation token</param>
+        /// <returns>The estimated documents count</returns>
+        Task<long> EstimatedDocumentCountAsync(
             CancellationToken cancellationToken = default);
 
         Task<object> FindOneAsync(

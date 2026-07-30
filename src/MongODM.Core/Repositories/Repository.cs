@@ -117,6 +117,54 @@ namespace Etherna.MongODM.Core.Repositories
             logger.RepositoryBuiltIndexes(Name, DbContext.Engine.Options.DbName);
         }
 
+        public virtual Task<(IReadOnlyDictionary<string, long> DocumentsBySchemaId, long DocumentsWithoutSchemaId)> CountDocumentsBySchemaIdAsync(
+            CancellationToken cancellationToken = default) =>
+            AccessToCollectionAsync(async collection =>
+            {
+                // Read each document schema id from the current element name, or from a read fallback name.
+                var schemaIdOptions = DbContext.Engine.Options.ModelMapSchemaId;
+                var schemaIdExpression = schemaIdOptions.ReadFallbackElementNames
+                    .Prepend(schemaIdOptions.ElementName)
+                    .Reverse()
+                    .Aggregate(
+                        (BsonValue)BsonNull.Value,
+                        (fallbackValue, elementName) => new BsonDocument("$ifNull", new BsonArray { "$" + elementName, fallbackValue }));
+
+                var pipeline = PipelineDefinition<TModel, BsonDocument>.Create(
+                    new BsonDocument("$group", new BsonDocument
+                    {
+                        ["_id"] = schemaIdExpression,
+                        ["count"] = new BsonDocument("$sum", 1)
+                    }));
+
+                var documentsBySchemaId = new Dictionary<string, long>();
+                var documentsWithoutSchemaId = 0L;
+                using (var cursor = await collection.AggregateAsync(pipeline, cancellationToken: cancellationToken).ConfigureAwait(false))
+                {
+                    foreach (var group in await cursor.ToListAsync(cancellationToken).ConfigureAwait(false))
+                    {
+                        var schemaIdValue = group["_id"];
+                        var documentsCount = group["count"].ToInt64();
+                        if (schemaIdValue.IsBsonNull)
+                        {
+                            documentsWithoutSchemaId += documentsCount;
+                        }
+                        else
+                        {
+                            //accumulate: different bson values could normalize to the same string
+                            var schemaId = schemaIdValue.ToString()!;
+                            documentsBySchemaId[schemaId] = documentsBySchemaId.TryGetValue(schemaId, out var current) ?
+                                current + documentsCount :
+                                documentsCount;
+                        }
+                    }
+                }
+
+                logger.RepositoryCountedDocumentsBySchemaId(Name, DbContext.Engine.Options.DbName, documentsBySchemaId.Count);
+
+                return ((IReadOnlyDictionary<string, long>)documentsBySchemaId, documentsWithoutSchemaId);
+            });
+
         public Task CreateAsync(object model, CancellationToken cancellationToken = default) =>
             CreateAsync((TModel)model, cancellationToken);
 
@@ -240,6 +288,10 @@ namespace Etherna.MongODM.Core.Repositories
                         .ConfigureAwait(false);
             }).ConfigureAwait(false);
         }
+
+        public virtual Task<long> EstimatedDocumentCountAsync(CancellationToken cancellationToken = default) =>
+            AccessToCollectionAsync(collection =>
+                collection.EstimatedDocumentCountAsync(cancellationToken: cancellationToken));
 
         public virtual async Task<IAsyncCursor<TProjection>> FindAsync<TProjection>(
             FilterDefinition<TModel> filter,

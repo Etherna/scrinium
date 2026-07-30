@@ -12,13 +12,17 @@
 // You should have received a copy of the GNU Lesser General Public License along with MongODM.
 // If not, see <https://www.gnu.org/licenses/>.
 
+using Etherna.MongoDB.Bson;
+using Etherna.MongoDB.Driver;
 using Etherna.MongODM.AspNetCoreSample.Models;
 using Etherna.MongODM.AspNetCoreSample.Models.ModelMaps;
 using Etherna.MongODM.Core;
 using Etherna.MongODM.Core.Migration;
 using Etherna.MongODM.Core.Repositories;
 using Etherna.MongODM.Core.Serialization;
+using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
 
 namespace Etherna.MongODM.AspNetCoreSample.Persistence
@@ -35,11 +39,32 @@ namespace Etherna.MongODM.AspNetCoreSample.Persistence
         protected override IEnumerable<IModelMapsCollector> ModelMapsCollectors =>
             [new ModelBaseMap(), new CatMap()];
 
-        protected override Task SeedAsync()
+        protected override async Task SeedAsync()
         {
-            // Seed here.
+            // Seed cats written with the active model map schema.
+            await Cats.CreateAsync([
+                new Cat("Kitty", new DateTime(2021, 3, 14, 0, 0, 0, DateTimeKind.Utc)),
+                new Cat("Tom", new DateTime(2019, 7, 2, 0, 0, 0, DateTimeKind.Utc)),
+                new Cat("Milo", new DateTime(2022, 9, 30, 0, 0, 0, DateTimeKind.Utc))
+            ]);
 
-            return base.SeedAsync();
+            /* Seed also cats as written by a previous version of the application: create them
+             * like any other, then stamp their documents with the previous schema id. The model
+             * schemas section of the admin dashboard counts them on the deprecated schema, and
+             * running a migration rewrites them with the active one. */
+            Cat[] previousSchemaCats = [
+                new Cat("Felix", new DateTime(2014, 5, 20, 0, 0, 0, DateTimeKind.Utc)),
+                new Cat("Garfield", new DateTime(2016, 11, 8, 0, 0, 0, DateTimeKind.Utc))
+            ];
+            await Cats.CreateAsync(previousSchemaCats);
+
+            await Engine.Database.GetCollection<BsonDocument>(Cats.Name).UpdateManyAsync(
+                Builders<BsonDocument>.Filter.In("_id", previousSchemaCats.Select(cat => ObjectId.Parse(cat.Id))),
+                Builders<BsonDocument>.Update.Set(
+                    Engine.Options.ModelMapSchemaId.ElementName,
+                    CatMap.PreviousSchemaId));
+
+            await base.SeedAsync();
         }
     }
 }

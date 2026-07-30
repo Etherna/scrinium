@@ -19,9 +19,18 @@ namespace Etherna.MongODM.AspNetCoreSample.Models.ModelMaps
 {
     class CatMap : IModelMapsCollector
     {
+        // Consts.
+        public const string ActiveSchemaId = "cd37bafa-a36d-4b1f-815a-deb50c49d030";
+        public const string PreviousSchemaId = "7f5c0b1e-2d3a-4c8e-9f10-5b6a7c8d9e0f";
+
+        // Methods.
         public void Register(IDbContextEngine dbContextEngine)
         {
-            dbContextEngine.MapRegistry.AddModelMap<Cat>("cd37bafa-a36d-4b1f-815a-deb50c49d030");
+            // The secondary schema keeps loading the documents written before the active one.
+            // Its documents count apart in the model schemas section of the admin dashboard,
+            // and the db context migration rewrites them with the active schema.
+            dbContextEngine.MapRegistry.AddModelMap<Cat>(ActiveSchemaId)
+                .AddSecondarySchema(PreviousSchemaId);
         }
     }
 }
