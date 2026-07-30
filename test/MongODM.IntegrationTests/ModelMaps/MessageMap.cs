@@ -24,6 +24,18 @@ namespace Etherna.MongODM.IntegrationTests.ModelMaps
     {
         public void Register(IDbContextEngine dbContextEngine)
         {
+            dbContextEngine.MapRegistry.AddModelMap<Envelope>(
+                "86d458e2-e618-466f-b29c-bf04fceb5196",
+                mm =>
+                {
+                    mm.AutoMap();
+
+                    // Set members with custom serializers.
+                    mm.SetMemberSerializer(m => m.Recipients,
+                        new EnumerableSerializer<AccountBase>(
+                            AccountMap.SummaryInfoSerializer(dbContextEngine)));
+                });
+
             dbContextEngine.MapRegistry.AddModelMap<Message>(
                 "d2a3f7e1-4b8c-49a1-9f6e-3f52290ab1c4",
                 mm =>

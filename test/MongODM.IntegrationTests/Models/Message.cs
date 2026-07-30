@@ -36,6 +36,7 @@ namespace Etherna.MongODM.IntegrationTests.Models
         // Properties.
         public virtual AccountBase Author { get; protected set; }
         public virtual AccountBase Editor { get; set; }
+        public virtual Envelope? Envelope { get; set; }
         public virtual string Text { get; set; }
         public virtual IEnumerable<AccountBase> Watchers
         {

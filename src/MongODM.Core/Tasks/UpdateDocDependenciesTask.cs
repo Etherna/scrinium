@@ -25,7 +25,6 @@ using Etherna.MongODM.Core.Repositories;
 using Etherna.MongODM.Core.Serialization.Mapping;
 using Etherna.MongODM.Core.Utility;
 using Microsoft.Extensions.Logging;
-using MoreLinq;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -218,9 +217,7 @@ namespace Etherna.MongODM.Core.Tasks
                 arrayFilters.Add(new BsonDocumentArrayFilterDefinition<BsonDocument>(
                     new BsonDocument($"idfilter{string.Join(".",
                         idMemberMap.MemberMapPath
-                            .Reverse()
-                            .TakeUntil(mm => mm == lastUndefinedArrayElement.MemberMap)
-                            .Reverse() //take all final memeber maps in path until we reach the last with undefined array index
+                            .SkipWhile(mm => mm != lastUndefinedArrayElement.MemberMap) //take all final member maps in path from the last with undefined array index
                             .Select(mm =>
                             {
                                 //if is the last member map, render internal path only after the last undefined array index
