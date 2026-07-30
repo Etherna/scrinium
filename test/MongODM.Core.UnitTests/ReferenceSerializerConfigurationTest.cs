@@ -50,6 +50,41 @@ namespace Etherna.MongODM.Core
 
         // Tests.
         [Fact]
+        public void BuilderChainsSchemaConfigurationMethods()
+        {
+            // Setup.
+            var configuration = BuildConfiguration(config =>
+            {
+                config.AddModelMap<FakeEntityModelBase<string>>("baseSchemaId", mm => mm.MapIdMember(m => m.Id));
+                config.AddModelMap<FakeModel>("activeSchemaId", mm => mm.MapMember(m => m.StringProp))
+                    .AddSecondarySchema("secondarySchemaId", mm => mm.MapMember(m => m.IntegerProp))
+                    .AddFallbackSchema(mm => mm.MapMember(m => m.StringProp));
+            });
+
+            // Action.
+            var secondarySerializer = configuration.GetSerializer(typeof(FakeModel), "secondarySchemaId");
+            var fallbackSerializer = configuration.GetSerializer(typeof(FakeModel), "unknownSchemaId");
+
+            // Assert.
+            //each chained call configures the same model map
+            var secondaryModel = DeserializeFakeModel(secondarySerializer, new BsonDocument
+            {
+                { "_id", "idVal" },
+                { "IntegerProp", 42 }
+            });
+            Assert.Equal("idVal", secondaryModel.Id);
+            Assert.Equal(42, secondaryModel.IntegerProp);
+
+            var fallbackModel = DeserializeFakeModel(fallbackSerializer, new BsonDocument
+            {
+                { "_id", "idVal" },
+                { "StringProp", "ok" }
+            });
+            Assert.Equal("idVal", fallbackModel.Id);
+            Assert.Equal("ok", fallbackModel.StringProp);
+        }
+
+        [Fact]
         public void GetSerializerDeserializesEmptyModelWithUnknownSchemaIdAndMissingIdElement()
         {
             // Setup.
