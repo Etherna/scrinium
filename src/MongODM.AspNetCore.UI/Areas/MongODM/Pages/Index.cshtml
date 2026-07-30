@@ -1,5 +1,6 @@
 @page
-@model Etherna.MongODM.AspNetCore.UI.Areas.MongODM.Pages.IndexModel
+@using Etherna.MongODM.AspNetCore.UI.Areas.MongODM.Pages
+@model IndexModel
 @{
     ViewData["Title"] = "Db contexts";
 }
@@ -11,27 +12,28 @@
 <div class="dbcontexts">
     @foreach (var context in Model.DbContexts)
     {
-        if (context.Engine.Options.IsReadOnly)
-        {
-            <section class="dbcontext-card" data-identifier="@context.Engine.Identifier" data-read-only>
-                <header class="dbcontext-card-header">
-                    <h2>@context.Engine.Identifier</h2>
+        var isReadOnly = context.Engine.Options.IsReadOnly;
+        <section class="dbcontext-card" data-identifier="@context.Engine.Identifier" data-read-only="@(isReadOnly ? "true" : "false")">
+            <header class="dbcontext-card-header">
+                <h2>@context.Engine.Identifier</h2>
+                @if (isReadOnly)
+                {
                     <span class="status-badge read-only">Read-only</span>
-                </header>
-
-                <p class="muted">This db context denies any write: migrations are managed by the database owner.</p>
-            </section>
-        }
-        else
-        {
-            <section class="dbcontext-card" data-identifier="@context.Engine.Identifier">
-                <header class="dbcontext-card-header">
-                    <h2>@context.Engine.Identifier</h2>
+                }
+                else
+                {
                     <span class="status-badge" data-role="status">&hellip;</span>
-                    <button type="button" class="btn-start" data-role="start" disabled>Start migration</button>
-                    <button type="button" class="btn-start secondary" data-role="start-dry-run" disabled>Dry run</button>
-                </header>
+                    <button type="button" class="btn" data-role="start" disabled>Start migration</button>
+                    <button type="button" class="btn secondary" data-role="start-dry-run" disabled>Dry run</button>
+                }
+            </header>
 
+            @if (isReadOnly)
+            {
+                <p class="muted">This db context denies any write: migrations are managed by the database owner.</p>
+            }
+            else
+            {
                 <p class="action-feedback" data-role="feedback" hidden></p>
 
                 <div class="migration-live" data-role="live" hidden>
@@ -44,7 +46,61 @@
                     <h3>Latest migrations</h3>
                     <div data-role="history"><p class="muted">Loading&hellip;</p></div>
                 </div>
-            </section>
-        }
+            }
+
+            <details class="model-schemas" data-role="schemas">
+                <summary>Model schemas</summary>
+
+                <p class="muted">
+                    Every document carries the id of the model map schema shaping it, in the
+                    <code>@context.Engine.Options.ModelMapSchemaId.ElementName</code> element. Counting the documents
+                    of each schema id scans the whole collection, so it runs only on request, one collection at a
+                    time: documents counted on a deprecated, unrecognized or missing schema id are the ones a
+                    migration has to rewrite.
+                </p>
+
+                @foreach (var repository in context.RepositoryRegistry.Repositories.OrderBy(r => r.Name))
+                {
+                    var schemas = IndexModel.GetDocumentSchemas(repository).ToArray();
+                    <div class="schema-collection" data-repository="@repository.Name">
+                        <div class="schema-collection-header">
+                            <h4>@repository.Name</h4>
+                            <span class="muted" data-role="collection-size">&hellip;</span>
+                            <button type="button" class="btn secondary" data-role="count-schemas" disabled>Count documents</button>
+                        </div>
+
+                        <table class="schemas-table">
+                            <thead>
+                                <tr>
+                                    <th>Model type</th>
+                                    <th>Schema id</th>
+                                    <th class="numeric">Documents</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @if (schemas.Length == 0)
+                                {
+                                    <tr>
+                                        <td class="muted" colspan="3">No storable model map registered</td>
+                                    </tr>
+                                }
+                                @foreach (var (modelTypeName, schemaId, isActiveSchema) in schemas)
+                                {
+                                    var schemaTag = isActiveSchema ? "current" : "deprecated";
+                                    <tr data-schema-id="@schemaId" data-active="@(isActiveSchema ? "true" : "false")">
+                                        <td>@modelTypeName</td>
+                                        <td>
+                                            <span class="schema-id">@schemaId</span>
+                                            <span class="schema-tag @schemaTag">@schemaTag</span>
+                                        </td>
+                                        <td class="numeric muted" data-role="count">&mdash;</td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                }
+            </details>
+        </section>
     }
 </div>

@@ -17,6 +17,8 @@ using Etherna.MongODM.Core;
 using Etherna.MongODM.Core.Domain.Models;
 using Etherna.MongODM.Core.Domain.Models.DbMigrationOpAgg;
 using Etherna.MongODM.Core.Options;
+using Etherna.MongODM.Core.Repositories;
+using Etherna.MongODM.Core.Serialization.Mapping;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.Extensions.DependencyInjection;
@@ -53,9 +55,109 @@ namespace Etherna.MongODM.AspNetCore.UI.Areas.MongODM.Pages
         public IEnumerable<IDbContext> DbContexts { get; private set; } = null!;
 
         // Methods.
+        /// <summary>
+        /// Get the model map schemas that can stamp their id on the documents of a repository
+        /// collection: those of the concrete model types assignable to the repository model
+        /// type, since a document carries the active schema id of its own concrete type.
+        /// Fallback schemas stay out: their reserved id is never written on documents.
+        /// </summary>
+        /// <param name="repository">The collection repository</param>
+        /// <returns>Model type name, schema id and active flag of each schema</returns>
+        public static IEnumerable<(string ModelTypeName, string SchemaId, bool IsActiveSchema)> GetDocumentSchemas(
+            IRepository repository)
+        {
+            ArgumentNullException.ThrowIfNull(repository);
+
+            return repository.DbContext.Engine.MapRegistry.MapsByModelType.Values
+                .OfType<IModelMap>()
+                .Where(map => !map.ModelType.IsAbstract &&
+                    repository.ModelType.IsAssignableFrom(map.ModelType))
+                .OrderBy(map => map.ModelType.Name)
+                .SelectMany(map => map.SecondarySchemas
+                    .Select(schema => (ModelTypeName: map.ModelType.Name, SchemaId: schema.Id, IsActiveSchema: false))
+                    .Prepend((ModelTypeName: map.ModelType.Name, SchemaId: map.ActiveSchema.Id, IsActiveSchema: true)));
+        }
+
         public void OnGet()
         {
             InitializePage();
+        }
+
+        /// <summary>
+        /// Size every collection of a db context reading its metadata: a constant cost per
+        /// collection, telling how much a schema ids count would have to scan.
+        /// </summary>
+        public async Task<IActionResult> OnGetCollectionSizesAsync(string identifier)
+        {
+            InitializePage();
+
+            var dbContext = DbContexts.FirstOrDefault(dbc => dbc.Engine.Identifier == identifier);
+            if (dbContext is null)
+                return NotFound();
+
+            var collections = new List<object>();
+            foreach (var repository in dbContext.RepositoryRegistry.Repositories.OrderBy(r => r.Name))
+            {
+                long? estimatedDocumentsCount = null;
+                try
+                {
+                    estimatedDocumentsCount = await repository.EstimatedDocumentCountAsync().ConfigureAwait(false);
+                }
+                catch (UnauthorizedAccessException)
+                {
+                    /* An exclusive access (a running migration) denies reads on the collection:
+                     * report it as unavailable, instead of failing the whole request. */
+                }
+
+                collections.Add(new
+                {
+                    repository = repository.Name,
+                    isUnavailable = estimatedDocumentsCount is null,
+                    estimatedDocumentsCount
+                });
+            }
+
+            return new JsonResult(collections);
+        }
+
+        /// <summary>
+        /// Count the documents of a single collection by schema id. This scans the whole
+        /// collection, so it runs only on explicit request, one collection at a time.
+        /// </summary>
+        public async Task<IActionResult> OnGetSchemaCountsAsync(string identifier, string repositoryName)
+        {
+            InitializePage();
+
+            var dbContext = DbContexts.FirstOrDefault(dbc => dbc.Engine.Identifier == identifier);
+            var repository = dbContext?.RepositoryRegistry.Repositories
+                .FirstOrDefault(repo => repo.Name == repositoryName);
+            if (repository is null)
+                return NotFound();
+
+            IReadOnlyDictionary<string, long>? documentsBySchemaId = null;
+            var documentsWithoutSchemaId = 0L;
+            try
+            {
+                (documentsBySchemaId, documentsWithoutSchemaId) =
+                    await repository.CountDocumentsBySchemaIdAsync().ConfigureAwait(false);
+            }
+            catch (UnauthorizedAccessException)
+            {
+                //an exclusive access (a running migration) denies reads on the collection
+            }
+
+            return new JsonResult(new
+            {
+                repository = repository.Name,
+                isUnavailable = documentsBySchemaId is null,
+                //a list of pairs, instead of a map: schema ids are values, never json keys
+                schemaCounts = documentsBySchemaId?.Select(pair => new
+                {
+                    schemaId = pair.Key,
+                    documentsCount = pair.Value
+                }),
+                documentsWithoutSchemaId
+            });
         }
 
         public async Task<IActionResult> OnGetStatusAsync()

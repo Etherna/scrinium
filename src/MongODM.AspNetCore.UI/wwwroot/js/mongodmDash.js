@@ -7,12 +7,29 @@
 
     var baseUrl = window.location.pathname;
     var banner = document.getElementById('connection-banner');
+    var allCards = Array.prototype.slice.call(document.querySelectorAll('.dbcontext-card'));
     //read-only db contexts render as static cards, with no migration controls to drive
-    var cards = Array.prototype.slice.call(document.querySelectorAll('.dbcontext-card:not([data-read-only])'));
+    var cards = allCards.filter(function (card) {
+        return card.dataset.readOnly !== 'true';
+    });
     var pollTimer = null;
 
-    if (cards.length === 0)
-        return;
+    //model schemas are available on every db context, read-only ones included
+    allCards.forEach(function (card) {
+        var section = card.querySelector('[data-role="schemas"]');
+        section.addEventListener('toggle', function () {
+            /* Size the collections lazily: it reads their metadata, a constant cost.
+             * The schema ids count scans a whole collection, and stays on demand. */
+            if (section.open && !section.dataset.loaded)
+                loadCollectionSizes(card);
+        });
+
+        Array.prototype.forEach.call(card.querySelectorAll('.schema-collection'), function (collection) {
+            collection.querySelector('[data-role="count-schemas"]').addEventListener('click', function () {
+                loadSchemaCounts(card, collection);
+            });
+        });
+    });
 
     cards.forEach(function (card) {
         card.querySelector('[data-role="start"]').addEventListener('click', function () {
@@ -23,7 +40,8 @@
         });
     });
 
-    refreshStatus();
+    if (cards.length !== 0)
+        refreshStatus();
 
     function startMigration(card, dryRun) {
         var identifier = card.dataset.identifier;
@@ -55,6 +73,148 @@
             showFeedback(card, 'Migration start request failed.');
             refreshStatus();
         });
+    }
+
+    function loadCollectionSizes(card) {
+        var section = card.querySelector('[data-role="schemas"]');
+        section.dataset.loaded = 'true';
+
+        fetch(baseUrl + '?handler=CollectionSizes&identifier=' + encodeURIComponent(card.dataset.identifier), {
+            headers: { 'Accept': 'application/json' }
+        }).then(function (response) {
+            if (!response.ok)
+                throw new Error('HTTP ' + response.status);
+            return response.json();
+        }).then(function (collections) {
+            collections.forEach(function (collection) {
+                var element = findCollection(card, collection.repository);
+                if (!element)
+                    return;
+
+                element.querySelector('[data-role="collection-size"]').textContent = collection.isUnavailable
+                    ? 'size unavailable: an exclusive access is running'
+                    : 'about ' + collection.estimatedDocumentsCount.toLocaleString() +
+                      (collection.estimatedDocumentsCount === 1 ? ' document' : ' documents');
+                element.querySelector('[data-role="count-schemas"]').disabled = collection.isUnavailable;
+            });
+        }).catch(function () {
+            section.dataset.loaded = '';
+            Array.prototype.forEach.call(card.querySelectorAll('[data-role="collection-size"]'), function (size) {
+                size.textContent = 'size request failed';
+            });
+        });
+    }
+
+    function loadSchemaCounts(card, collection) {
+        var button = collection.querySelector('[data-role="count-schemas"]');
+        button.disabled = true;
+        button.textContent = 'Counting…';
+
+        fetch(baseUrl + '?handler=SchemaCounts' +
+            '&identifier=' + encodeURIComponent(card.dataset.identifier) +
+            '&repositoryName=' + encodeURIComponent(collection.dataset.repository), {
+            headers: { 'Accept': 'application/json' }
+        }).then(function (response) {
+            if (!response.ok)
+                throw new Error('HTTP ' + response.status);
+            return response.json();
+        }).then(function (counts) {
+            renderSchemaCounts(collection, counts);
+            button.textContent = counts.isUnavailable ? 'Count documents' : 'Recount';
+        }).catch(function () {
+            button.textContent = 'Count failed, retry';
+        }).then(function () {
+            button.disabled = false;
+        });
+    }
+
+    function findCollection(card, repository) {
+        var found = null;
+        Array.prototype.forEach.call(card.querySelectorAll('.schema-collection'), function (candidate) {
+            if (candidate.dataset.repository === repository)
+                found = candidate;
+        });
+        return found;
+    }
+
+    function renderSchemaCounts(element, collection) {
+        var body = element.querySelector('tbody');
+
+        // Drop the rows added by a previous count, and reset the registered schema counts.
+        Array.prototype.forEach.call(body.querySelectorAll('[data-role="extra-row"]'), function (row) {
+            body.removeChild(row);
+        });
+
+        var schemaRows = body.querySelectorAll('[data-schema-id]');
+        Array.prototype.forEach.call(schemaRows, function (row) {
+            setCount(row.querySelector('[data-role="count"]'), collection.isUnavailable ? null : 0, false);
+        });
+
+        if (collection.isUnavailable)
+            return;
+
+        // Fill the counts of the registered schemas, adding a row for each unrecognized one.
+        collection.schemaCounts.forEach(function (schemaCount) {
+            var row = null;
+            Array.prototype.forEach.call(schemaRows, function (candidate) {
+                if (candidate.dataset.schemaId === schemaCount.schemaId)
+                    row = candidate;
+            });
+
+            if (row)
+                setCount(row.querySelector('[data-role="count"]'),
+                    schemaCount.documentsCount,
+                    row.dataset.active !== 'true');
+            else
+                body.appendChild(buildExtraRow(schemaCount.schemaId, 'unrecognized', schemaCount.documentsCount));
+        });
+
+        if (collection.documentsWithoutSchemaId > 0)
+            body.appendChild(buildExtraRow(null, 'missing', collection.documentsWithoutSchemaId));
+    }
+
+    function buildExtraRow(schemaId, kind, documentsCount) {
+        var row = document.createElement('tr');
+        row.dataset.role = 'extra-row';
+
+        var modelTypeCell = document.createElement('td');
+        modelTypeCell.className = 'muted';
+        modelTypeCell.textContent = '—';
+        row.appendChild(modelTypeCell);
+
+        var schemaCell = document.createElement('td');
+        if (schemaId !== null) {
+            var schemaIdLabel = document.createElement('span');
+            schemaIdLabel.className = 'schema-id';
+            schemaIdLabel.textContent = schemaId;
+            schemaCell.appendChild(schemaIdLabel);
+            schemaCell.appendChild(document.createTextNode(' '));
+        }
+        var tag = document.createElement('span');
+        tag.className = 'schema-tag ' + kind;
+        tag.textContent = kind === 'missing' ? 'no schema id' : kind;
+        schemaCell.appendChild(tag);
+        row.appendChild(schemaCell);
+
+        var countCell = document.createElement('td');
+        countCell.dataset.role = 'count';
+        setCount(countCell, documentsCount, true);
+        row.appendChild(countCell);
+
+        return row;
+    }
+
+    function setCount(cell, documentsCount, needsMigration) {
+        if (documentsCount === null) {
+            cell.textContent = '—';
+            cell.className = 'numeric muted';
+            return;
+        }
+
+        cell.textContent = documentsCount.toLocaleString();
+        cell.className = documentsCount === 0
+            ? 'numeric muted'
+            : 'numeric' + (needsMigration ? ' needs-migration' : '');
     }
 
     function refreshStatus() {

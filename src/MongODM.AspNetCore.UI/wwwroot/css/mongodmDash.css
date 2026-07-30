@@ -150,6 +150,113 @@ main.container {
   color: var(--text-muted);
 }
 
+code {
+  background-color: var(--neutral-bg);
+  border-radius: 0.35rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.85em;
+  padding: 0.1rem 0.3rem;
+}
+
+/* Model schemas
+-------------------------------------------------- */
+.model-schemas {
+  margin-top: 1.25rem;
+}
+
+.model-schemas > summary {
+  cursor: pointer;
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+.schema-collection {
+  border-top: 1px solid var(--border);
+  padding-top: 0.75rem;
+  margin-top: 0.75rem;
+}
+
+.schema-collection-header {
+  align-items: baseline;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.schema-collection-header h4 {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.95rem;
+  margin: 0;
+}
+
+.schema-collection-header .btn {
+  font-size: 0.8rem;
+  margin-left: auto;
+  padding: 0.25rem 0.7rem;
+}
+
+.schemas-table {
+  border-collapse: collapse;
+  margin-top: 0.5rem;
+  width: 100%;
+}
+
+.schemas-table th,
+.schemas-table td {
+  font-size: 0.9rem;
+  padding: 0.4rem 0.75rem;
+  text-align: left;
+  vertical-align: baseline;
+}
+
+.schemas-table thead th {
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.schemas-table .numeric {
+  text-align: right;
+  white-space: nowrap;
+}
+
+.schemas-table .needs-migration {
+  color: var(--warning);
+  font-weight: 600;
+}
+
+.schema-id {
+  background-color: var(--neutral-bg);
+  border-radius: 0.35rem;
+  display: inline-block;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.8rem;
+  padding: 0.1rem 0.4rem;
+  word-break: break-all;
+}
+
+.schema-tag {
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.schema-tag.current {
+  color: var(--success);
+}
+
+.schema-tag.deprecated {
+  color: var(--warning);
+}
+
+.schema-tag.missing,
+.schema-tag.unrecognized {
+  color: var(--danger);
+}
+
 /* Status badge
 -------------------------------------------------- */
 .status-badge {
@@ -196,7 +303,7 @@ main.container {
 
 /* Buttons and feedback
 -------------------------------------------------- */
-.btn-start {
+.btn {
   background-color: var(--accent);
   border: 1px solid var(--accent-dark);
   border-radius: 0.5rem;
@@ -206,21 +313,21 @@ main.container {
   padding: 0.45rem 1rem;
 }
 
-.btn-start:hover:not(:disabled) {
+.btn:hover:not(:disabled) {
   background-color: var(--accent-dark);
 }
 
-.btn-start.secondary {
+.btn.secondary {
   background-color: transparent;
   color: var(--accent);
 }
 
-.btn-start.secondary:hover:not(:disabled) {
+.btn.secondary:hover:not(:disabled) {
   background-color: var(--accent);
   color: #fff;
 }
 
-.btn-start:disabled {
+.btn:disabled {
   background-color: var(--neutral-bg);
   border-color: var(--border);
   color: var(--text-muted);
