@@ -15,10 +15,11 @@
 using Etherna.MongoDB.Bson;
 using Etherna.MongoDB.Bson.Serialization;
 using Etherna.MongODM.Core.Domain.Models;
+using Etherna.MongODM.Core.Exceptions;
 using Etherna.MongODM.Core.Extensions;
+using Etherna.MongODM.Core.Options;
 using Etherna.MongODM.Core.Repositories;
 using Etherna.MongODM.Core.Serialization.Serializers;
-using Etherna.MongODM.Core.Exceptions;
 using Etherna.MongODM.Core.Utility;
 using Microsoft.Extensions.Logging;
 using System;
@@ -32,7 +33,7 @@ namespace Etherna.MongODM.Core.Serialization.Mapping
     public class MapRegistry : FreezableConfig, IMapRegistry
     {
         // Fields.
-        private readonly List<(Type ModelType, Type KeyType, Func<IDbContext, IRepository> Selector)> declaredSourceReferences = new();
+        private readonly List<(Type ModelType, Type KeyType, Func<IDbContext, IRepository> Selector, Type? DbContextType)> declaredSourceReferences = new();
         private readonly List<IReferenceSerializer> implicitSourceReferences = new();
         private readonly Dictionary<Type, IMap> _maps = new(); //model type -> map
         private readonly Dictionary<string, IMemberMap> _memberMapsById = new();
@@ -187,10 +188,10 @@ namespace Etherna.MongODM.Core.Serialization.Mapping
         }
 
         // Protected methods.
-        internal void AddDeclaredSourceReference(Type modelType, Type keyType, Func<IDbContext, IRepository> selector)
+        internal void AddDeclaredSourceReference(Type modelType, Type keyType, Func<IDbContext, IRepository> selector, Type? dbContextType)
         {
             lock (declaredSourceReferences)
-                declaredSourceReferences.Add((modelType, keyType, selector));
+                declaredSourceReferences.Add((modelType, keyType, selector, dbContextType));
         }
 
         internal void AddImplicitSourceReference(IReferenceSerializer serializer)
@@ -202,14 +203,37 @@ namespace Etherna.MongODM.Core.Serialization.Mapping
         /* Reference serializers declaring a source repository must declare a compatible
          * one: hosting the reference model type, with the same key type. Selectors need a
          * db context instance to access its repository properties: the engine builder
-         * provides its own, validating at initialization, before any use. */
+         * provides its own, validating at initialization, before any use.
+         * A typed declaration on a db context type not implemented by the builder is a
+         * cross db context source: its selector can't run on the builder, but the typed
+         * factory already guarantees the repository compatibility at compile time, so
+         * here only its declared db context type is validated, as reachable through one
+         * single child db context type declared by the options. */
         internal void ValidateDeclaredSourceReferences(IDbContext dbContext)
         {
             var violations = new List<string>();
+            var crossDbContextViolations = new List<string>();
             lock (declaredSourceReferences)
             {
-                foreach (var (modelType, keyType, selector) in declaredSourceReferences)
+                foreach (var (modelType, keyType, selector, dbContextType) in declaredSourceReferences)
                 {
+                    if (dbContextType is not null && !dbContextType.IsInstanceOfType(dbContext))
+                    {
+                        var childDbContextTypes = dbContextEngine.Options.ChildDbContextTypes
+                            .Where(dbContextType.IsAssignableFrom)
+                            .ToArray();
+                        if (childDbContextTypes.Length == 0)
+                            crossDbContextViolations.Add(
+                                $"reference serializer of model type {modelType.Name} declares its source repository on db context type {dbContextType.Name}, " +
+                                $"neither implemented by this db context nor declared as its child db context type " +
+                                $"(declare it with {nameof(DbContextOptions)}.{nameof(DbContextOptions.ParentFor)})");
+                        else if (childDbContextTypes.Length > 1)
+                            crossDbContextViolations.Add(
+                                $"reference serializer of model type {modelType.Name} declares its source repository on db context type {dbContextType.Name}, " +
+                                $"implemented by multiple child db context types: {string.Join(", ", childDbContextTypes.Select(t => t.Name))}");
+                        continue;
+                    }
+
                     var repository = selector(dbContext);
                     if (!repository.ModelType.IsAssignableFrom(modelType))
                         violations.Add($"reference serializer of model type {modelType.Name} declares source repository {repository.Name}, handling the incompatible model type {repository.ModelType.Name}");
@@ -217,6 +241,11 @@ namespace Etherna.MongODM.Core.Serialization.Mapping
                         violations.Add($"reference serializer of model type {modelType.Name} with key type {keyType.Name} declares source repository {repository.Name}, handling the incompatible key type {repository.KeyType.Name}");
                 }
             }
+
+            if (crossDbContextViolations.Count > 0)
+                throw new InvalidOperationException(
+                    $"DbContext {dbContextEngine.DbContextType.Name} has reference serializers declaring unreachable source db contexts: " +
+                    string.Join("; ", crossDbContextViolations));
 
             if (violations.Count > 0)
                 throw new MongodmInvalidEntityTypeException(
@@ -347,7 +376,9 @@ namespace Etherna.MongODM.Core.Serialization.Mapping
          * model and key types: resolve them at engine build to the single compatible
          * db context repository property, failing fast with the involved repositories
          * detail when the deduction is ambiguous. References without any compatible
-         * repository (models of another db context) stay unresolved and unbound.
+         * repository fail fast too: a reference to a model of another db context must
+         * declare its source with the typed factory. Every reference of a built engine
+         * binds a source repository.
          * The builder instance gives access to the repository property values, exposing
          * their model and key types directly. */
         internal void ResolveImplicitSourceReferences(IDbContext dbContext)
@@ -366,17 +397,21 @@ namespace Etherna.MongODM.Core.Serialization.Mapping
                     group => group.Select(pair => (pair.property, keyType: pair.repository!.KeyType)).ToArray());
 
             // Resolve each implicit reference to its single compatible repository property.
-            var violations = new List<string>();
+            var ambiguousViolations = new List<string>();
+            var unresolvableViolations = new List<string>();
             var violatedModelTypes = new HashSet<Type>();
             lock (implicitSourceReferences)
             {
                 foreach (var serializer in implicitSourceReferences)
                 {
+                    var foundRepositoryLevel = false;
                     var searchedType = serializer.ReferenceModelType;
                     while (searchedType != typeof(object))
                     {
                         if (repositoryPropertiesByModelType.TryGetValue(searchedType, out var repositoryProperties))
                         {
+                            foundRepositoryLevel = true;
+
                             var compatibleProperties = repositoryProperties
                                 .Where(pair => pair.keyType == serializer.ReferenceKeyType)
                                 .ToArray();
@@ -389,7 +424,7 @@ namespace Etherna.MongODM.Core.Serialization.Mapping
                             }
                             else if (violatedModelTypes.Add(serializer.ReferenceModelType))
                             {
-                                violations.Add(compatibleProperties.Length > 1 ?
+                                ambiguousViolations.Add(compatibleProperties.Length > 1 ?
                                     $"model type {serializer.ReferenceModelType.Name} is handled by repositories {string.Join(", ", compatibleProperties.Select(pair => pair.property.Name))}" :
                                     $"model type {serializer.ReferenceModelType.Name} is handled by repositories with incompatible key types: {string.Join(", ", repositoryProperties.Select(pair => pair.property.Name))}");
                             }
@@ -397,13 +432,22 @@ namespace Etherna.MongODM.Core.Serialization.Mapping
                         }
                         searchedType = searchedType.BaseType!;
                     }
+
+                    if (!foundRepositoryLevel && violatedModelTypes.Add(serializer.ReferenceModelType))
+                        unresolvableViolations.Add($"model type {serializer.ReferenceModelType.Name} has no compatible repository on this db context");
                 }
             }
 
-            if (violations.Count > 0)
+            if (ambiguousViolations.Count > 0)
                 throw new MongodmAmbiguousRepositoryException(
                     $"DbContext {dbContextEngine.DbContextType.Name} has reference serializers with ambiguous implicit source: " +
-                    $"{string.Join("; ", violations)}. Set sourceRepository on the reference serializers to identify the sources");
+                    $"{string.Join("; ", ambiguousViolations)}. Set sourceRepository on the reference serializers to identify the sources");
+
+            if (unresolvableViolations.Count > 0)
+                throw new InvalidOperationException(
+                    $"DbContext {dbContextEngine.DbContextType.Name} has reference serializers without any resolvable source repository: " +
+                    $"{string.Join("; ", unresolvableViolations)}. Add a compatible repository, or declare a cross db context source " +
+                    $"with the typed {nameof(ReferenceSerializer)}.{nameof(ReferenceSerializer.Create)} factory");
         }
 
         private void LinkBaseModelMaps()

@@ -328,22 +328,22 @@ namespace Etherna.MongODM.Core
             dbContext.RegisterLoadedModel("id", model);
 
             // Assert.
-            Assert.Same(model, dbContext.TryGetLoadedModel(typeof(FakeModel), "id"));
-            Assert.Null(dbContext.TryGetLoadedModel(typeof(FakeModel), "otherId"));
+            Assert.Same(model, dbContext.TryGetLoadedModel(dbContext.FakeModels, "id"));
+            Assert.Null(dbContext.TryGetLoadedModel(dbContext.FakeModels, "otherId"));
 
             // Action.
             dbContext.UnregisterLoadedModel("id", model);
 
             // Assert.
-            Assert.Null(dbContext.TryGetLoadedModel(typeof(FakeModel), "id"));
+            Assert.Null(dbContext.TryGetLoadedModel(dbContext.FakeModels, "id"));
         }
 
         [Fact]
         public void ReplaceOutdatedLoadedModelSwapsTheLoadedInstance()
         {
             // Setup.
-            var outdatedModel = new FakeModelProxy { Id = "id" };
-            var currentModel = new FakeModelProxy { Id = "id" };
+            var outdatedModel = NewBoundProxy("id");
+            var currentModel = NewBoundProxy("id");
             dbContext.RegisterLoadedModel("id", outdatedModel);
 
             // Action.
@@ -351,7 +351,7 @@ namespace Etherna.MongODM.Core
 
             // Assert.
             //the fresh instance becomes the loaded one, and only the outdated one is flagged
-            Assert.Same(currentModel, dbContext.TryGetLoadedModel(typeof(FakeModel), "id"));
+            Assert.Same(currentModel, dbContext.TryGetLoadedModel(dbContext.FakeModels, "id"));
             Assert.True(dbContext.IsOutdatedModel(outdatedModel));
             Assert.False(dbContext.IsOutdatedModel(currentModel));
         }
@@ -360,8 +360,8 @@ namespace Etherna.MongODM.Core
         public void ReplaceOutdatedLoadedModelValidatesTheModelIds()
         {
             // Setup.
-            var outdatedModel = new FakeModelProxy { Id = "id" };
-            var currentModel = new FakeModelProxy { Id = "otherId" };
+            var outdatedModel = NewBoundProxy("id");
+            var currentModel = NewBoundProxy("otherId");
             dbContext.RegisterLoadedModel("id", outdatedModel);
 
             // Action.
@@ -372,7 +372,7 @@ namespace Etherna.MongODM.Core
             //the mismatch fails fast, before any state mutation
             Assert.Equal("currentModel", exception.ParamName);
             Assert.False(dbContext.IsOutdatedModel(outdatedModel));
-            Assert.Same(outdatedModel, dbContext.TryGetLoadedModel(typeof(FakeModel), "id"));
+            Assert.Same(outdatedModel, dbContext.TryGetLoadedModel(dbContext.FakeModels, "id"));
         }
 
         [Theory]
@@ -475,6 +475,15 @@ namespace Etherna.MongODM.Core
             //track the model with a model document, then flag it changed, like a mutation would
             targetDbContext.SetModelBsonDocument(model, []);
             targetDbContext.MarkChangeCandidate(model);
+        }
+
+        /* Proxies are bound to their source repository right after creation: bind the hand
+         * constructed ones like the proxy generator does, or they carry no origin. */
+        private FakeModelProxy NewBoundProxy(string id)
+        {
+            var proxy = new FakeModelProxy { Id = id };
+            ((IProxyModel)proxy).BindProxy(dbContext, dbContext.FakeModels);
+            return proxy;
         }
 
         private static Mock<IEntityModel> NewChangedModelMock(IRepository sourceRepository)

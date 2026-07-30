@@ -48,7 +48,7 @@ namespace Etherna.MongODM.Core
          * distinct instances: identity is the required key here. */
         private readonly HashSet<object> changeCandidates = new(ReferenceEqualityComparer.Instance);
         private int changeTrackingSuppressions;
-        private IEnumerable<IDbContext> childDbContexts = null!;
+        private IEnumerable<IDbContext>? childDbContexts;
         private IDbContextEngine engine = null!;
         private readonly Dictionary<(IRepository Repository, object ModelId), IEntityModel> loadedModels = [];
         private readonly ILogger logger = logger ?? NullLogger.Instance;
@@ -119,6 +119,7 @@ namespace Etherna.MongODM.Core
                     return changeCandidates.Cast<IEntityModel>().ToList();
             }
         }
+        public IEnumerable<IDbContext> ChildDbContexts => childDbContexts ?? [];
         public IRepository<OperationBase, string> DbOperations { get; private set; } = null!;
         public virtual IEnumerable<DocumentMigration> DocumentMigrationList { get; } = [];
         public IDbContextEngine Engine => engine;
@@ -265,10 +266,7 @@ namespace Etherna.MongODM.Core
                         TryGetIdMemberInfo(model.GetType())?.Name == name))
                     continue;
 
-                var repository = referenceable.SourceRepository
-                    ?? throw new InvalidOperationException(
-                        $"Model of type {typeof(TModel).Name} is not bound to a db context scope, and can't load");
-                modelsToLoad.Add((model, repository));
+                modelsToLoad.Add((model, referenceable.SourceRepository));
             }
 
             /* One query per source repository: the loaded documents deserialize on this
@@ -422,7 +420,7 @@ namespace Etherna.MongODM.Core
             }
 
             // Save changes on child dbcontexts.
-            foreach (var child in childDbContexts)
+            foreach (var child in ChildDbContexts)
             {
                 await child.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
             }
@@ -485,18 +483,6 @@ namespace Etherna.MongODM.Core
                 logger.DbContextReturnedLoadedModel(engine.Options.DbName, modelId.ToString()!, repository.Name);
 
             return model;
-        }
-
-        public IEntityModel? TryGetLoadedModel(Type modelType, object modelId)
-        {
-            ArgumentNullException.ThrowIfNull(modelType);
-            ArgumentNullException.ThrowIfNull(modelId);
-
-            var repository = TryGetRepositoryForModelType(modelType);
-            if (repository is null)
-                return null;
-
-            return TryGetLoadedModel(repository, modelId);
         }
 
         public Task<DbMigrationOperation?> TryStartMigrationAsync(bool dryRun = false) =>
@@ -613,10 +599,10 @@ namespace Etherna.MongODM.Core
 
         private IRepository? TryGetSourceRepository(IEntityModel model)
         {
-            //a referenceable model carries its bound source; a tracked non proxy model (created
+            //a proxy model carries its bound source; a tracked non proxy model (created
             //or replaced) carries the repository that handled it; else resolve by model type.
-            if ((model as IReferenceable)?.SourceRepository is { } referenceableRepository)
-                return referenceableRepository;
+            if (model is IReferenceable referenceable)
+                return referenceable.SourceRepository;
 
             lock (trackingLock)
                 if (modelSourceRepositories.TryGetValue(model, out var trackedRepository))

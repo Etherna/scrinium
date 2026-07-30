@@ -22,6 +22,7 @@ using Etherna.MongODM.Core.ExecContext.AsyncLocal;
 using Etherna.MongODM.Core.Extensions;
 using Etherna.MongODM.Core.Models;
 using Etherna.MongODM.Core.Options;
+using Etherna.MongODM.Core.Repositories;
 using Etherna.MongODM.Core.Serialization.Mapping;
 using Etherna.MongODM.Core.Serialization.Modifiers;
 using Etherna.MongODM.Core.Serialization.Serializers;
@@ -353,7 +354,10 @@ namespace Etherna.MongODM.Core
             var dbContextMock = new Mock<IDbContext>();
             dbContextMock.Setup(c => c.Engine)
                 .Returns(dbContextEngineMock.Object);
-            using var dbExecutionContext = new DbExecutionContextHandler(dbContextMock.Object);
+            var repositoryMock = new Mock<IRepository>();
+            repositoryMock.Setup(r => r.ModelType)
+                .Returns(typeof(FakeModel));
+            using var dbExecutionContext = new DbExecutionContextHandler(dbContextMock.Object, repositoryMock.Object);
 
             // Action.
             var result = serializer.Deserialize(
@@ -393,9 +397,12 @@ namespace Etherna.MongODM.Core
             var dbContextMock = new Mock<IDbContext>();
             dbContextMock.Setup(c => c.Engine)
                 .Returns(dbContextEngineMock.Object);
-            dbContextMock.Setup(c => c.TryGetLoadedModel(typeof(FakeModel), It.IsAny<object>()))
+            var repositoryMock = new Mock<IRepository>();
+            repositoryMock.Setup(r => r.ModelType)
+                .Returns(typeof(FakeModel));
+            dbContextMock.Setup(c => c.TryGetLoadedModel(repositoryMock.Object, It.IsAny<object>()))
                 .Returns(outdatedModel);
-            using var dbExecutionContext = new DbExecutionContextHandler(dbContextMock.Object);
+            using var dbExecutionContext = new DbExecutionContextHandler(dbContextMock.Object, repositoryMock.Object);
 
             // Action.
             var result = serializer.Deserialize(
@@ -487,9 +494,12 @@ namespace Etherna.MongODM.Core
             var dbContextMock = new Mock<IDbContext>();
             dbContextMock.Setup(c => c.Engine)
                 .Returns(dbContextEngineMock.Object);
-            dbContextMock.Setup(c => c.TryGetLoadedModel(typeof(FakeModel), It.IsAny<object>()))
+            var repositoryMock = new Mock<IRepository>();
+            repositoryMock.Setup(r => r.ModelType)
+                .Returns(typeof(FakeModel));
+            dbContextMock.Setup(c => c.TryGetLoadedModel(repositoryMock.Object, It.IsAny<object>()))
                 .Returns(loadedModel);
-            using var dbExecutionContext = new DbExecutionContextHandler(dbContextMock.Object);
+            using var dbExecutionContext = new DbExecutionContextHandler(dbContextMock.Object, repositoryMock.Object);
 
             // Action.
             var result = serializer.Deserialize(

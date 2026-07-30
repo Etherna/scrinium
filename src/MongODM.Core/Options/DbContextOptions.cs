@@ -24,6 +24,7 @@ namespace Etherna.MongODM.Core.Options
         private readonly List<Type> _childDbContextTypes = new();
 
         // Properties.
+        public IEnumerable<Type> ChildDbContextTypes => _childDbContextTypes;
         public string ConnectionString { get; set; } = "mongodb://localhost/localDb";
         public string DbName => ConnectionString.Split('?')[0]
                                                 .Split('/').Last();
@@ -33,7 +34,6 @@ namespace Etherna.MongODM.Core.Options
         public ImplicitLazyLoadMode ImplicitLazyLoad { get; set; } = ImplicitLazyLoadMode.Warn;
         public bool IsReadOnly { get; set; }
         public ModelMapSchemaIdOptions ModelMapSchemaId { get; set; } = new();
-        public IEnumerable<Type> ChildDbContextTypes => _childDbContextTypes;
 
         // Methods.
         public void ParentFor<TDbContext>() where

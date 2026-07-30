@@ -37,7 +37,10 @@ namespace Etherna.MongODM.Core.Serialization.Serializers
         /// <summary>
         /// Create a reference serializer declaring its source repository with a typed selector:
         /// generic arguments are inferred from the selector, and the source compatibility with
-        /// the reference model and key types is verified at compile time.
+        /// the reference model and key types is verified at compile time. Declaring a db context
+        /// type not implemented by the hosting db context configures a cross db context
+        /// reference: the source resolves on the child db context attached to the scope,
+        /// declared with <see cref="Options.DbContextOptions.ParentFor{TDbContext}"/>.
         /// </summary>
         /// <typeparam name="TDbContext">Db context type hosting the source repository</typeparam>
         /// <typeparam name="TModelBase">Nominal model type</typeparam>
@@ -51,18 +54,22 @@ namespace Etherna.MongODM.Core.Serialization.Serializers
         {
             ArgumentNullException.ThrowIfNull(sourceRepository);
 
-            /* The typed selector requires the current scope db context as TDbContext: cast it
-             * once here, failing with a detailed exception when the scope is a different db
-             * context type. The engine build validation invokes the selector on the builder
-             * db context instance, so a mismatching declared type still fails fast at startup.
-             * Cross db context references will replace this cast with a db context locator
-             * resolving the declared type (MODM-101). */
+            /* The typed selector requires an instance of its declared db context type: the
+             * current scope db context when it implements it, or the child db context attached
+             * to the scope for a cross db context source, failing with a detailed exception
+             * when neither applies. The declared type is reported aside to the map registry,
+             * so the engine build validates its reachability at startup without invoking the
+             * selector. */
             return new(dbContextEngine, configure,
                 sourceRepository: dbContext => sourceRepository(
-                    dbContext as TDbContext ?? throw new InvalidOperationException(
+                    dbContext as TDbContext ??
+                    dbContext.ChildDbContexts.OfType<TDbContext>().FirstOrDefault() ??
+                    throw new InvalidOperationException(
                         $"Reference serializer of model type {typeof(TModelBase).Name} declares " +
                         $"its source repository on db context type {typeof(TDbContext).Name}, " +
-                        $"not implemented by the current db context {dbContext.GetType().Name}")));
+                        $"neither implemented by the current db context {dbContext.GetType().Name} " +
+                        "nor attached as its child db context")),
+                sourceRepositoryDbContextType: typeof(TDbContext));
         }
     }
 
@@ -83,11 +90,19 @@ namespace Etherna.MongODM.Core.Serialization.Serializers
         private readonly IDbContextEngine dbContextEngine;
         private Func<IDbContext, IRepository>? sourceRepositorySelector;
 
-        // Constructor.
+        // Constructors.
         public ReferenceSerializer(
             IDbContextEngine dbContextEngine,
             Action<ReferenceSerializerConfiguration> configure,
             Func<IDbContext, IRepository>? sourceRepository = null)
+            : this(dbContextEngine, configure, sourceRepository, sourceRepositoryDbContextType: null)
+        { }
+
+        internal ReferenceSerializer(
+            IDbContextEngine dbContextEngine,
+            Action<ReferenceSerializerConfiguration> configure,
+            Func<IDbContext, IRepository>? sourceRepository,
+            Type? sourceRepositoryDbContextType)
         {
             ArgumentNullException.ThrowIfNull(configure);
 
@@ -97,13 +112,14 @@ namespace Etherna.MongODM.Core.Serialization.Serializers
             /* Report the source declaration to the map registry for initialization
              * validation and resolution: implicit sources resolve at engine build to the
              * single compatible db context repository (ambiguity fails fast), declared
-             * repositories are validated for compatibility at engine build.
+             * repositories are validated for compatibility at engine build, and cross db
+             * context declarations for the reachability of their declared db context type.
              * Source references require the library map registry: a replaced registry
              * fails the cast loudly here, instead of silently skipping registration. */
             if (sourceRepository is null)
                 ((MapRegistry)dbContextEngine.MapRegistry).AddImplicitSourceReference(this);
             else
-                ((MapRegistry)dbContextEngine.MapRegistry).AddDeclaredSourceReference(typeof(TModelBase), typeof(TKey), sourceRepository);
+                ((MapRegistry)dbContextEngine.MapRegistry).AddDeclaredSourceReference(typeof(TModelBase), typeof(TKey), sourceRepository, sourceRepositoryDbContextType);
 
             _configuration = new ReferenceSerializerConfiguration(dbContextEngine);
             configure(_configuration);
@@ -179,12 +195,20 @@ namespace Etherna.MongODM.Core.Serialization.Serializers
 
             // Deserialize.
             /* Push the source repository resolved for this reference member, when the
-             * operation runs inside a db context scope: the created proxy binds to it.
-             * Members without a resolvable source (references to models of another db
-             * context) push a null repository, shadowing the outer operation one. */
-            DbExecutionContextHandler? originDbExecContextHandler = null;
+             * operation runs inside a db context scope, paired with the db context owning
+             * it: the current one, or the child db context hosting a cross db context
+             * source. The created proxy binds to both. Members without a resolvable source
+             * (implicit references to models of another db context) push a null repository,
+             * shadowing the outer operation one. */
+            IDbContext? sourceDbContext = null;
+            IRepository? sourceRepository = null;
+            DbExecutionContextHandler? sourceDbExecContextHandler = null;
             if (DbExecutionContextHandler.TryGetCurrentDbContext(dbContextEngine.ExecutionContext) is { } originDbContext)
-                originDbExecContextHandler = new DbExecutionContextHandler(originDbContext, sourceRepositorySelector?.Invoke(originDbContext));
+            {
+                sourceRepository = sourceRepositorySelector?.Invoke(originDbContext);
+                sourceDbContext = sourceRepository?.DbContext ?? originDbContext;
+                sourceDbExecContextHandler = new DbExecutionContextHandler(sourceDbContext, sourceRepository);
+            }
 
             //get serializer
             TModelBase? model;
@@ -195,7 +219,7 @@ namespace Etherna.MongODM.Core.Serialization.Serializers
             }
             finally
             {
-                originDbExecContextHandler?.Dispose();
+                sourceDbExecContextHandler?.Dispose();
             }
 
             // Clear extra elements. They are never needed with references.
@@ -238,31 +262,32 @@ namespace Etherna.MongODM.Core.Serialization.Serializers
                     ((IReferenceable)model).SetAsSummary(summaryMemberNames);
                 }
 
-                // Deduplicate model instance on the current db context scope.
+                // Deduplicate model instance on the db context owning the source repository.
                 /* A reference to an already loaded document returns the existing instance.
+                 * The identity home is the db context of the source repository - the current
+                 * one, or the child db context hosting a cross db context source - so direct
+                 * loads from the source repository and references from the parent db context
+                 * materialize one single instance per document. A model without a bound
+                 * source (deserialized outside of a frozen engine flow) doesn't deduplicate.
                  * The first loaded instance becomes the canonical one for its document, but a
                  * new summary can carry denormalized members that the loaded instance doesn't
                  * have yet: merge them instead of discarding the fresh deserialization. */
-                if (!dbContextEngine.SerializerModifierAccessor.IsNoCacheEnabled)
+                if (!dbContextEngine.SerializerModifierAccessor.IsNoCacheEnabled &&
+                    sourceDbContext is not null &&
+                    sourceRepository is not null)
                 {
-                    var currentDbContext = DbExecutionContextHandler.TryGetCurrentDbContext(dbContextEngine.ExecutionContext);
-                    if (currentDbContext is not null)
+                    var loadedModel = sourceDbContext.TryGetLoadedModel(sourceRepository, id);
+                    if (loadedModel is null)
                     {
-                        var loadedModel = sourceRepositorySelector is not null ?
-                            currentDbContext.TryGetLoadedModel(sourceRepositorySelector(currentDbContext), id) :
-                            currentDbContext.TryGetLoadedModel(typeof(TModelBase), id);
-                        if (loadedModel is null)
-                        {
-                            //capture the model document from the just deserialized summary document.
-                            currentDbContext.RegisterLoadedModel(id, model);
-                            currentDbContext.SetModelBsonDocument(model, bsonDocument);
-                        }
-                        else if (loadedModel is TModelBase typedLoadedModel)
-                        {
-                            if (typedLoadedModel is IReferenceable { IsSummary: true } referenceableModel)
-                                referenceableModel.MergeSummaryModel(model);
-                            model = typedLoadedModel;
-                        }
+                        //capture the model document from the just deserialized summary document.
+                        sourceDbContext.RegisterLoadedModel(id, model);
+                        sourceDbContext.SetModelBsonDocument(model, bsonDocument);
+                    }
+                    else if (loadedModel is TModelBase typedLoadedModel)
+                    {
+                        if (typedLoadedModel is IReferenceable { IsSummary: true } referenceableModel)
+                            referenceableModel.MergeSummaryModel(model);
+                        model = typedLoadedModel;
                     }
                 }
             }
