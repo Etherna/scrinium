@@ -18,6 +18,7 @@ using Etherna.MongoDB.Bson.Serialization;
 using Etherna.MongoDB.Bson.Serialization.Serializers;
 using Etherna.MongODM.Core.Domain.Models;
 using Etherna.MongODM.Core.Exceptions;
+using Etherna.MongODM.Core.Extensions;
 using Etherna.MongODM.Core.Models;
 using Etherna.MongODM.Core.Options;
 using Etherna.MongODM.Core.Serialization.Mapping;
@@ -26,6 +27,7 @@ using Etherna.MongODM.Core.Serialization.Serializers;
 using Microsoft.Extensions.Logging;
 using Moq;
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using Xunit;
 
@@ -34,6 +36,24 @@ namespace Etherna.MongODM.Core
     public class MapRegistryTest
     {
         // Internal classes.
+        public class ChildModel : FakeEntityModelBase<string>
+        {
+            public virtual string? Name { get; set; }
+            public virtual ChildModel? Parent { get; set; }
+        }
+        public sealed class ChildModelSerializer : SerializerBase<ChildModel>
+        {
+            public override ChildModel Deserialize(BsonDeserializationContext context, BsonDeserializationArgs args) =>
+                new() { Id = context.Reader.ReadString() };
+
+            public override void Serialize(BsonSerializationContext context, BsonSerializationArgs args, ChildModel value) =>
+                context.Writer.WriteString(value.Id);
+        }
+        public class EntityChildHostModel
+        {
+            public ChildModel? Child { get; set; }
+            public IEnumerable<ChildModel>? Children { get; set; }
+        }
         public class FirstModel
         {
             public string? Name { get; set; }
@@ -57,6 +77,10 @@ namespace Etherna.MongODM.Core
 
             public override void Serialize(BsonSerializationContext context, BsonSerializationArgs args, KeyModel value) =>
                 context.Writer.WriteString(value.Value);
+        }
+        public class PlainChildHostModel
+        {
+            public FirstModel? Child { get; set; }
         }
         public class SecondModel
         {
@@ -101,7 +125,7 @@ namespace Etherna.MongODM.Core
             dbContextEngineMock.Setup(e => e.ProxyGenerator.CreateInstance(typeof(FakeModel), It.IsAny<object[]>()))
                 .Returns(proxyInstance);
 
-            var entityModelMap = (IModelMap)mapRegistry.AddModelMap<FakeModel>("fakeSchemaId");
+            var entityModelMap = (IModelMap)mapRegistry.AddModelMap<FakeModel>("fakeSchemaId", ScalarMembersInitializer);
             var otherModelMap = (IModelMap)mapRegistry.AddModelMap<FirstModel>("firstSchemaId");
             mapRegistry.Freeze();
 
@@ -200,7 +224,7 @@ namespace Etherna.MongODM.Core
              * create proxy instances, and proxy types have no maps of their own. */
 
             // Setup.
-            mapRegistry.AddModelMap<FakeModel>("fakeSchemaId");
+            mapRegistry.AddModelMap<FakeModel>("fakeSchemaId", ScalarMembersInitializer);
 
             // Action.
             mapRegistry.Freeze();
@@ -263,6 +287,78 @@ namespace Etherna.MongODM.Core
         }
 
         [Fact]
+        public void FreezeFailsWithEmbeddedEntityModelMemberInReferenceConfiguration()
+        {
+            /* A reference can denormalize members of its model, but a denormalized entity
+             * member is still a reference on its own: embedding it fails like on a root
+             * model map schema. */
+
+            // Setup.
+            dbContextEngineMock.Setup(e => e.MapRegistry)
+                .Returns(mapRegistry);
+
+            mapRegistry.AddModelMap<EntityChildHostModel>("hostSchemaId", cm =>
+                cm.SetMemberSerializer(m => m.Child!, new ReferenceSerializer<ChildModel, string>(
+                    dbContextEngineMock.Object,
+                    config => config.AddModelMap<ChildModel>("childSchemaId"))));
+
+            // Action.
+            var exception = Assert.Throws<MongodmEmbeddedEntityModelException>(() => mapRegistry.Freeze());
+
+            // Assert.
+            Assert.Contains("childSchemaId", exception.Message, StringComparison.Ordinal);
+            Assert.Contains($"member {nameof(ChildModel.Parent)} of", exception.Message, StringComparison.Ordinal);
+            Assert.Contains(nameof(ChildModel), exception.Message, StringComparison.Ordinal);
+            Assert.Contains("reference serializer", exception.Message, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void FreezeFailsWithEmbeddedEntityModelMembers()
+        {
+            /* Entity models are always referenced by other documents: a member serializing
+             * one as a full embedded document, directly or into a collection, is a
+             * configuration error failing the freeze with every violation detailed. */
+
+            // Setup.
+            mapRegistry.AddModelMap<EntityChildHostModel>("hostSchemaId");
+
+            // Action.
+            var exception = Assert.Throws<MongodmEmbeddedEntityModelException>(() => mapRegistry.Freeze());
+
+            // Assert.
+            Assert.Contains("hostSchemaId", exception.Message, StringComparison.Ordinal);
+            Assert.Contains(nameof(EntityChildHostModel), exception.Message, StringComparison.Ordinal);
+            Assert.Contains($"member {nameof(EntityChildHostModel.Child)} of", exception.Message, StringComparison.Ordinal);
+            Assert.Contains($"member {nameof(EntityChildHostModel.Children)} of", exception.Message, StringComparison.Ordinal);
+            Assert.Contains(nameof(ChildModel), exception.Message, StringComparison.Ordinal);
+            Assert.Contains("reference serializer", exception.Message, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void FreezeFailsWithEntityModelMemberResolvingModelMapSerializer()
+        {
+            /* An entity model member serializer resolved through the registry embeds the
+             * full document when the type is mapped with a model map: the same
+             * configuration error of a direct class map serializer. */
+
+            // Setup.
+            dbContextEngineMock.Setup(e => e.MapRegistry)
+                .Returns(mapRegistry);
+
+            mapRegistry.AddModelMap<ChildModel>("childSchemaId", cm => cm.MapMember(c => c.Name));
+            mapRegistry.AddModelMap<EntityChildHostModel>("hostSchemaId", cm =>
+                cm.SetMemberSerializer(m => m.Child!, new MappedSerializerAdapter<ChildModel>(dbContextEngineMock.Object)));
+
+            // Action.
+            var exception = Assert.Throws<MongodmEmbeddedEntityModelException>(() => mapRegistry.Freeze());
+
+            // Assert.
+            Assert.Contains($"member {nameof(EntityChildHostModel.Child)} of", exception.Message, StringComparison.Ordinal);
+            Assert.Contains(nameof(ChildModel), exception.Message, StringComparison.Ordinal);
+            Assert.Contains("reference serializer", exception.Message, StringComparison.Ordinal);
+        }
+
+        [Fact]
         public void FreezeFailsWithIdMemberNotImplementingTheEntityIdContract()
         {
             /* The typed entity id contract and the mapped id member must be the same
@@ -300,6 +396,61 @@ namespace Etherna.MongODM.Core
         }
 
         [Fact]
+        public void FreezeSucceedsWithCustomSerializedEntityModelMember()
+        {
+            /* A custom serializer set on an entity model member never enters the document
+             * serialization pipeline: an explicit opt out for value-object-like models. */
+
+            // Setup.
+            mapRegistry.AddModelMap<EntityChildHostModel>("hostSchemaId", cm =>
+                cm.SetMemberSerializer(m => m.Child!, new ChildModelSerializer()));
+
+            // Action.
+            mapRegistry.Freeze();
+
+            // Assert.
+            Assert.True(mapRegistry.IsFrozen);
+        }
+
+        [Fact]
+        public void FreezeSucceedsWithEmbeddedPlainModelMember()
+        {
+            /* Only entity models can't embed: models without identity keep serializing
+             * as embedded documents. */
+
+            // Setup.
+            mapRegistry.AddModelMap<PlainChildHostModel>("plainHostSchemaId");
+
+            // Action.
+            mapRegistry.Freeze();
+
+            // Assert.
+            Assert.True(mapRegistry.IsFrozen);
+        }
+
+        [Fact]
+        public void FreezeSucceedsWithEntityModelMemberResolvingCustomSerializer()
+        {
+            /* An entity model type mapped with a custom serializer map keeps its custom
+             * serialization also when the member serializer resolves through the
+             * registry. */
+
+            // Setup.
+            dbContextEngineMock.Setup(e => e.MapRegistry)
+                .Returns(mapRegistry);
+
+            mapRegistry.AddCustomSerializerMap<ChildModel>(new ChildModelSerializer());
+            mapRegistry.AddModelMap<EntityChildHostModel>("hostSchemaId", cm =>
+                cm.SetMemberSerializer(m => m.Child!, new MappedSerializerAdapter<ChildModel>(dbContextEngineMock.Object)));
+
+            // Action.
+            mapRegistry.Freeze();
+
+            // Assert.
+            Assert.True(mapRegistry.IsFrozen);
+        }
+
+        [Fact]
         public void FreezeSucceedsWithFallbackSchemasOnDifferentModelMaps()
         {
             // Setup.
@@ -307,6 +458,34 @@ namespace Etherna.MongODM.Core
                 .AddFallbackSchema();
             mapRegistry.AddModelMap<SecondModel>("second")
                 .AddFallbackSchema();
+
+            // Action.
+            mapRegistry.Freeze();
+
+            // Assert.
+            Assert.True(mapRegistry.IsFrozen);
+        }
+
+        [Fact]
+        public void FreezeSucceedsWithReferencedEntityModelMembers()
+        {
+            /* Reference serializers are the valid way to serialize entity model members,
+             * directly or into a collection. */
+
+            // Setup.
+            dbContextEngineMock.Setup(e => e.MapRegistry)
+                .Returns(mapRegistry);
+
+            mapRegistry.AddModelMap<EntityChildHostModel>("hostSchemaId", cm =>
+            {
+                cm.SetMemberSerializer(m => m.Child!, new ReferenceSerializer<ChildModel, string>(
+                    dbContextEngineMock.Object,
+                    config => config.AddModelMap<ChildModel>("childSchemaId", cm2 => cm2.MapMember(c => c.Name))));
+                cm.SetMemberSerializer(m => m.Children!, new EnumerableSerializer<ChildModel>(
+                    new ReferenceSerializer<ChildModel, string>(
+                        dbContextEngineMock.Object,
+                        config => config.AddModelMap<ChildModel>("otherChildSchemaId", _ => { }))));
+            });
 
             // Action.
             mapRegistry.Freeze();
@@ -340,6 +519,15 @@ namespace Etherna.MongODM.Core
             return (TModel)serializer.Deserialize(
                 BsonDeserializationContext.CreateRoot(bsonReader),
                 new BsonDeserializationArgs { NominalType = typeof(TModel) });
+        }
+
+        /* FakeModel has entity model typed members, which can't serialize embedded:
+         * map only the scalar members. */
+        private static void ScalarMembersInitializer(BsonClassMap<FakeModel> classMap)
+        {
+            classMap.AutoMap();
+            classMap.UnmapMember(m => m.EnumerableProp);
+            classMap.UnmapMember(m => m.ObjectProp);
         }
     }
 }

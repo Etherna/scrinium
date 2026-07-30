@@ -14,7 +14,10 @@
 
 using Etherna.MongoDB.Bson;
 using Etherna.MongoDB.Driver;
+using Etherna.MongODM.Core;
+using Etherna.MongODM.Core.Exceptions;
 using Etherna.MongODM.Core.ExecContext.AsyncLocal;
+using Etherna.MongODM.Core.Options;
 using Etherna.MongODM.Core.ProxyModels;
 using Etherna.MongODM.IntegrationTests.Fixtures;
 using Etherna.MongODM.IntegrationTests.Models;
@@ -70,6 +73,32 @@ namespace Etherna.MongODM.IntegrationTests
             using var readContextHandler = AsyncLocalContext.Instance.InitAsyncLocalContext();
             var foundPost = await dbContext.Posts.FindOneAsync(post.Id);
             Assert.Equal("updated content", foundPost.Content);
+        }
+
+        [Fact]
+        public void EmbeddedEntityModelMemberFailsAtInitialization()
+        {
+            /* An entity model serialized as a full embedded document instead of being
+             * referenced is a configuration error: it must fail fast at engine
+             * initialization, detailing the involved members. */
+
+            // Setup.
+            var dbContext = new InvalidEmbeddedEntityDbContext();
+            var dependencies = fixture.ServiceProvider.GetRequiredService<IDbDependencies>();
+            var options = new DbContextOptions
+            {
+                ConnectionString = $"{fixture.MongoDbUrl}/mongodm-it-invalid-embedded"
+            };
+
+            // Action & assert.
+            var exception = Assert.Throws<MongodmEmbeddedEntityModelException>(
+                () => dbContext.BuildEngine(dependencies, new MongoClient(fixture.MongoDbUrl), options));
+            Assert.Contains(nameof(InvalidEmbeddedEntityDbContext), exception.Message, StringComparison.Ordinal);
+            Assert.Contains(nameof(Blog), exception.Message, StringComparison.Ordinal);
+            Assert.Contains($"member {nameof(Blog.LastPost)} of", exception.Message, StringComparison.Ordinal);
+            Assert.Contains($"member {nameof(Blog.Posts)} of", exception.Message, StringComparison.Ordinal);
+            Assert.Contains(nameof(Post), exception.Message, StringComparison.Ordinal);
+            Assert.Contains("reference serializer", exception.Message, StringComparison.Ordinal);
         }
 
         [Fact]

@@ -26,6 +26,7 @@ namespace Etherna.MongODM.Core.Serialization.Serializers
         SerializerBase<TExternalModel>,
         IBsonDocumentSerializer,
         IBsonIdProvider,
+        IEntityModelSerializerAdapter,
         IModelMapsHandlingSerializer
         where TInternalModel : class, IEntityModel<TKey>
         where TExternalModel : class, IEntityModel<TKey>
@@ -67,5 +68,8 @@ namespace Etherna.MongODM.Core.Serialization.Serializers
             serializationInfo = null!;
             return false;
         }
+
+        // Internals.
+        IBsonSerializer IEntityModelSerializerAdapter.SerializerBase => serializerBase;
     }
 }
