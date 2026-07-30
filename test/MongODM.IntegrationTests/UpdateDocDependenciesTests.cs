@@ -454,6 +454,50 @@ namespace Etherna.MongODM.IntegrationTests
             Assert.Equal("bob", rawBob["Username"].AsString);
         }
 
+        [Fact]
+        public async Task UpdatesSummariesHostedByArraysOfEmbeddedDocuments()
+        {
+            /* Summaries hosted by a collection member of an embedded document update
+             * through the nested element path (Envelope.Recipients.$[idfilter]), with
+             * the array filter addressing the id relatively to the array member, not
+             * from the document root. The type change of the referenced account makes
+             * the rewrite observable on the item discriminator. */
+
+            // Setup.
+            using var contextHandler = AsyncLocalContext.Instance.InitAsyncLocalContext();
+            fixture.TaskRunner.ClearPending();
+
+            var alice = new Web2Account("alice");
+            await dbContext.Accounts.CreateAsync(alice);
+            var bob = new Web2Account("bob");
+            await dbContext.Accounts.CreateAsync(bob);
+
+            var message = new Message("hello", alice, bob)
+            {
+                Envelope = new Envelope([alice, bob])
+            };
+            await dbContext.Messages.CreateAsync(message);
+
+            // Action: evolve alice into a web3 account, and execute the enqueued task.
+            var web3Alice = new Web3Account(alice, "0x0123456789");
+            await dbContext.Accounts.ReplaceAsync(web3Alice);
+            await fixture.TaskRunner.ExecutePendingAsync(fixture.ServiceProvider);
+
+            // Assert.
+            var messagesCollection = dbContext.Engine.Database.GetCollection<BsonDocument>("messages");
+            var rawRecipients = (await messagesCollection.Find(IdFilter(message.Id)).SingleAsync())["Envelope"]["Recipients"].AsBsonArray;
+
+            var rawAlice = rawRecipients.Single(r => r["_id"] == ObjectId.Parse(alice.Id)).AsBsonDocument;
+            Assert.Equal("Web3Account", rawAlice["_t"].AsString);
+            Assert.Equal("06d4e4c1-1e57-4bd0-a071-90fe7d3dbc2a", rawAlice["_s"].AsString); //summary schema of the new type
+            Assert.Equal("alice", rawAlice["Username"].AsString);
+
+            var rawBob = rawRecipients.Single(r => r["_id"] == ObjectId.Parse(bob.Id)).AsBsonDocument;
+            Assert.Equal("Web2Account", rawBob["_t"].AsString);
+            Assert.Equal("f5825985-4d3a-43e0-a15a-e6f504c34e07", rawBob["_s"].AsString); //untouched original summary
+            Assert.Equal("bob", rawBob["Username"].AsString);
+        }
+
         // Helpers.
         private async Task<(long FindAndModify, long Update)> GetServerCommandCountersAsync()
         {
