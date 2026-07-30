@@ -70,6 +70,19 @@ namespace Etherna.MongODM.IntegrationTests
                                 config.AddModelMap<Post>("00d1361e-b76c-4467-b652-92c66c63be04", _ => { });
                             },
                             sourceRepository: dbContext => ((InvalidSourceDbContext)dbContext).Blogs));
+                        mm.SetMemberSerializer(b => b.Posts, new EnumerableSerializer<Post>(
+                            new ReferenceSerializer<Post, string>(
+                                dbContextEngine,
+                                config =>
+                                {
+                                    config.AddModelMap<ModelBase>("1a3ac8f6-821b-45d9-8204-873aaa474e23");
+                                    config.AddModelMap<EntityModelBase<string>>("311602d5-9d25-4fa3-ab8c-550639975cff", mm2 =>
+                                    {
+                                        mm2.MapIdMember(m => m.Id);
+                                        mm2.IdMemberMap.SetSerializer(new StringSerializer(BsonType.ObjectId));
+                                    });
+                                    config.AddModelMap<Post>("bac00ba7-c3b7-4d55-afb7-86cf257ea854", _ => { });
+                                })));
                     });
             }
         }

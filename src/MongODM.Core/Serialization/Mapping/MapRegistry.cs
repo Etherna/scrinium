@@ -247,6 +247,9 @@ namespace Etherna.MongODM.Core.Serialization.Mapping
                         dbContextEngine.DiscriminatorRegistry.AddDiscriminator(modelMapSchema.ModelType, modelMapSchema.Discriminator);
             }
 
+            // Verify that entity model members serialize as references.
+            ValidateEntityModelMembers();
+
             // Specific for model maps.
             foreach (var modelMap in _maps.Values.OfType<ModelMap>())
             {
@@ -322,6 +325,23 @@ namespace Etherna.MongODM.Core.Serialization.Mapping
         }
 
         private static string GetMemberMapElementPath(IMemberMap memberMap) => memberMap.RenderElementPath(false, _ => ".$", _ => ".*");
+
+        /* Class map serializers write the full document of their model: the driver ones
+         * directly, the model map serializer through its schemas. */
+        private static bool IsClassMapSerializer(IBsonSerializer serializer)
+        {
+            for (var type = serializer.GetType(); type is not null; type = type.BaseType)
+            {
+                if (!type.IsGenericType)
+                    continue;
+
+                var typeDefinition = type.GetGenericTypeDefinition();
+                if (typeDefinition == typeof(BsonClassMapSerializer<>) ||
+                    typeDefinition == typeof(ModelMapSerializer<>))
+                    return true;
+            }
+            return false;
+        }
 
         /* Reference serializers without a declared source repository deduce it from their
          * model and key types: resolve them at engine build to the single compatible
@@ -485,6 +505,104 @@ namespace Etherna.MongODM.Core.Serialization.Mapping
                     typeof(MappedSerializerAdapter<>).MakeGenericType(modelType))
                     throw;
             }
+        }
+
+        /* Entity models are always referenced by other documents: serializing one as a
+         * full embedded document is unsupported, since lazy loading, saving and identity
+         * of an embedded entity would be undefined. Verify that no member serializes an
+         * entity model type through its class map, reference configuration maps
+         * included: references are the supported serialization. A custom serializer, set
+         * on the member or mapped for the type, never enters the document serialization
+         * pipeline, and opts out for value-object-like models.
+         * The exploration runs on the schema class maps, before member maps
+         * initialization: building the member maps of an entity model embedding itself
+         * would recurse without end. */
+        private void ValidateEntityModelMembers()
+        {
+            List<string> violations = [];
+            HashSet<IModelMap> checkedModelMaps = [];
+            var processingModelMaps = new Stack<IModelMap>(_maps.Values.OfType<IModelMap>());
+
+            while (processingModelMaps.Count > 0)
+            {
+                var modelMap = processingModelMaps.Pop();
+                if (!checkedModelMaps.Add(modelMap))
+                    continue;
+
+                foreach (var schema in modelMap.SchemasById.Values)
+                {
+                    foreach (var bsonMemberMap in schema.AllMemberMaps)
+                    {
+                        var serializer = bsonMemberMap.GetSerializer();
+                        while (true)
+                        {
+                            //unwrap the adapter binding a derived member type to its entity serializer
+                            if (serializer is IEntityModelSerializerAdapter serializerAdapter)
+                            {
+                                serializer = serializerAdapter.SerializerBase;
+                                continue;
+                            }
+
+                            //reference members are valid: check their configuration maps too
+                            if (serializer is IReferenceSerializer referenceSerializer)
+                            {
+                                foreach (var referencedModelMap in referenceSerializer.Configuration.ModelMaps.Values)
+                                    processingModelMaps.Push(referencedModelMap);
+                                break;
+                            }
+
+                            //resolve the serializer mapped for the type: a model map serializer, or a custom one
+                            if (serializer.GetType() is { IsGenericType: true } serializerType &&
+                                serializerType.GetGenericTypeDefinition() == typeof(MappedSerializerAdapter<>))
+                            {
+                                if (!TryGetMappedSerializer(serializer.ValueType, out var mappedSerializer))
+                                    break; //missing maps are reported by the member maps initialization
+                                serializer = mappedSerializer;
+                                continue;
+                            }
+
+                            //class map serializers embed the full document of an entity model
+                            if (IsClassMapSerializer(serializer) &&
+                                typeof(IEntityModel).IsAssignableFrom(serializer.ValueType))
+                            {
+                                violations.Add(
+                                    $"member {bsonMemberMap.MemberName} of model map schema \"{schema.Id}\" " +
+                                    $"of type {schema.ModelType.Name} embeds entity model type {serializer.ValueType.Name}");
+                                break;
+                            }
+
+                            //descend containers to their serialized items
+                            /* Some serializers implement the container interfaces also when they
+                             * are not able to provide the required information: try with the
+                             * dictionary value first, then with the array item. */
+                            if (serializer is IBsonDictionarySerializer dictionarySerializer)
+                            {
+                                try
+                                {
+                                    serializer = dictionarySerializer.ValueSerializer;
+                                    continue;
+                                }
+                                catch { }
+                            }
+                            if (serializer is IBsonArraySerializer arraySerializer &&
+                                arraySerializer.TryGetItemSerializationInfo(out var itemSerializationInfo))
+                            {
+                                serializer = itemSerializationInfo.Serializer;
+                                continue;
+                            }
+
+                            break;
+                        }
+                    }
+                }
+            }
+
+            if (violations.Count > 0)
+                throw new MongodmEmbeddedEntityModelException(
+                    $"DbContext {dbContextEngine.DbContextType.Name} has members serializing entity models as embedded documents: " +
+                    string.Join("; ", violations) +
+                    ". Entity models can only be referenced by other documents: serialize these members with a " +
+                    "reference serializer, or with a custom serializer for value-object-like models");
         }
 
         /* Repositories, identity map and references address documents through the typed
