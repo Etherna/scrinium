@@ -20,7 +20,12 @@ using System.Reflection;
 
 namespace Etherna.MongODM.Core.Serialization.Providers
 {
-    public class ModelMapSerializationProvider(IDbContextEngine dbContextEngine)
+    /// <summary>
+    /// Serialization provider backed by the map registry: serves every mappable type with a
+    /// <see cref="MappedSerializerAdapter{TModel}"/>, delegating to the serializer mapped by
+    /// the map registry, whatever kind of map serves the type.
+    /// </summary>
+    public class MapRegistrySerializationProvider(IDbContextEngine dbContextEngine)
         : BsonSerializationProviderBase
     {
         // Methods.
@@ -38,9 +43,12 @@ namespace Etherna.MongODM.Core.Serialization.Providers
                 !typeof(Array).GetTypeInfo().IsAssignableFrom(type) &&
                 !typeof(Enum).GetTypeInfo().IsAssignableFrom(type))
             {
-                var modelMapSerializerDefinition = typeof(ModelMapSerializer<>);
-                var modelMapSerializerType = modelMapSerializerDefinition.MakeGenericType(type);
-                return (IBsonSerializer)Activator.CreateInstance(modelMapSerializerType, dbContextEngine)!;
+                /* The adapter delegates to the serializer mapped by the map registry: a
+                 * lookup can run while maps are still registering, so the mapped serializer
+                 * can't be resolved here. */
+                var serializerAdapterDefinition = typeof(MappedSerializerAdapter<>);
+                var serializerAdapterType = serializerAdapterDefinition.MakeGenericType(type);
+                return (IBsonSerializer)Activator.CreateInstance(serializerAdapterType, dbContextEngine)!;
             }
 
             return null;
