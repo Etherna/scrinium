@@ -31,11 +31,13 @@ namespace Etherna.MongODM.Core.ProxyModels
         IEnumerable<string> SettedMemberNames { get; }
 
         /// <summary>
-        /// The source repository hosting the model document, bound at deserialization:
-        /// the repository reading root documents, or the one configured on the reference
-        /// member. Null when the model is not bound to a repository.
+        /// The source repository hosting the model document, bound at creation: the
+        /// repository reading root documents, or the one configured on the reference
+        /// member, possibly hosted by a child db context for a cross db context reference.
+        /// Every proxy binds one, so saves, lazy loads and the identity map always have
+        /// their origin.
         /// </summary>
-        IRepository? SourceRepository { get; }
+        IRepository SourceRepository { get; }
 
         // Methods.
         /// <summary>

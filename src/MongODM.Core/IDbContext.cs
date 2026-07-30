@@ -40,6 +40,15 @@ namespace Etherna.MongODM.Core
         IReadOnlyCollection<IEntityModel> ChangedModelsList { get; }
 
         /// <summary>
+        /// The child db context instances attached to this db context instance, declared with
+        /// <see cref="Options.DbContextOptions.ParentFor{TDbContext}"/> and resolved from its
+        /// same scope: their changes save with <see cref="SaveChangesAsync"/>, and they host
+        /// the sources of the cross db context references of this db context. Empty when the
+        /// instance is not attached to a scope.
+        /// </summary>
+        IEnumerable<IDbContext> ChildDbContexts { get; }
+
+        /// <summary>
         /// Internal collection for keep db operations execution log
         /// </summary>
         IRepository<OperationBase, string> DbOperations { get; }
@@ -238,16 +247,6 @@ namespace Etherna.MongODM.Core
         /// <param name="modelId">The model document id</param>
         /// <returns>The loaded model instance, or null when absent</returns>
         IEntityModel? TryGetLoadedModel(IRepository repository, object modelId);
-
-        /// <summary>
-        /// Try to get the model instance already loaded on this db context instance for a
-        /// document. The model type is resolved to the repository handling it, and can't
-        /// be ambiguous.
-        /// </summary>
-        /// <param name="modelType">The model type</param>
-        /// <param name="modelId">The model document id</param>
-        /// <returns>The loaded model instance, or null when absent</returns>
-        IEntityModel? TryGetLoadedModel(Type modelType, object modelId);
 
         /// <summary>
         /// Try to start a db context migration process, if no other migration is queued or running.

@@ -13,21 +13,31 @@
 // If not, see <https://www.gnu.org/licenses/>.
 
 using Etherna.MongODM.Core;
+using Etherna.MongODM.Core.Repositories;
 using Etherna.MongODM.Core.Serialization;
+using Etherna.MongODM.IntegrationTests.ModelMaps;
+using Etherna.MongODM.IntegrationTests.Models;
 using System.Collections.Generic;
 
 namespace Etherna.MongODM.IntegrationTests
 {
     /// <summary>
-    /// A db context without own repositories, parent of <see cref="ISecondDbContext"/>:
-    /// exercises the children save cascading, like production contexts sharing models.
+    /// A db context parent of <see cref="ISecondDbContext"/>: exercises the children save
+    /// cascading and the cross db context references, like production contexts sharing models.
     /// </summary>
     public interface IParentDbContext : IDbContext
-    { }
+    {
+        IRepository<Journal, string> Journals { get; }
+    }
 
     internal sealed class ParentDbContext : DbContext, IParentDbContext
     {
+        // Properties.
+        //repositories
+        public IRepository<Journal, string> Journals { get; } = new Repository<Journal, string>("journals");
+
         // Protected properties.
-        protected override IEnumerable<IModelMapsCollector> ModelMapsCollectors => [];
+        protected override IEnumerable<IModelMapsCollector> ModelMapsCollectors =>
+            [new JournalMap()];
     }
 }

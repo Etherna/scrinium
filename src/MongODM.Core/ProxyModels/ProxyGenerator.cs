@@ -73,17 +73,22 @@ namespace Etherna.MongODM.Core.ProxyModels
                     constructorArguments,
                     null)!;
 
-            /* Bind the proxy to the scope of the current operation: the db context tracking
-             * its changes, and the source repository identified by the operation - the
-             * repository reading root documents, or the one resolved at engine build for the
-             * reference member. Models created outside of a scope stay unbound, and models
-             * deserialized with the no cache serializer modifier don't bind change tracking,
-             * keeping read only massive scans out of the unit of work. References to models
-             * of another db context stay unbound, and can't lazy load. */
+            /* Bind the proxy to the scope of the current operation: the source repository
+             * identified by the operation - the repository reading root documents, or the
+             * one resolved for the reference member, whose handler carries the db context
+             * owning it (the child db context, for a cross db context source) - and the db
+             * context tracking its changes. Every proxy materializes inside an operation
+             * addressing a collection, so a missing source repository is a broken flow, not
+             * a supported state: fail loudly instead of returning an instance unable to
+             * save or lazy load. Models deserialized with the no cache serializer modifier
+             * don't bind change tracking, keeping read only massive scans out of the unit
+             * of work. */
+            var sourceRepository = DbExecutionContextHandler.TryGetCurrentRepository(dbContextEngine.ExecutionContext)
+                ?? throw new InvalidOperationException(
+                    $"Can't create a proxy model of type {type.Name} outside of an operation on a repository");
             var dbContext = dbContextEngine.SerializerModifierAccessor.IsNoCacheEnabled ?
                 null :
                 DbExecutionContextHandler.TryGetCurrentDbContext(dbContextEngine.ExecutionContext);
-            var sourceRepository = DbExecutionContextHandler.TryGetCurrentRepository(dbContextEngine.ExecutionContext);
             ((IProxyModel)proxyModel).BindProxy(dbContext, sourceRepository);
 
             return proxyModel;

@@ -12,10 +12,20 @@
 // You should have received a copy of the GNU Lesser General Public License along with MongODM.
 // If not, see <https://www.gnu.org/licenses/>.
 
+using System;
+using System.Collections.Generic;
+
 namespace Etherna.MongODM.Core.Options
 {
     public interface IDbContextOptions
     {
+        /// <summary>
+        /// The db context types declared as children with <see cref="DbContextOptions.ParentFor{TDbContext}"/>:
+        /// attached to each scoped instance, saved by its <see cref="IDbContext.SaveChangesAsync"/>,
+        /// and hosting the sources of its cross db context references.
+        /// </summary>
+        public IEnumerable<Type> ChildDbContextTypes { get; }
+
         public string ConnectionString { get; }
         public string DbName { get; }
         public string DbOperationsCollectionName { get; }

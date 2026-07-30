@@ -302,7 +302,7 @@ namespace Etherna.MongODM.Core.Generators
             b.AppendLine("        private bool proxyIsSummary;");
             b.AppendLine("        private global::System.Type? proxyOutdatedModelType;");
             b.AppendLine("        private readonly global::System.Collections.Generic.Dictionary<string, bool> proxySettedMemberNames = new(); //<memberName, isFromSummary>");
-            b.AppendLine("        private global::Etherna.MongODM.Core.Repositories.IRepository? proxySourceRepository;");
+            b.AppendLine("        private global::Etherna.MongODM.Core.Repositories.IRepository proxySourceRepository = null!; //bound right after creation");
             foreach (var property in info.OverriddenProperties.Where(p => p.GetterAccessibilityIsEmittable && !p.IsExtraElements).OrderBy(p => p.Name))
                 b.AppendLine($"        private static readonly bool proxy{property.Name}ExposesMutation = global::Etherna.MongODM.Core.ProxyModels.MutabilityAnalyzer.ExposesAutonomousMutation(typeof({property.TypeFullName}));");
             foreach (var property in info.WritableProperties.Where(p => !p.IsDirectlyAccessible).OrderBy(p => p.Name))
@@ -342,7 +342,7 @@ namespace Etherna.MongODM.Core.Generators
             b.AppendLine("        bool global::Etherna.MongODM.Core.ProxyModels.IReferenceable.IsSummary => proxyIsSummary;");
             b.AppendLine("        global::System.Collections.Generic.IEnumerable<string> global::Etherna.MongODM.Core.ProxyModels.IReferenceable.SettedMemberNames =>");
             b.AppendLine("            global::System.Linq.Enumerable.ToArray(proxySettedMemberNames.Keys);");
-            b.AppendLine("        global::Etherna.MongODM.Core.Repositories.IRepository? global::Etherna.MongODM.Core.ProxyModels.IReferenceable.SourceRepository => proxySourceRepository;");
+            b.AppendLine("        global::Etherna.MongODM.Core.Repositories.IRepository global::Etherna.MongODM.Core.ProxyModels.IReferenceable.SourceRepository => proxySourceRepository;");
             b.AppendLine();
 
             // Methods.
@@ -368,7 +368,7 @@ namespace Etherna.MongODM.Core.Generators
             //IProxyModel and IReferenceable methods
             b.AppendLine("        void global::Etherna.MongODM.Core.ProxyModels.IProxyModel.BindProxy(");
             b.AppendLine("            global::Etherna.MongODM.Core.IDbContext? dbContext,");
-            b.AppendLine("            global::Etherna.MongODM.Core.Repositories.IRepository? sourceRepository)");
+            b.AppendLine("            global::Etherna.MongODM.Core.Repositories.IRepository sourceRepository)");
             b.AppendLine("        {");
             b.AppendLine("            proxyDbContext = dbContext;");
             b.AppendLine("            proxySourceRepository = sourceRepository;");
@@ -397,7 +397,7 @@ namespace Etherna.MongODM.Core.Generators
             b.AppendLine("            /* Merging two summaries is additive only: copy just the members that the current");
             b.AppendLine("             * model doesn't have at all. Suppress change tracking on the merge: the copied");
             b.AppendLine("             * members are loaded data, not changes to persist. */");
-            b.AppendLine("            using (proxySourceRepository?.DbContext.SuppressChangeTracking())");
+            b.AppendLine("            using (proxySourceRepository.DbContext.SuppressChangeTracking())");
             b.AppendLine("            {");
             b.AppendLine("                var summaryModelMemberNames = global::System.Linq.Enumerable.ToHashSet(summaryReferenceable.SettedMemberNames);");
             foreach (var property in info.WritableProperties.OrderBy(p => p.Name))
@@ -433,7 +433,7 @@ namespace Etherna.MongODM.Core.Generators
             b.AppendLine("                /* Copy from the full model every member not already loaded, or loaded from a");
             b.AppendLine("                 * summary: a full document read is authoritative. Suppress change tracking on");
             b.AppendLine("                 * the merge: the copied members are loaded data, not changes to persist. */");
-            b.AppendLine("                using (proxySourceRepository?.DbContext.SuppressChangeTracking())");
+            b.AppendLine("                using (proxySourceRepository.DbContext.SuppressChangeTracking())");
             b.AppendLine("                {");
             foreach (var property in info.WritableProperties.OrderBy(p => p.Name))
             {
@@ -510,10 +510,6 @@ namespace Etherna.MongODM.Core.Generators
                 b.AppendLine($"            if (base.{info.IdPropertyName} is null)");
                 b.AppendLine("                throw new global::System.InvalidOperationException(\"model or id can't be null\");");
             }
-            b.AppendLine("            if (proxySourceRepository is null)");
-            b.AppendLine($"                throw new global::System.InvalidOperationException(");
-            b.AppendLine($"                    \"Model of type {info.ModelName} is not bound to a db context scope, and can't lazy load\");");
-            b.AppendLine();
             b.AppendLine("            // React to the implicit lazy load, honoring the db context options.");
             b.AppendLine($"            proxySourceRepository.DbContext.OnImplicitLazyLoad(typeof({info.ModelFullName}), triggeringMemberName);");
             b.AppendLine();

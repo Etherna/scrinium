@@ -114,19 +114,20 @@ namespace Etherna.MongODM.Core.Serialization.Serializers
             /* One document materializes one instance inside a scope: a full load of a document
              * with an already loaded instance returns the existing one, upgrading it in place
              * from summary with the fresh full model, if required. Models deserialized with the
-             * no cache serializer modifier, or outside of a scope, stay not deduplicated. */
+             * no cache serializer modifier, outside of a scope, or without a compatible ambient
+             * repository (e.g. projections of another model type on a raw collection read),
+             * stay not deduplicated. */
             if (!dbContextEngine.SerializerModifierAccessor.IsNoCacheEnabled &&
                 dbContextEngine.ProxyGenerator.IsProxyType(model!.GetType()) &&
                 GetDocumentId(model, out var id, out _, out _) && id != null)
             {
                 var currentDbContext = DbExecutionContextHandler.TryGetCurrentDbContext(dbContextEngine.ExecutionContext);
-                if (currentDbContext is not null)
+                var ambientRepository = DbExecutionContextHandler.TryGetCurrentRepository(dbContextEngine.ExecutionContext);
+                if (currentDbContext is not null &&
+                    ambientRepository is not null &&
+                    ambientRepository.ModelType.IsAssignableFrom(typeof(TModel)))
                 {
-                    var ambientRepository = DbExecutionContextHandler.TryGetCurrentRepository(dbContextEngine.ExecutionContext);
-                    var loadedModel = ambientRepository is not null &&
-                        ambientRepository.ModelType.IsAssignableFrom(typeof(TModel)) ?
-                        currentDbContext.TryGetLoadedModel(ambientRepository, id) :
-                        currentDbContext.TryGetLoadedModel(typeof(TModel), id);
+                    var loadedModel = currentDbContext.TryGetLoadedModel(ambientRepository, id);
                     if (loadedModel is null)
                     {
                         //capture the model document from the just deserialized document.

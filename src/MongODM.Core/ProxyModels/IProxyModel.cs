@@ -37,12 +37,12 @@ namespace Etherna.MongODM.Core.ProxyModels
         // Methods.
         /// <summary>
         /// Bind the proxy to the scope of the operation creating it: the db context tracking
-        /// its changes, and the source repository hosting its document. Null bindings disable
-        /// change candidate marking and lazy loading respectively.
+        /// its changes, and the source repository hosting its document. A null db context
+        /// disables change candidate marking, keeping the instance out of the unit of work.
         /// </summary>
         /// <param name="dbContext">The change tracking db context scope</param>
         /// <param name="sourceRepository">The source repository hosting the model document</param>
-        void BindProxy(IDbContext? dbContext, IRepository? sourceRepository);
+        void BindProxy(IDbContext? dbContext, IRepository sourceRepository);
 
         /// <summary>
         /// Invalidate the instance because its document now has another type of its

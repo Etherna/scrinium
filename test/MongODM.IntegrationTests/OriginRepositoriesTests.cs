@@ -91,8 +91,9 @@ namespace Etherna.MongODM.IntegrationTests
         public void MismatchedSourceDbContextTypeFailsAtInitialization()
         {
             /* A reference serializer declaring its typed source repository on a db context
-             * type not implemented by the hosting db context is a configuration error: it
-             * must fail fast at engine initialization, detailing the type mismatch. */
+             * type neither implemented by the hosting db context nor declared as its child
+             * db context type is a configuration error: it must fail fast at engine
+             * initialization, detailing the unreachable type and the missing declaration. */
 
             // Setup.
             var dbContext = new InvalidTypedSourceDbContext();
@@ -108,6 +109,56 @@ namespace Etherna.MongODM.IntegrationTests
             Assert.Contains(nameof(Post), exception.Message, StringComparison.Ordinal);
             Assert.Contains(nameof(ITestDbContext), exception.Message, StringComparison.Ordinal);
             Assert.Contains(nameof(InvalidTypedSourceDbContext), exception.Message, StringComparison.Ordinal);
+            Assert.Contains(nameof(DbContextOptions.ParentFor), exception.Message, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void AmbiguousCrossSourceChildDbContextTypesFailAtInitialization()
+        {
+            /* A cross db context source declared on a db context type implemented by
+             * multiple declared child db context types can't identify its host: it must
+             * fail fast at engine initialization, detailing the ambiguous types. */
+
+            // Setup.
+            var dbContext = new ParentDbContext();
+            var dependencies = fixture.ServiceProvider.GetRequiredService<IDbDependencies>();
+            var options = new DbContextOptions
+            {
+                ConnectionString = $"{fixture.MongoDbUrl}/mongodm-it-ambiguous-cross-source"
+            };
+            options.ParentFor<IFirstNotesDbContext>();
+            options.ParentFor<ISecondNotesDbContext>();
+
+            // Action & assert.
+            var exception = Assert.Throws<InvalidOperationException>(
+                () => dbContext.BuildEngine(dependencies, new MongoClient(fixture.MongoDbUrl), options));
+            Assert.Contains(nameof(Note), exception.Message, StringComparison.Ordinal);
+            Assert.Contains(nameof(ISecondDbContext), exception.Message, StringComparison.Ordinal);
+            Assert.Contains(nameof(IFirstNotesDbContext), exception.Message, StringComparison.Ordinal);
+            Assert.Contains(nameof(ISecondNotesDbContext), exception.Message, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void ReachableCrossSourceChildDbContextTypeBuildsEngine()
+        {
+            /* A cross db context source declared on a db context type declared as child
+             * db context type is a valid configuration: the engine builds, deferring the
+             * repository resolution to the child instances attached at each scope. */
+
+            // Setup.
+            var dbContext = new ParentDbContext();
+            var dependencies = fixture.ServiceProvider.GetRequiredService<IDbDependencies>();
+            var options = new DbContextOptions
+            {
+                ConnectionString = $"{fixture.MongoDbUrl}/mongodm-it-reachable-cross-source"
+            };
+            options.ParentFor<ISecondDbContext>();
+
+            // Action.
+            var engine = dbContext.BuildEngine(dependencies, new MongoClient(fixture.MongoDbUrl), options);
+
+            // Assert.
+            Assert.NotNull(engine);
         }
 
         [Fact]
@@ -140,6 +191,30 @@ namespace Etherna.MongODM.IntegrationTests
             //read through returns each canonical instance from its own repository
             Assert.Same(loadedPost, await dbContext.Posts.FindOneAsync(post.Id));
             Assert.Same(loadedArchivedPost, await dbContext.ArchivedPosts.FindOneAsync(post.Id));
+        }
+
+        [Fact]
+        public void ImplicitReferenceWithoutCompatibleRepositoryFailsAtInitialization()
+        {
+            /* A reference serializer without a declared source, on a model type without any
+             * compatible repository on its db context, is a configuration error: it must
+             * fail fast at engine initialization, pointing to the cross db context
+             * declaration. Every reference of a built engine binds a source repository. */
+
+            // Setup.
+            var dbContext = new InvalidMissingSourceDbContext();
+            var dependencies = fixture.ServiceProvider.GetRequiredService<IDbDependencies>();
+            var options = new DbContextOptions
+            {
+                ConnectionString = $"{fixture.MongoDbUrl}/mongodm-it-invalid-missing-source"
+            };
+
+            // Action & assert.
+            var exception = Assert.Throws<InvalidOperationException>(
+                () => dbContext.BuildEngine(dependencies, new MongoClient(fixture.MongoDbUrl), options));
+            Assert.Contains(nameof(InvalidMissingSourceDbContext), exception.Message, StringComparison.Ordinal);
+            Assert.Contains(nameof(Post), exception.Message, StringComparison.Ordinal);
+            Assert.Contains("Create", exception.Message, StringComparison.Ordinal);
         }
 
         [Fact]
@@ -259,5 +334,11 @@ namespace Etherna.MongODM.IntegrationTests
             Assert.Null(await readDbContext.Posts.TryFindOneAsync(archivedPost.Id));
             Assert.Null(await readDbContext.ArchivedPosts.TryFindOneAsync(post.Id));
         }
+
+        // Nested types.
+        /* Marker child db context types for the cross source ambiguity validation: both
+         * implement ISecondDbContext, so a source declared on it can't identify its host. */
+        private interface IFirstNotesDbContext : ISecondDbContext { }
+        private interface ISecondNotesDbContext : ISecondDbContext { }
     }
 }

@@ -26,61 +26,56 @@ using System.Collections.Generic;
 namespace Etherna.MongODM.IntegrationTests
 {
     /// <summary>
-    /// A misconfigured db context: a Post reference serializer declares its typed source
-    /// repository on ITestDbContext, neither implemented by this db context nor declared
-    /// as its child db context type. Initialization must fail fast.
+    /// A misconfigured db context: a Post reference serializer without a declared source,
+    /// on a db context without any repository compatible with Post. Initialization must
+    /// fail fast, pointing to the cross db context declaration.
     /// </summary>
-    internal sealed class InvalidTypedSourceDbContext : DbContext
+    internal sealed class InvalidMissingSourceDbContext : DbContext
     {
         // Properties.
         //repositories
-        public IRepository<Blog, string> Blogs { get; } = new Repository<Blog, string>("invalidTypedSourceBlogs");
-        public IRepository<Post, string> Posts { get; } = new Repository<Post, string>("invalidTypedSourcePosts");
+        public IRepository<Blog, string> Blogs { get; } = new Repository<Blog, string>("invalidMissingSourceBlogs");
 
         // Protected properties.
         protected override IEnumerable<IModelMapsCollector> ModelMapsCollectors =>
-            [new InvalidTypedSourceBlogMap()];
+            [new InvalidMissingSourceBlogMap()];
 
         // Helpers.
-        private sealed class InvalidTypedSourceBlogMap : IModelMapsCollector
+        private sealed class InvalidMissingSourceBlogMap : IModelMapsCollector
         {
             public void Register(IDbContextEngine dbContextEngine)
             {
-                dbContextEngine.MapRegistry.AddModelMap<Post>(
-                    "97a62fe8-b50e-4e73-ade6-c4414c48ac73");
-
                 dbContextEngine.MapRegistry.AddModelMap<Blog>(
-                    "96713991-0375-4c83-a8d6-2d5b16e3bfb4",
+                    "5b755f60-4d1c-4a89-b3f2-2e6da13c81de",
                     mm =>
                     {
                         mm.AutoMap();
 
-                        //typed source declared on a db context type neither implemented here nor declared as child: invalid configuration
-                        mm.SetMemberSerializer(b => b.LastPost!, ReferenceSerializer.Create(
+                        //implicit source on a model type without any compatible repository: invalid configuration
+                        mm.SetMemberSerializer(b => b.LastPost!, new ReferenceSerializer<Post, string>(
                             dbContextEngine,
                             config =>
                             {
-                                config.AddModelMap<ModelBase>("1db768de-69c8-40e6-8401-ae668e273862");
-                                config.AddModelMap<EntityModelBase<string>>("02b94bdc-7d09-4680-b523-13c0b45c4441", mm2 =>
+                                config.AddModelMap<ModelBase>("8f0e12bd-6317-42a2-a56f-6a97f0e10978");
+                                config.AddModelMap<EntityModelBase<string>>("ff5e91b4-994f-4258-a231-3f4ffb69f5b0", mm2 =>
                                 {
                                     mm2.MapIdMember(m => m.Id);
                                     mm2.IdMemberMap.SetSerializer(new StringSerializer(BsonType.ObjectId));
                                 });
-                                config.AddModelMap<Post>("b4805f08-e6d2-4d51-9a5f-e7d748c83139", _ => { });
-                            },
-                            sourceRepository: (ITestDbContext dbContext) => dbContext.Posts));
+                                config.AddModelMap<Post>("39c53e70-2450-4c9b-b31e-11c1b2babe64", _ => { });
+                            }));
                         mm.SetMemberSerializer(b => b.Posts, new EnumerableSerializer<Post>(
                             new ReferenceSerializer<Post, string>(
                                 dbContextEngine,
                                 config =>
                                 {
-                                    config.AddModelMap<ModelBase>("93957d93-477a-44ac-bdd2-7078413d599f");
-                                    config.AddModelMap<EntityModelBase<string>>("04c45b9e-b699-4b11-933d-0578374bbd82", mm2 =>
+                                    config.AddModelMap<ModelBase>("d0084448-92f5-4022-b8ae-4bbb0b0f71c2");
+                                    config.AddModelMap<EntityModelBase<string>>("e3d5b7a1-9c44-4b6f-9f10-9b71c33d1f5a", mm2 =>
                                     {
                                         mm2.MapIdMember(m => m.Id);
                                         mm2.IdMemberMap.SetSerializer(new StringSerializer(BsonType.ObjectId));
                                     });
-                                    config.AddModelMap<Post>("fc42a27b-7709-4fe0-88a8-c7911b581747", _ => { });
+                                    config.AddModelMap<Post>("6a5cb9d5-3103-4899-a53b-73d9a4a5320c", _ => { });
                                 })));
                     });
             }
