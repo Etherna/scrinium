@@ -44,7 +44,7 @@ namespace Etherna.MongODM.Core.Serialization.Serializers
         public IReadOnlyDictionary<Type, IModelMap> ModelMaps => _modelMaps;
 
         // Methods.
-        public IModelMapBuilder<TModel> AddModelMap<TModel>(
+        public IReferenceModelMapBuilder<TModel> AddModelMap<TModel>(
             string activeModelMapSchemaId,
             Action<BsonClassMap<TModel>>? activeModelMapSchemaInitializer = null,
             string? baseSchemaId = null)
