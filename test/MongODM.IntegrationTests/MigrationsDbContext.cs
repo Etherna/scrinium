@@ -24,6 +24,7 @@ namespace Etherna.MongODM.IntegrationTests
 {
     public interface IMigrationsDbContext : IDbContext
     {
+        IRepository<Digest, string> Digests { get; }
         IEnumerable<DocumentMigration> DocumentMigrations { get; set; }
         IRepository<Note, string> Notes { get; }
     }
@@ -32,6 +33,7 @@ namespace Etherna.MongODM.IntegrationTests
     {
         // Properties.
         //repositories
+        public IRepository<Digest, string> Digests { get; } = new Repository<Digest, string>("digests");
         public IRepository<Note, string> Notes { get; } = new Repository<Note, string>("notes");
 
         /* Test hook: each test assigns the document migrations to run. */
@@ -40,6 +42,6 @@ namespace Etherna.MongODM.IntegrationTests
 
         // Protected properties.
         protected override IEnumerable<IModelMapsCollector> ModelMapsCollectors =>
-            [new NoteMap()];
+            [new DigestMap(), new NoteMap()];
     }
 }

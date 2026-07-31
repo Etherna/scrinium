@@ -56,8 +56,8 @@ namespace Etherna.MongODM.IntegrationTests
         public async Task ChangeOfANotSummarizedMemberLeavesSummariesUntouched()
         {
             /* A member not denormalized by any reference summary produces no summary
-             * member maps to refresh: the executed task leaves the referencing
-             * documents untouched. */
+             * member maps to refresh: no update task is enqueued, and the referencing
+             * documents stay untouched. */
 
             // Setup.
             using var contextHandler = AsyncLocalContext.Instance.InitAsyncLocalContext();
@@ -72,13 +72,14 @@ namespace Etherna.MongODM.IntegrationTests
             var blogsCollection = dbContext.Engine.Database.GetCollection<BsonDocument>("blogs");
             var rawBlogBefore = await blogsCollection.Find(IdFilter(blog.Id)).SingleAsync();
 
-            // Action: update a member out of every summary, and execute the enqueued task.
+            // Action: update a member out of every summary.
             var loadedPost = await dbContext.Posts.FindOneAsync(post.Id);
             loadedPost.Content = "updated content";
             await dbContext.SaveChangesAsync();
-            await fixture.TaskRunner.ExecutePendingAsync(fixture.ServiceProvider);
 
             // Assert.
+            Assert.Equal(0, fixture.TaskRunner.PendingCount);
+
             var rawBlogAfter = await blogsCollection.Find(IdFilter(blog.Id)).SingleAsync();
             Assert.Equal(rawBlogBefore, rawBlogAfter);
         }

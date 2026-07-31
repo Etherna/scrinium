@@ -20,7 +20,7 @@ namespace Etherna.MongODM.Core.Extensions
 {
     /*
      * Always group similar log delegates by type, always use incremental event ids.
-     * Last event id is: 49
+     * Last event id is: 50
      */
     public static class LoggerExtensions
     {
@@ -92,6 +92,12 @@ namespace Etherna.MongODM.Core.Extensions
                 LogLevel.Debug,
                 new EventId(48, nameof(DbMaintainerSkippedDependenciesUpdateOnDryRun)),
                 "DbMaintainer of DbContext {DbName} skipped dependencies update task for model with Id {ModelId} on a dry run");
+
+        private static readonly Action<ILogger, string, string, Exception> _dbMaintainerSkippedDependenciesUpdateWithoutReferences =
+            LoggerMessage.Define<string, string>(
+                LogLevel.Trace,
+                new EventId(50, nameof(DbMaintainerSkippedDependenciesUpdateWithoutReferences)),
+                "DbMaintainer of DbContext {DbName} skipped dependencies update task for model with Id {ModelId} without involved reference members");
 
         private static readonly Action<ILogger, string, Exception> _dbMigrationManagerInitialized =
             LoggerMessage.Define<string>(
@@ -362,6 +368,9 @@ namespace Etherna.MongODM.Core.Extensions
 
         public static void DbMaintainerSkippedDependenciesUpdateOnDryRun(this ILogger logger, string dbName, string modelId) =>
             _dbMaintainerSkippedDependenciesUpdateOnDryRun(logger, dbName, modelId, null!);
+
+        public static void DbMaintainerSkippedDependenciesUpdateWithoutReferences(this ILogger logger, string dbName, string modelId) =>
+            _dbMaintainerSkippedDependenciesUpdateWithoutReferences(logger, dbName, modelId, null!);
 
         public static void DbMigrationFailed(this ILogger logger, string dbMigrationOpId, string dbName, Exception exception) =>
             _dbMigrationFailed(logger, dbMigrationOpId, dbName, exception);
