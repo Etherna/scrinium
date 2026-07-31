@@ -125,6 +125,15 @@ namespace Etherna.MongODM.Core.Utility
             var idMemberMapIds = allIdMemberMaps.Select(mm => mm.Id).ToArray();
             var updatedModelId = ((IEntityModel<TKey>)updatedModel).Id!;
 
+            // Skip the enqueue without involved reference members: the task would have nothing to propagate.
+            if (idMemberMapIds.Length == 0)
+            {
+                logger.DbMaintainerSkippedDependenciesUpdateWithoutReferences(
+                    dbContextEngine.Options.DbName,
+                    updatedModelId.ToString()!);
+                return;
+            }
+
             taskRunner.RunUpdateDocDependenciesTask(
                 dbContextEngine.DbContextType,
                 referenceRepository.Name,

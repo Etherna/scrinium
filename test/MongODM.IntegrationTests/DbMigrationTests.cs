@@ -59,13 +59,18 @@ namespace Etherna.MongODM.IntegrationTests
         {
             // Setup.
             using var contextHandler = AsyncLocalContext.Instance.InitAsyncLocalContext();
+            await migrationsDbContext.Digests.DeleteManyAsync(Builders<Digest>.Filter.Empty);
             await migrationsDbContext.Notes.DeleteManyAsync(Builders<Note>.Filter.Empty);
             fixture.TaskRunner.ClearPending();
 
-            var firstNote = new Note("first");
+            var firstNote = new Note("first") { Tag = "original" };
             var secondNote = new Note("second");
             await migrationsDbContext.Notes.CreateAsync(firstNote);
             await migrationsDbContext.Notes.CreateAsync(secondNote);
+
+            //a digest denormalizes the tag of the first note into its summary
+            var digest = new Digest("digest", firstNote);
+            await migrationsDbContext.Digests.CreateAsync(digest);
 
             var processedNotes = 0;
             migrationsDbContext.DocumentMigrations =
@@ -90,11 +95,11 @@ namespace Etherna.MongODM.IntegrationTests
             Assert.Equal(2, processedNotes);
             Assert.Equal(documentsBefore, await ListRawNoteDocumentsAsync());
 
-            //no dependencies update task is enqueued by the simulated note saves
-            /* The operation saves on DbOperations enqueue their own dependencies updates:
-             * only the dry run scope of the document processing suppresses the propagation. */
-            Assert.DoesNotContain(fixture.TaskRunner.PendingModelIds, id => Equals(id, firstNote.Id));
-            Assert.DoesNotContain(fixture.TaskRunner.PendingModelIds, id => Equals(id, secondNote.Id));
+            //no dependencies update task is enqueued, and the denormalized summary stays untouched
+            /* The dry run scope suppresses the propagation of the simulated note saves, and the
+             * operation saves involve no reference member: nothing is left to enqueue. */
+            Assert.Equal(0, fixture.TaskRunner.PendingCount);
+            Assert.Equal("original", (await ReadRawDigestAsync(digest.Id))["PinnedNote"]["Tag"].AsString);
 
             var completedOp = await migrationsDbContext.GetMigrationAsync(migrationOp.Id);
             Assert.Equal(DbMigrationOperation.Status.Completed, completedOp.CurrentStatus);
@@ -167,11 +172,16 @@ namespace Etherna.MongODM.IntegrationTests
         {
             // Setup.
             using var contextHandler = AsyncLocalContext.Instance.InitAsyncLocalContext();
+            await migrationsDbContext.Digests.DeleteManyAsync(Builders<Digest>.Filter.Empty);
             await migrationsDbContext.Notes.DeleteManyAsync(Builders<Note>.Filter.Empty);
             fixture.TaskRunner.ClearPending();
 
-            var note = new Note("first");
+            var note = new Note("first") { Tag = "original" };
             await migrationsDbContext.Notes.CreateAsync(note);
+
+            //a digest denormalizes the tag of the note into its summary
+            var digest = new Digest("digest", note);
+            await migrationsDbContext.Digests.CreateAsync(digest);
 
             migrationsDbContext.DocumentMigrations =
             [
@@ -208,7 +218,10 @@ namespace Etherna.MongODM.IntegrationTests
 
             //the real save propagates its dependencies update, unlike the dry run one
             Assert.Contains(fixture.TaskRunner.PendingModelIds, id => Equals(id, note.Id));
-            fixture.TaskRunner.ClearPending();
+            Assert.Equal("original", (await ReadRawDigestAsync(digest.Id))["PinnedNote"]["Tag"].AsString);
+
+            await fixture.TaskRunner.ExecutePendingAsync(fixture.ServiceProvider);
+            Assert.Equal("migrated", (await ReadRawDigestAsync(digest.Id))["PinnedNote"]["Tag"].AsString);
         }
 
         // Helpers.
@@ -220,6 +233,15 @@ namespace Etherna.MongODM.IntegrationTests
                 return await (await rawCollection.FindAsync(
                     FilterDefinition<BsonDocument>.Empty,
                     new FindOptions<BsonDocument> { Sort = Builders<BsonDocument>.Sort.Ascending("_id") })).ToListAsync();
+            });
+
+        private Task<BsonDocument> ReadRawDigestAsync(string digestId) =>
+            migrationsDbContext.Digests.AccessToCollectionAsync(async collection =>
+            {
+                var rawCollection = collection.Database.GetCollection<BsonDocument>(
+                    collection.CollectionNamespace.CollectionName);
+                return await (await rawCollection.FindAsync(
+                    Builders<BsonDocument>.Filter.Eq("_id", ObjectId.Parse(digestId)))).SingleAsync();
             });
     }
 }
