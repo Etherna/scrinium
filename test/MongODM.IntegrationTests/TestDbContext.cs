@@ -12,6 +12,7 @@
 // You should have received a copy of the GNU Lesser General Public License along with MongODM.
 // If not, see <https://www.gnu.org/licenses/>.
 
+using Etherna.MongoDB.Driver;
 using Etherna.MongODM.Core;
 using Etherna.MongODM.Core.Repositories;
 using Etherna.MongODM.Core.Serialization;
@@ -42,7 +43,16 @@ namespace Etherna.MongODM.IntegrationTests
         public IRepository<AccountBase, string> Accounts { get; } = new Repository<AccountBase, string>("accounts");
         public IRepository<Blog, string> ArchivedBlogs { get; } = new Repository<Blog, string>("archivedBlogs");
         public IRepository<Post, string> ArchivedPosts { get; } = new Repository<Post, string>("archivedPosts");
-        public IRepository<Blog, string> Blogs { get; } = new Repository<Blog, string>("blogs");
+        public IRepository<Blog, string> Blogs { get; } = new Repository<Blog, string>(
+            new RepositoryOptions<Blog>("blogs")
+            {
+                //custom index on a referenced document id path (MODM-98)
+                IndexBuilders =
+                [
+                    (Builders<Blog>.IndexKeys.Ascending(b => b.LastPost!.Id),
+                        new CreateIndexOptions<Blog> { Name = "blog_last_post" })
+                ]
+            });
         public IRepository<Bookmark, string> Bookmarks { get; } = new Repository<Bookmark, string>("bookmarks");
         public IRepository<Item, string> Items { get; } = new Repository<Item, string>("items");
         public IRepository<Message, string> Messages { get; } = new Repository<Message, string>("messages");

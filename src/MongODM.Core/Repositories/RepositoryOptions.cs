@@ -21,6 +21,12 @@ namespace Etherna.MongODM.Core.Repositories
     public class RepositoryOptions<TModel>(string name)
     {
         // Properties.
+        /// <summary>
+        /// Custom indexes to build on the collection. An index without an explicit name
+        /// takes the name rendered from its keys. An index starting with an ascending or
+        /// descending key on a referenced document id path replaces the automatic index
+        /// on that path.
+        /// </summary>
         public IEnumerable<(IndexKeysDefinition<TModel> keys, CreateIndexOptions<TModel> options)> IndexBuilders { get; set; } = [];
 
         /// <summary>

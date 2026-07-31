@@ -340,24 +340,32 @@ namespace Etherna.MongODM.Core.Repositories
                 var indexes = new List<CreateIndexModel<TModel>>();
 
                 // Custom indexes.
-                indexes.AddRange(options.IndexBuilders.Select(pair =>
+                var customIndexedFields = new HashSet<string>(StringComparer.Ordinal);
+                foreach (var (keys, indexOptions) in options.IndexBuilders)
                 {
-                    var (keys, options) = pair;
-                    if (options.Name == null)
+                    BsonDocument renderedKeys;
+                    try
                     {
-                        try
-                        {
-                            var renderedKeys = keys.Render(new(collection.DocumentSerializer, collection.Settings.SerializerRegistry));
-                            options.Name = $"doc_{string.Join("_", renderedKeys.Names)}";
-                        }
-                        catch (InvalidOperationException)
-                        {
-                            throw new MongodmIndexBuildingException($"Can't build custom index in collection \"{Name}\"");
-                        }
+                        renderedKeys = keys.Render(new(collection.DocumentSerializer, collection.Settings.SerializerRegistry));
+                    }
+                    catch (InvalidOperationException)
+                    {
+                        throw new MongodmIndexBuildingException($"Can't build custom index in collection \"{Name}\"");
                     }
 
-                    return new CreateIndexModel<TModel>(keys, options);
-                }));
+                    indexOptions.Name ??= $"doc_{string.Join("_", renderedKeys.Names)}";
+
+                    /* An index serves the queries on any left prefix of its keys, and the
+                     * automatic indexes have a single key: a custom index opening with that
+                     * key already covers them, whatever its following keys and its options.
+                     * Only an ascending or descending key counts, being the only one serving
+                     * every query shape on its field. */
+                    if (renderedKeys.ElementCount > 0 &&
+                        renderedKeys.GetElement(0) is { Value.IsNumeric: true } firstKey)
+                        customIndexedFields.Add(firstKey.Name);
+
+                    indexes.Add(new CreateIndexModel<TModel>(keys, indexOptions));
+                }
 
                 // By referenced documents.
                 var idMemberMaps = DbContext.Engine.MapRegistry.TryGetModelMap(typeof(TModel), out var modelMap) ?
@@ -366,7 +374,8 @@ namespace Etherna.MongODM.Core.Repositories
 
                 var idPaths = idMemberMaps
                     .Select(mm => string.Join(".", mm.MemberMapPath.Select(pathMM => pathMM.BsonMemberMap.ElementName)))
-                    .Distinct();
+                    .Distinct()
+                    .Where(path => !customIndexedFields.Contains(path));
 
                 indexes.AddRange(idPaths.Select(path =>
                     new CreateIndexModel<TModel>(

@@ -198,6 +198,14 @@ namespace Etherna.MongODM.Core.Repositories
             FilterDefinition<TModel> filter,
             CancellationToken cancellationToken = default);
 
+        /// <summary>
+        /// The indexes defined on the collection: the custom ones configured with
+        /// <see cref="RepositoryOptions{TModel}.IndexBuilders"/>, and an automatic sparse
+        /// index for each id path of the referenced documents. A reference id path opening
+        /// a custom index doesn't get its automatic index: the custom one already serves
+        /// the queries on that field, with the configuration chosen by the application.
+        /// </summary>
+        /// <returns>The defined index models</returns>
         Task<CreateIndexModel<TModel>[]> GetDefinedIndexModelsAsync();
 
         Task<TResult> QueryElementsAsync<TResult>(
