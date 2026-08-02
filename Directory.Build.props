@@ -2,5 +2,12 @@
   <PropertyGroup>
     <!-- Audit only direct dependencies, not transitive ones -->
     <NuGetAuditMode>direct</NuGetAuditMode>
+
+    <!-- GitVersion.MsBuild writes and reads its version file at a per project path shared by every
+         build instance of a multi targeting project: parallel target framework inner builds race on
+         it, and a reader can find the file truncated by a concurrent writer. One file per instance.
+         The override must stay in props (the package props freeze the tool arguments with this value)
+         and can't use $(BaseIntermediateOutputPath), still undefined when this file imports. -->
+    <GitVersionOutputFile>$(MSBuildProjectDirectory)/obj/gitversion.$(TargetFramework).json</GitVersionOutputFile>
   </PropertyGroup>
 </Project>
