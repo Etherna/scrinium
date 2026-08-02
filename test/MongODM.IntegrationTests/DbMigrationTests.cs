@@ -55,6 +55,61 @@ namespace Etherna.MongODM.IntegrationTests
 
         // Tests.
         [Fact]
+        public async Task DryRunMigrationDeniesNonSimulableCollectionWrites()
+        {
+            // Setup.
+            using var contextHandler = AsyncLocalContext.Instance.InitAsyncLocalContext();
+            await migrationsDbContext.Notes.DeleteManyAsync(Builders<Note>.Filter.Empty);
+
+            await migrationsDbContext.Notes.CreateAsync(new Note("text"));
+
+            /* The processor captures the guard exceptions itself: under the ambient dry run
+             * the collection must deny the writes it can't simulate, before any command
+             * reaches the server. */
+            Exception? aggregateException = null;
+            Exception? mapReduceException = null;
+            migrationsDbContext.DocumentMigrations =
+            [
+                new DocumentMigration<Note, string>(migrationsDbContext.Notes, _ =>
+                    migrationsDbContext.Notes.AccessToCollectionAsync(async collection =>
+                    {
+                        aggregateException = await Record.ExceptionAsync(() => collection.AggregateAsync(
+                            PipelineDefinition<Note, BsonDocument>.Create(
+                                new BsonDocument("$out", "dryRunAggregateTarget"))));
+#pragma warning disable CS0618 //map reduce stays guarded while the driver exposes it
+                        mapReduceException = await Record.ExceptionAsync(() => collection.MapReduceAsync(
+                            new BsonJavaScript("function() { emit(this._id, 1); }"),
+                            new BsonJavaScript("function(key, values) { return Array.sum(values); }"),
+                            new MapReduceOptions<Note, BsonDocument>
+                            {
+                                OutputOptions = MapReduceOutputOptions.Replace("dryRunMapReduceTarget", databaseName: null)
+                            }));
+#pragma warning restore CS0618
+                    }))
+            ];
+
+            // Action.
+            var migrationOp = await migrationsDbContext.TryStartMigrationAsync(dryRun: true);
+            Assert.NotNull(migrationOp);
+            await migrationsDbContext.ExecuteMigrationAsync(migrationOp.Id);
+
+            // Assert.
+            //both guards fired client side, reporting the denied operation
+            var aggregateGuardException = Assert.IsType<InvalidOperationException>(aggregateException);
+            Assert.Equal("Aggregate to collection can't be simulated by a dry run", aggregateGuardException.Message);
+            var mapReduceGuardException = Assert.IsType<InvalidOperationException>(mapReduceException);
+            Assert.Equal("Map reduce with an output collection can't be simulated by a dry run", mapReduceGuardException.Message);
+
+            //no output collection was created on the server
+            await migrationsDbContext.Notes.AccessToCollectionAsync(async collection =>
+            {
+                var collectionNames = await (await collection.Database.ListCollectionNamesAsync()).ToListAsync();
+                Assert.DoesNotContain("dryRunAggregateTarget", collectionNames);
+                Assert.DoesNotContain("dryRunMapReduceTarget", collectionNames);
+            });
+        }
+
+        [Fact]
         public async Task DryRunMigrationExecutesCustomProcessorWithoutPersisting()
         {
             // Setup.

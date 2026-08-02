@@ -13,6 +13,7 @@
 // If not, see <https://www.gnu.org/licenses/>.
 
 using Etherna.MongoDB.Bson;
+using Etherna.MongoDB.Bson.Serialization;
 using Etherna.MongoDB.Driver;
 using Etherna.MongoDB.Driver.Search;
 using Etherna.MongODM.Core.ExecContext.AsyncLocal;
@@ -36,15 +37,42 @@ namespace Etherna.MongODM.Core.Utility
         // Constructor.
         public LimitedAccessMongoCollectionTest()
         {
+            //the registry resolves the output serializers of the rendered pipelines
+            var serializerRegistry = new BsonSerializerRegistry();
+            serializerRegistry.RegisterSerializationProvider(new BsonObjectModelSerializationProvider());
+
+            collectionMock.Setup(c => c.DocumentSerializer)
+                .Returns(new Mock<IBsonSerializer<FakeModel>>().Object);
             collectionMock.Setup(c => c.Indexes)
                 .Returns(indexManagerMock.Object);
             collectionMock.Setup(c => c.SearchIndexes)
                 .Returns(searchIndexManagerMock.Object);
             engineMock.Setup(e => e.ExecutionContext)
                 .Returns(AsyncLocalContext.Instance);
+            engineMock.Setup(e => e.SerializerRegistry)
+                .Returns(serializerRegistry);
         }
 
         // Tests.
+        [Fact]
+        public async Task ForeignExclusiveAccessDeniesAggregateToCollectionPipelines()
+        {
+            // Setup.
+            /* An exclusive write lock is active on the engine, and the current flow holds
+             * no exclusive access allowance. */
+            using var contextHandler = AsyncLocalContext.Instance.InitAsyncLocalContext();
+            engineMock.Setup(e => e.IsExclusiveWriteEnabled)
+                .Returns(true);
+            var collection = new LimitedAccessMongoCollection<FakeModel>(engineMock.Object, collectionMock.Object, false);
+            var outPipeline = PipelineDefinition<FakeModel, BsonDocument>.Create(
+                new BsonDocument("$out", "targetCollection"));
+
+            // Action and assert.
+            await Assert.ThrowsAsync<UnauthorizedAccessException>(() => collection.AggregateAsync(outPipeline));
+            collectionMock.VerifyGet(c => c.DocumentSerializer, Times.AtLeastOnce());
+            collectionMock.VerifyNoOtherCalls();
+        }
+
         [Fact]
         public async Task ForeignExclusiveAccessDeniesIndexWrites()
         {
@@ -60,6 +88,30 @@ namespace Etherna.MongODM.Core.Utility
             await Assert.ThrowsAsync<UnauthorizedAccessException>(() => collection.Indexes.CreateOneAsync(
                 new CreateIndexModel<FakeModel>(Builders<FakeModel>.IndexKeys.Ascending(m => m.IntegerProp))));
             indexManagerMock.VerifyNoOtherCalls();
+        }
+
+        [Fact]
+        public async Task ForeignExclusiveAccessDeniesMapReduceWithOutputCollection()
+        {
+            // Setup.
+            /* An exclusive write lock is active on the engine, and the current flow holds
+             * no exclusive access allowance. */
+            using var contextHandler = AsyncLocalContext.Instance.InitAsyncLocalContext();
+            engineMock.Setup(e => e.IsExclusiveWriteEnabled)
+                .Returns(true);
+            var collection = new LimitedAccessMongoCollection<FakeModel>(engineMock.Object, collectionMock.Object, false);
+
+            // Action and assert.
+#pragma warning disable CS0618 //map reduce stays guarded while the driver exposes it
+            await Assert.ThrowsAsync<UnauthorizedAccessException>(() => collection.MapReduceAsync(
+                new BsonJavaScript("function() { emit(this._id, 1); }"),
+                new BsonJavaScript("function(key, values) { return Array.sum(values); }"),
+                new MapReduceOptions<FakeModel, BsonDocument>
+                {
+                    OutputOptions = MapReduceOutputOptions.Replace("targetCollection", "otherDb")
+                }));
+#pragma warning restore CS0618
+            collectionMock.VerifyNoOtherCalls();
         }
 
         [Fact]
@@ -84,6 +136,47 @@ namespace Etherna.MongODM.Core.Utility
         }
 
         [Fact]
+        public async Task ReadOnlyCollectionAllowsInlineMapReduce()
+        {
+            // Setup.
+            var collection = new LimitedAccessMongoCollection<FakeModel>(engineMock.Object, collectionMock.Object, true);
+            var map = new BsonJavaScript("function() { emit(this._id, 1); }");
+            var reduce = new BsonJavaScript("function(key, values) { return Array.sum(values); }");
+            var cursor = new Mock<IAsyncCursor<BsonDocument>>().Object;
+#pragma warning disable CS0618 //map reduce stays guarded while the driver exposes it
+            collectionMock.Setup(c => c.MapReduceAsync(map, reduce, It.IsAny<MapReduceOptions<FakeModel, BsonDocument>>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(cursor);
+
+            // Action.
+            var defaultOutputCursor = await collection.MapReduceAsync<BsonDocument>(map, reduce);
+            var inlineOutputCursor = await collection.MapReduceAsync(map, reduce,
+                new MapReduceOptions<FakeModel, BsonDocument> { OutputOptions = MapReduceOutputOptions.Inline });
+#pragma warning restore CS0618
+
+            // Assert.
+            Assert.Same(cursor, defaultOutputCursor);
+            Assert.Same(cursor, inlineOutputCursor);
+        }
+
+        [Fact]
+        public async Task ReadOnlyCollectionAllowsReadAggregates()
+        {
+            // Setup.
+            var collection = new LimitedAccessMongoCollection<FakeModel>(engineMock.Object, collectionMock.Object, true);
+            var pipeline = PipelineDefinition<FakeModel, BsonDocument>.Create(
+                new BsonDocument("$match", new BsonDocument()));
+            var cursor = new Mock<IAsyncCursor<BsonDocument>>().Object;
+            collectionMock.Setup(c => c.AggregateAsync(pipeline, It.IsAny<AggregateOptions>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(cursor);
+
+            // Action.
+            var aggregateCursor = await collection.AggregateAsync(pipeline);
+
+            // Assert.
+            Assert.Same(cursor, aggregateCursor);
+        }
+
+        [Fact]
         public async Task ReadOnlyCollectionAllowsReads()
         {
             // Setup.
@@ -104,6 +197,28 @@ namespace Etherna.MongODM.Core.Utility
         }
 
         [Fact]
+        public async Task ReadOnlyCollectionDeniesAggregateToCollectionPipelines()
+        {
+            // Setup.
+            var collection = new LimitedAccessMongoCollection<FakeModel>(engineMock.Object, collectionMock.Object, true);
+            var outPipeline = PipelineDefinition<FakeModel, BsonDocument>.Create(
+                new BsonDocument("$match", new BsonDocument()),
+                new BsonDocument("$out", "targetCollection"));
+            var mergePipeline = PipelineDefinition<FakeModel, BsonDocument>.Create(
+                new BsonDocument("$merge", new BsonDocument("into", new BsonDocument
+                {
+                    ["db"] = "otherDb",
+                    ["coll"] = "targetCollection"
+                })));
+
+            // Action and assert.
+            Assert.Throws<UnauthorizedAccessException>(() => collection.Aggregate(outPipeline));
+            await Assert.ThrowsAsync<UnauthorizedAccessException>(() => collection.AggregateAsync(mergePipeline));
+            collectionMock.VerifyGet(c => c.DocumentSerializer, Times.AtLeastOnce());
+            collectionMock.VerifyNoOtherCalls();
+        }
+
+        [Fact]
         public async Task ReadOnlyCollectionDeniesIndexManagement()
         {
             // Setup.
@@ -121,6 +236,26 @@ namespace Etherna.MongODM.Core.Utility
             Assert.Throws<UnauthorizedAccessException>(() => indexes.DropOne("indexName"));
             await Assert.ThrowsAsync<UnauthorizedAccessException>(() => indexes.DropOneAsync("indexName"));
             indexManagerMock.VerifyNoOtherCalls();
+        }
+
+        [Fact]
+        public async Task ReadOnlyCollectionDeniesMapReduceWithOutputCollection()
+        {
+            // Setup.
+            var collection = new LimitedAccessMongoCollection<FakeModel>(engineMock.Object, collectionMock.Object, true);
+            var map = new BsonJavaScript("function() { emit(this._id, 1); }");
+            var reduce = new BsonJavaScript("function(key, values) { return Array.sum(values); }");
+
+            // Action and assert.
+#pragma warning disable CS0618 //map reduce stays guarded while the driver exposes it
+            Assert.Throws<UnauthorizedAccessException>(() => collection.MapReduce(map, reduce,
+                new MapReduceOptions<FakeModel, BsonDocument> { OutputOptions = MapReduceOutputOptions.Replace("targetCollection", "otherDb") }));
+            await Assert.ThrowsAsync<UnauthorizedAccessException>(() => collection.MapReduceAsync(map, reduce,
+                new MapReduceOptions<FakeModel, BsonDocument> { OutputOptions = MapReduceOutputOptions.Merge("targetCollection", "otherDb") }));
+            await Assert.ThrowsAsync<UnauthorizedAccessException>(() => collection.MapReduceAsync(map, reduce,
+                new MapReduceOptions<FakeModel, BsonDocument> { OutputOptions = MapReduceOutputOptions.Reduce("targetCollection", "otherDb") }));
+#pragma warning restore CS0618
+            collectionMock.VerifyNoOtherCalls();
         }
 
         [Fact]
