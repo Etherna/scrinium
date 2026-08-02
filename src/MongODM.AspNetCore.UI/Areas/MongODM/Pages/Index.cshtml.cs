@@ -30,7 +30,6 @@ using System.Threading.Tasks;
 
 namespace Etherna.MongODM.AspNetCore.UI.Areas.MongODM.Pages
 {
-    [IgnoreAntiforgeryToken]
     public class IndexModel : PageModel
     {
         // Consts.

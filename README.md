@@ -385,6 +385,7 @@ src/
   MongODM.Core.Generators  source generator emitting the model proxies (packed inside Core)
   MongODM.Hangfire         task runner scheduling MongODM's tasks on Hangfire (→ Core)
 test/
+  MongODM.AspNetCore.UI.UnitTests    admin dashboard tests, over an in-memory test host
   MongODM.Core.UnitTests             xUnit + Moq unit tests of the core
   MongODM.Core.Generators.UnitTests  generator tests, running it in-memory on sample compilations
   MongODM.IntegrationTests           end-to-end tests against a real MongoDB instance
