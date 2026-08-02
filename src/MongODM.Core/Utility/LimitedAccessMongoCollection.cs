@@ -37,13 +37,19 @@ namespace Etherna.MongODM.Core.Utility
      * write permission verification throws UnauthorizedAccessException. Reads keep
      * working, exclusive access permitting.
      *
+     * An aggregation whose rendered pipeline ends in a $out or $merge stage, and a map
+     * reduce with output options other than inline, make the server write the results
+     * into a named collection, possibly in another database: they verify the write
+     * permission, detected with the same signal the driver uses to execute them as write
+     * operations, while any other aggregation or map reduce verifies the read one.
+     *
      * A dry run flow (marked by an ambient DryRunHandler) simulates writes: each write
      * operation executes its client side work (filter and update rendering, document
      * serialization) exactly as the real operation would before sending the command, and
      * returns an acknowledged result without touching the server. Simulated single document
      * write results report the matched document as existing, multi document ones report
      * zero matches. Writes without a client side half (index management, aggregate to
-     * collection) can't be simulated and throw. */
+     * collection, map reduce with an output collection) can't be simulated and throw. */
     [SuppressMessage("Naming", "CA1711:Identifiers should not have incorrect suffix")]
     public class LimitedAccessMongoCollection<TDocument>(
         IDbContextEngine dbContextEngine,
@@ -120,7 +126,7 @@ namespace Etherna.MongODM.Core.Utility
             AggregateOptions? options = null,
             CancellationToken cancellationToken = new())
         {
-            VerifyReadPermission();
+            VerifyAggregatePermission(pipeline);
             return (session ?? TryGetAmbientSession()) is { } effectiveSession
                 ? mongoCollection.Aggregate(effectiveSession, pipeline, options, cancellationToken)
                 : mongoCollection.Aggregate(pipeline, options, cancellationToken);
@@ -138,7 +144,7 @@ namespace Etherna.MongODM.Core.Utility
             AggregateOptions? options = null,
             CancellationToken cancellationToken = new())
         {
-            VerifyReadPermission();
+            VerifyAggregatePermission(pipeline);
             return (session ?? TryGetAmbientSession()) is { } effectiveSession
                 ? mongoCollection.AggregateAsync(effectiveSession, pipeline, options, cancellationToken)
                 : mongoCollection.AggregateAsync(pipeline, options, cancellationToken);
@@ -806,7 +812,15 @@ namespace Etherna.MongODM.Core.Utility
             MapReduceOptions<TDocument, TResult>? options = null,
             CancellationToken cancellationToken = new())
         {
-            VerifyReadPermission();
+            if ((options?.OutputOptions ?? MapReduceOutputOptions.Inline) == MapReduceOutputOptions.Inline)
+            {
+                VerifyReadPermission();
+            }
+            else
+            {
+                VerifyWritePermission();
+                VerifyDryRunSimulable("Map reduce with an output collection");
+            }
             return (session ?? TryGetAmbientSession()) is { } effectiveSession
                 ? mongoCollection.MapReduce(effectiveSession, map, reduce, options, cancellationToken)
                 : mongoCollection.MapReduce(map, reduce, options, cancellationToken);
@@ -828,7 +842,15 @@ namespace Etherna.MongODM.Core.Utility
             MapReduceOptions<TDocument, TResult>? options = null,
             CancellationToken cancellationToken = new())
         {
-            VerifyReadPermission();
+            if ((options?.OutputOptions ?? MapReduceOutputOptions.Inline) == MapReduceOutputOptions.Inline)
+            {
+                VerifyReadPermission();
+            }
+            else
+            {
+                VerifyWritePermission();
+                VerifyDryRunSimulable("Map reduce with an output collection");
+            }
             return (session ?? TryGetAmbientSession()) is { } effectiveSession
                 ? mongoCollection.MapReduceAsync(effectiveSession, map, reduce, options, cancellationToken)
                 : mongoCollection.MapReduceAsync(map, reduce, options, cancellationToken);
@@ -1146,6 +1168,27 @@ namespace Etherna.MongODM.Core.Utility
 
         private IClientSessionHandle? TryGetAmbientSession() =>
             DbSessionHandler.TryGetCurrentSession(dbContextEngine);
+
+        /* The driver executes an aggregation whose rendered pipeline ends in a $out or
+         * $merge stage as a write into the named collection: detect it with the same
+         * signal, rendering the pipeline and inspecting its last stage, and guard it as
+         * an aggregate to collection. Any other pipeline is a pure read. */
+        private void VerifyAggregatePermission<TResult>(PipelineDefinition<TDocument, TResult> pipeline)
+        {
+            ArgumentNullException.ThrowIfNull(pipeline);
+
+            var renderArgs = new RenderArgs<TDocument>(mongoCollection.DocumentSerializer, dbContextEngine.SerializerRegistry);
+            var lastStageName = pipeline.Render(renderArgs).Documents.LastOrDefault()?.GetElement(0).Name;
+            if (lastStageName is "$out" or "$merge")
+            {
+                VerifyWritePermission();
+                VerifyDryRunSimulable("Aggregate to collection");
+            }
+            else
+            {
+                VerifyReadPermission();
+            }
+        }
 
         private void VerifyDryRunSimulable(string operationDescription)
         {
