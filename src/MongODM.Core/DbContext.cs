@@ -485,8 +485,8 @@ namespace Etherna.MongODM.Core
             return model;
         }
 
-        public Task<DbMigrationOperation?> TryStartMigrationAsync(bool dryRun = false) =>
-            engine.DbMigrationManager.TryStartDbContextMigrationAsync(this, dryRun);
+        public Task<DbMigrationOperation?> TryStartMigrationAsync(bool dryRun = false, bool stopAtFirstError = false) =>
+            engine.DbMigrationManager.TryStartDbContextMigrationAsync(this, dryRun, stopAtFirstError);
 
         public void RemoveModelTracking(IEntityModel model)
         {

@@ -34,11 +34,15 @@ namespace Etherna.MongODM.Core.Domain.Models
         private List<MigrationLogBase> _logs = [];
 
         // Constructors.
-        public DbMigrationOperation(IDbContextEngine dbContextEngine, bool isDryRun = false)
+        public DbMigrationOperation(
+            IDbContextEngine dbContextEngine,
+            bool isDryRun = false,
+            bool isStopAtFirstErrorEnabled = false)
             : base(dbContextEngine)
         {
             CurrentStatus = Status.New;
             IsDryRun = isDryRun;
+            IsStopAtFirstErrorEnabled = isStopAtFirstErrorEnabled;
         }
         protected DbMigrationOperation() { }
 
@@ -46,6 +50,11 @@ namespace Etherna.MongODM.Core.Domain.Models
         public virtual DateTimeOffset? CompletedDateTime { get; protected set; }
         public virtual Status CurrentStatus { get; protected set; }
         public virtual bool IsDryRun { get; protected set; }
+        /// <summary>
+        /// If true, a documents migration of this operation aborts at its first failing document,
+        /// instead of skipping it and processing every other document.
+        /// </summary>
+        public virtual bool IsStopAtFirstErrorEnabled { get; protected set; }
         public virtual IEnumerable<MigrationLogBase> Logs
         {
             get => _logs;

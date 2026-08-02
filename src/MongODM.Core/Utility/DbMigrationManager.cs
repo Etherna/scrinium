@@ -114,7 +114,8 @@ namespace Etherna.MongODM.Core.Utility
 
                             await dbContext.SaveChangesAsync().ConfigureAwait(false);
                         },
-                        dbMigrationOp.IsDryRun).ConfigureAwait(false);
+                        dbMigrationOp.IsDryRun,
+                        dbMigrationOp.IsStopAtFirstErrorEnabled).ConfigureAwait(false);
 
                     if (!result.Succeded)
                         errors.Add(new MongodmDbMigrationException(
@@ -245,7 +246,10 @@ namespace Etherna.MongODM.Core.Utility
             return migrateOp;
         }
 
-        public async Task<DbMigrationOperation?> TryStartDbContextMigrationAsync(IDbContext dbContext, bool dryRun = false)
+        public async Task<DbMigrationOperation?> TryStartDbContextMigrationAsync(
+            IDbContext dbContext,
+            bool dryRun = false,
+            bool stopAtFirstError = false)
         {
             ArgumentNullException.ThrowIfNull(dbContext);
 
@@ -256,7 +260,7 @@ namespace Etherna.MongODM.Core.Utility
                 await IsMigrationRunningAsync(dbContext).ConfigureAwait(false) is not null)
                 return null;
 
-            var migrateOp = new DbMigrationOperation(dbContext.Engine, dryRun);
+            var migrateOp = new DbMigrationOperation(dbContext.Engine, dryRun, stopAtFirstError);
             await dbContext.DbOperations.CreateAsync(migrateOp).ConfigureAwait(false);
 
             taskRunner.RunMigrateDbTask(dbContext.GetType(), migrateOp.Id);

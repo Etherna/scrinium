@@ -82,7 +82,7 @@ namespace Etherna.MongODM.Core.Utility
             repositoryMock.Setup(r => r.Name).Returns("fakeModels");
             var docMigrationMock = new Mock<DocumentMigration>();
             docMigrationMock.Setup(m => m.SourceRepository).Returns(repositoryMock.Object);
-            docMigrationMock.Setup(m => m.MigrateAsync(It.IsAny<int>(), It.IsAny<Func<long, Task>?>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()))
+            docMigrationMock.Setup(m => m.MigrateAsync(It.IsAny<int>(), It.IsAny<Func<long, Task>?>(), It.IsAny<bool>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()))
                 .ReturnsAsync(MigrationResult.Failed(
                     10,
                     documentErrors: [new DocumentMigrationError("doc1", "FormatException: bad value")],
@@ -119,7 +119,7 @@ namespace Etherna.MongODM.Core.Utility
             repositoryRegistryMock.Setup(r => r.Repositories).Returns([repositoryMock.Object]);
             var docMigrationMock = new Mock<DocumentMigration>();
             docMigrationMock.Setup(m => m.SourceRepository).Returns(repositoryMock.Object);
-            docMigrationMock.Setup(m => m.MigrateAsync(It.IsAny<int>(), It.IsAny<Func<long, Task>?>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()))
+            docMigrationMock.Setup(m => m.MigrateAsync(It.IsAny<int>(), It.IsAny<Func<long, Task>?>(), It.IsAny<bool>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()))
                 .ReturnsAsync(MigrationResult.Succeeded(3));
             dbContextMock.Setup(c => c.DocumentMigrationList).Returns([docMigrationMock.Object]);
 
@@ -130,7 +130,7 @@ namespace Etherna.MongODM.Core.Utility
             Assert.Equal(DbMigrationOperation.Status.Completed, dryRunOp.CurrentStatus);
             repositoryMock.Verify(r => r.DeleteOldIndexesAsync(It.IsAny<CancellationToken>()), Times.Never());
             repositoryMock.Verify(r => r.BuildNewIndexesAsync(It.IsAny<CancellationToken>()), Times.Never());
-            docMigrationMock.Verify(m => m.MigrateAsync(It.IsAny<int>(), It.IsAny<Func<long, Task>?>(), true, It.IsAny<CancellationToken>()), Times.Once());
+            docMigrationMock.Verify(m => m.MigrateAsync(It.IsAny<int>(), It.IsAny<Func<long, Task>?>(), true, false, It.IsAny<CancellationToken>()), Times.Once());
             Assert.DoesNotContain(dryRunOp.Logs, log => log is DeleteOldIndexesMigrationLog or BuildNewIndexesMigrationLog);
             Assert.Contains(dryRunOp.Logs, log => log is DocumentMigrationLog { State: MigrationLogBase.ExecutionState.Succeded, TotMigratedDocs: 3 });
         }
@@ -171,7 +171,7 @@ namespace Etherna.MongODM.Core.Utility
         {
             // Setup.
             var docMigrationMock = new Mock<DocumentMigration>();
-            docMigrationMock.Setup(m => m.MigrateAsync(It.IsAny<int>(), It.IsAny<Func<long, Task>?>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()))
+            docMigrationMock.Setup(m => m.MigrateAsync(It.IsAny<int>(), It.IsAny<Func<long, Task>?>(), It.IsAny<bool>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()))
                 .ThrowsAsync(new InvalidOperationException("Unhandled migration exception"));
             dbContextMock.Setup(c => c.DocumentMigrationList).Returns([docMigrationMock.Object]);
 
@@ -182,6 +182,29 @@ namespace Etherna.MongODM.Core.Utility
             //the operation doesn't stay on running status, and the failure is persisted
             Assert.Equal(DbMigrationOperation.Status.Failed, dbMigrationOp.CurrentStatus);
             dbContextMock.Verify(c => c.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.AtLeastOnce());
+        }
+
+        [Fact]
+        public async Task ExecuteMigrationPassesStopAtFirstErrorToDocumentMigrations()
+        {
+            // Setup.
+            var stopAtFirstErrorOp = new DbMigrationOperation(engineMock.Object, isStopAtFirstErrorEnabled: true);
+            dbOperationsMock.Setup(r => r.FindOneAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(stopAtFirstErrorOp);
+
+            var repositoryMock = new Mock<IRepository>();
+            repositoryMock.Setup(r => r.Name).Returns("fakeModels");
+            var docMigrationMock = new Mock<DocumentMigration>();
+            docMigrationMock.Setup(m => m.SourceRepository).Returns(repositoryMock.Object);
+            docMigrationMock.Setup(m => m.MigrateAsync(It.IsAny<int>(), It.IsAny<Func<long, Task>?>(), It.IsAny<bool>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(MigrationResult.Succeeded(3));
+            dbContextMock.Setup(c => c.DocumentMigrationList).Returns([docMigrationMock.Object]);
+
+            // Action.
+            await dbMigrationManager.ExecuteDbContextMigrationAsync(dbContextMock.Object, "opId");
+
+            // Assert.
+            docMigrationMock.Verify(m => m.MigrateAsync(It.IsAny<int>(), It.IsAny<Func<long, Task>?>(), false, true, It.IsAny<CancellationToken>()), Times.Once());
         }
 
         [Fact]
@@ -229,7 +252,7 @@ namespace Etherna.MongODM.Core.Utility
             // Setup.
             var unhandledException = new InvalidOperationException("Unhandled migration exception");
             var docMigrationMock = new Mock<DocumentMigration>();
-            docMigrationMock.Setup(m => m.MigrateAsync(It.IsAny<int>(), It.IsAny<Func<long, Task>?>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()))
+            docMigrationMock.Setup(m => m.MigrateAsync(It.IsAny<int>(), It.IsAny<Func<long, Task>?>(), It.IsAny<bool>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()))
                 .ThrowsAsync(unhandledException);
             dbContextMock.Setup(c => c.DocumentMigrationList).Returns([docMigrationMock.Object]);
 
@@ -260,12 +283,33 @@ namespace Etherna.MongODM.Core.Utility
             // Assert.
             Assert.NotNull(migrationOp);
             Assert.True(migrationOp.IsDryRun);
+            Assert.False(migrationOp.IsStopAtFirstErrorEnabled);
             dbOperationsMock.Verify(
                 r => r.CreateAsync(migrationOp, It.IsAny<CancellationToken>()),
                 Times.Once());
             taskRunnerMock.Verify(
                 t => t.RunMigrateDbTask(It.IsAny<Type>(), migrationOp.Id),
                 Times.Once());
+        }
+
+        [Fact]
+        public async Task TryStartMigrationCreatesStopAtFirstErrorOperation()
+        {
+            // Setup.
+            //no migration is queued or running
+            dbOperationsMock.Setup(r => r.QueryElementsAsync(
+                    It.IsAny<Func<IQueryable<OperationBase>, Task<DbMigrationOperation?>>>(),
+                    It.IsAny<AggregateOptions?>()))
+                .ReturnsAsync((DbMigrationOperation?)null);
+
+            // Action.
+            var migrationOp = await dbMigrationManager.TryStartDbContextMigrationAsync(
+                dbContextMock.Object, stopAtFirstError: true);
+
+            // Assert.
+            Assert.NotNull(migrationOp);
+            Assert.False(migrationOp.IsDryRun);
+            Assert.True(migrationOp.IsStopAtFirstErrorEnabled);
         }
 
         [Fact]

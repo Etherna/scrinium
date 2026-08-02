@@ -80,8 +80,8 @@ documents to complex application domains.
   around each unit of work flush on deployments supporting them.
 - **Versioned document schemas** — several schema versions coexist in the same collection, each document
   recording the schema that wrote it.
-- **Data migrations** — configurable migration scripts between document schemas, with a **dry run** mode
-  simulating the migration and reporting failing documents without persisting anything.
+- **Data migrations** — configurable migration scripts between document schemas, skipping and reporting
+  the failing documents, with a **dry run** mode simulating the migration without persisting anything.
 - **Customizable indexes** — declare the indexes of a collection, with automatic indexes for the id paths
   of referenced documents.
 - **Read-only access** — deny writes on a whole db context or on a single repository, to safely consume

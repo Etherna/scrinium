@@ -45,12 +45,16 @@
 
     function startMigration(card, dryRun) {
         var identifier = card.dataset.identifier;
+        var stopAtFirstError = card.querySelector('[data-role="stop-at-first-error"]').checked;
         var message = dryRun
             ? 'Start migration dry run on "' + identifier + '"?\n\n' +
               'The dry run simulates the migration without persisting anything, reporting the ' +
               'failing documents. Data stays accessible while it runs.'
             : 'Start migration on "' + identifier + '"?\n\n' +
               'While the migration is running, the db context denies concurrent access to data.';
+        message += stopAtFirstError
+            ? '\n\nIt stops at the first failing document.'
+            : '\n\nFailing documents are skipped and reported, without stopping the scan.';
         if (!window.confirm(message))
             return;
 
@@ -60,7 +64,11 @@
         fetch(baseUrl + '?handler=StartMigration', {
             method: 'POST',
             headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-            body: new URLSearchParams({ identifier: identifier, dryRun: dryRun })
+            body: new URLSearchParams({
+                identifier: identifier,
+                dryRun: dryRun,
+                stopAtFirstError: stopAtFirstError
+            })
         }).then(function (response) {
             if (!response.ok)
                 throw new Error('HTTP ' + response.status);
@@ -271,6 +279,7 @@
 
         card.querySelector('[data-role="start"]').disabled = status.isLocked;
         card.querySelector('[data-role="start-dry-run"]').disabled = status.isLocked;
+        card.querySelector('[data-role="stop-at-first-error"]').disabled = status.isLocked;
 
         var live = card.querySelector('[data-role="live"]');
         var logList = card.querySelector('[data-role="logs"]');
@@ -280,7 +289,8 @@
                 (status.runningOperation.isDryRun ? 'Dry run operation ' : 'Operation ') +
                 status.runningOperation.id +
                 ' — ' + status.runningOperation.status +
-                ' since ' + formatDateTime(status.runningOperation.creationDateTime);
+                ' since ' + formatDateTime(status.runningOperation.creationDateTime) +
+                (status.runningOperation.stopAtFirstError ? ' — stops at the first failing document' : '');
             renderLogs(logList, status.runningOperation.logs, true);
         } else {
             live.hidden = true;
@@ -311,7 +321,7 @@
 
             list.appendChild(entry);
 
-            //document errors reported by a dry run
+            //failing documents reported by the migration
             if (log.errors && log.errors.length) {
                 var errorsEntry = document.createElement('li');
                 errorsEntry.className = 'log-errors';
@@ -357,6 +367,13 @@
                 dryRunBadge.className = 'status-badge dry-run';
                 dryRunBadge.textContent = 'Dry run';
                 summary.appendChild(dryRunBadge);
+            }
+
+            if (operation.stopAtFirstError) {
+                var stopBadge = document.createElement('span');
+                stopBadge.className = 'status-badge';
+                stopBadge.textContent = 'Stop at first error';
+                summary.appendChild(stopBadge);
             }
 
             var dates = document.createElement('span');
