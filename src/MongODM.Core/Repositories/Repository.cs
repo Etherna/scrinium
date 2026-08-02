@@ -93,13 +93,14 @@ namespace Etherna.MongODM.Core.Repositories
             _collection ??= DbContext.Engine.GetMongoCollection<TModel>(options.Name, isReadOnly: options.IsReadOnly);
 
             // Invoke func into optional implicit execution context.
-            DbExecutionContextHandler? dbExecContextHandler = null;
-            if (handleImplicitDbExecutionContext)
-                dbExecContextHandler = new DbExecutionContextHandler(DbContext, this);
+            /* The handler disposal must run also when func throws: a handler leaked in the
+             * flow items would become the ambient one again once the handlers above it
+             * complete, resolving the wrong db context and repository for the rest of the flow. */
+            using var dbExecContextHandler = handleImplicitDbExecutionContext
+                ? new DbExecutionContextHandler(DbContext, this)
+                : null;
 
             var result = await func(_collection).ConfigureAwait(false);
-
-            dbExecContextHandler?.Dispose();
 
             logger.RepositoryAccessedCollection(Name, DbContext.Engine.Options.DbName);
 
@@ -301,15 +302,25 @@ namespace Etherna.MongODM.Core.Repositories
             // Create an explicit db execution context. It needs to survive until cursor is alive.
             var dbExecContextHandler = new DbExecutionContextHandler(DbContext, this);
 
-            return await AccessToCollectionAsync(async collection =>
+            try
             {
-                var resultCursor = await collection.FindAsync(filter, options, cancellationToken).ConfigureAwait(false);
-                var wrappedCursor = new AsyncCursorWrapper<TProjection>(resultCursor, dbExecContextHandler);
+                return await AccessToCollectionAsync(async collection =>
+                {
+                    var resultCursor = await collection.FindAsync(filter, options, cancellationToken).ConfigureAwait(false);
+                    var wrappedCursor = new AsyncCursorWrapper<TProjection>(resultCursor, dbExecContextHandler);
 
-                logger.RepositoryQueriedCollection(Name, DbContext.Engine.Options.DbName);
+                    logger.RepositoryQueriedCollection(Name, DbContext.Engine.Options.DbName);
 
-                return wrappedCursor;
-            }, false).ConfigureAwait(false);
+                    return wrappedCursor;
+                }, false).ConfigureAwait(false);
+            }
+            catch
+            {
+                /* The cursor wrapper owns the handler and disposes it with the cursor:
+                 * when the access fails before producing the wrapper, release it here. */
+                dbExecContextHandler.Dispose();
+                throw;
+            }
         }
 
         public async Task<object> FindOneAsync(object id, CancellationToken cancellationToken = default) =>

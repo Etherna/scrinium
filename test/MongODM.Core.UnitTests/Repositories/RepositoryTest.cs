@@ -18,11 +18,13 @@ using Etherna.MongODM.Core.ExecContext;
 using Etherna.MongODM.Core.Models;
 using Etherna.MongODM.Core.Options;
 using Etherna.MongODM.Core.Serialization.Mapping;
+using Etherna.MongODM.Core.Utility;
 using Microsoft.Extensions.Logging;
 using Moq;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using Xunit;
 
@@ -34,6 +36,7 @@ namespace Etherna.MongODM.Core.Repositories
         private readonly Mock<IMongoCollection<FakeModel>> collectionMock = new();
         private readonly Mock<IDbContext> dbContextMock = new();
         private readonly Mock<IDbContextEngine> engineMock = new();
+        private readonly Dictionary<object, object?> executionContextItems = [];
         private readonly Mock<IExecutionContext> executionContextMock = new();
         private readonly Mock<IMapRegistry> mapRegistryMock = new();
         private readonly Mock<IModelMap> modelMapMock = new();
@@ -69,7 +72,7 @@ namespace Etherna.MongODM.Core.Repositories
             collectionMock.Setup(c => c.Settings)
                 .Returns(new MongoCollectionSettings { SerializerRegistry = new BsonSerializerRegistry() });
 
-            executionContextMock.Setup(c => c.Items).Returns(new Dictionary<object, object?>());
+            executionContextMock.Setup(c => c.Items).Returns(executionContextItems);
             optionsMock.Setup(o => o.DbName).Returns("test-db");
             engineMock.Setup(e => e.ExecutionContext).Returns(executionContextMock.Object);
             engineMock.Setup(e => e.MapRegistry).Returns(mapRegistryMock.Object);
@@ -80,6 +83,37 @@ namespace Etherna.MongODM.Core.Repositories
         }
 
         // Tests.
+        [Fact]
+        public async Task AccessToCollectionDisposesTheAmbientHandlerWhenTheAccessedOperationSucceeds()
+        {
+            // Setup.
+            var repository = BuildRepository();
+
+            // Action.
+            await repository.AccessToCollectionAsync(_ => Task.FromResult(0));
+
+            // Assert.
+            Assert.Empty(GetAmbientDbExecContextHandlers());
+        }
+
+        [Fact]
+        public async Task AccessToCollectionDisposesTheAmbientHandlerWhenTheAccessedOperationThrows()
+        {
+            /* A leaked handler would stay registered in the flow items and become the
+             * ambient one again once the handlers above it complete, resolving the wrong
+             * db context, repository and serializer registry for the rest of the flow. */
+
+            // Setup.
+            var repository = BuildRepository();
+
+            // Action.
+            await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                repository.AccessToCollectionAsync<int>(_ => throw new InvalidOperationException()));
+
+            // Assert.
+            Assert.Empty(GetAmbientDbExecContextHandlers());
+        }
+
         [Fact]
         public async Task DefinedIndexesBuildAnAutomaticIndexForEachReferenceIdPath()
         {
@@ -169,6 +203,72 @@ namespace Etherna.MongODM.Core.Repositories
                 indexes.Select(i => i.Options.Name));
         }
 
+        [Fact]
+        public async Task FindDisposesTheAmbientHandlerWhenTheCollectionAccessThrows()
+        {
+            // Setup.
+            collectionMock.Setup(c => c.FindAsync(
+                    It.IsAny<FilterDefinition<FakeModel>>(),
+                    It.IsAny<FindOptions<FakeModel, FakeModel>>(),
+                    It.IsAny<CancellationToken>()))
+                .ThrowsAsync(new InvalidOperationException());
+            var repository = BuildRepository();
+
+            // Action.
+            await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                repository.FindAsync<FakeModel>(Builders<FakeModel>.Filter.Empty));
+
+            // Assert.
+            Assert.Empty(GetAmbientDbExecContextHandlers());
+        }
+
+        [Fact]
+        public async Task FindKeepsTheAmbientHandlerUntilTheCursorIsDisposed()
+        {
+            // Setup.
+            collectionMock.Setup(c => c.FindAsync(
+                    It.IsAny<FilterDefinition<FakeModel>>(),
+                    It.IsAny<FindOptions<FakeModel, FakeModel>>(),
+                    It.IsAny<CancellationToken>()))
+                .ReturnsAsync(new Mock<IAsyncCursor<FakeModel>>().Object);
+            var repository = BuildRepository();
+
+            // Action.
+            var cursor = await repository.FindAsync<FakeModel>(Builders<FakeModel>.Filter.Empty);
+
+            // Assert.
+            //the handler serves the cursor consumption, and releases with its disposal
+            Assert.Single(GetAmbientDbExecContextHandlers());
+            cursor.Dispose();
+            Assert.Empty(GetAmbientDbExecContextHandlers());
+        }
+
+        [Fact]
+        public async Task TryFindOneDisposesTheAmbientHandlerOnAMissingId()
+        {
+            /* A miss is ordinary control flow: the collection access throws
+             * MongodmEntityNotFoundException, and TryFindOneAsync turns it into a null
+             * result. The ambient handler must release also on this path. */
+
+            // Setup.
+            var cursorMock = new Mock<IAsyncCursor<FakeModel>>();
+            cursorMock.Setup(c => c.MoveNextAsync(It.IsAny<CancellationToken>()))
+                .ReturnsAsync(false);
+            collectionMock.Setup(c => c.FindAsync(
+                    It.IsAny<FilterDefinition<FakeModel>>(),
+                    It.IsAny<FindOptions<FakeModel, FakeModel>>(),
+                    It.IsAny<CancellationToken>()))
+                .ReturnsAsync(cursorMock.Object);
+            var repository = BuildRepository();
+
+            // Action.
+            var result = await repository.TryFindOneAsync("missingId");
+
+            // Assert.
+            Assert.Null(result);
+            Assert.Empty(GetAmbientDbExecContextHandlers());
+        }
+
         // Helpers.
         private Repository<FakeModel, string> BuildRepository(
             params (IndexKeysDefinition<FakeModel> keys, CreateIndexOptions<FakeModel> options)[] indexBuilders)
@@ -178,6 +278,11 @@ namespace Etherna.MongODM.Core.Repositories
             repository.Initialize(dbContextMock.Object, new Mock<ILogger>().Object);
             return repository;
         }
+
+        private IEnumerable<DbExecutionContextHandler> GetAmbientDbExecContextHandlers() =>
+            executionContextItems.Values
+                .OfType<IEnumerable<DbExecutionContextHandler>>()
+                .SelectMany(handlers => handlers);
 
         private static IMemberMap ReferenceIdMemberMap(params BsonMemberMap[] elementPath)
         {
