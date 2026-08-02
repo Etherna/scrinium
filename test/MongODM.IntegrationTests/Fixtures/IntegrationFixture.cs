@@ -17,6 +17,8 @@ using Etherna.MongODM.Core.ExecContext.AsyncLocal;
 using Etherna.MongODM.Core.Tasks;
 using Microsoft.Extensions.DependencyInjection;
 using System;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Threading.Tasks;
 using Xunit;
 
@@ -45,6 +47,9 @@ namespace Etherna.MongODM.IntegrationTests.Fixtures
         public IReadOnlyDbContext ReadOnlyDbContext { get; private set; } = null!;
         public ISecondDbContext SecondDbContext { get; private set; } = null!;
         public string SecondDbName { get; } = "mongodm-it-second-" + Guid.NewGuid().ToString("N");
+        public string SeedObserverOneDbName { get; } = "mongodm-it-seedobs1-" + Guid.NewGuid().ToString("N");
+        public string SeedObserverTwoDbName { get; } = "mongodm-it-seedobs2-" + Guid.NewGuid().ToString("N");
+        public ConcurrentDictionary<string, IDictionary<object, object?>?> SeedingObservations { get; } = new();
         public IServiceProvider ServiceProvider => serviceProvider;
         internal InlineTaskRunner TaskRunner { get; private set; } = null!;
         public ITestDbContext TestDbContext { get; private set; } = null!;
@@ -61,6 +66,8 @@ namespace Etherna.MongODM.IntegrationTests.Fixtures
                 await TestDbContext.Engine.Client.DropDatabaseAsync(ParentDbName);
                 await TestDbContext.Engine.Client.DropDatabaseAsync(TestDbName);
                 await TestDbContext.Engine.Client.DropDatabaseAsync(SecondDbName);
+                await TestDbContext.Engine.Client.DropDatabaseAsync(SeedObserverOneDbName);
+                await TestDbContext.Engine.Client.DropDatabaseAsync(SeedObserverTwoDbName);
             }
 
             if (serviceProvider is not null)
@@ -127,6 +134,19 @@ namespace Etherna.MongODM.IntegrationTests.Fixtures
                     options =>
                     {
                         options.ConnectionString = $"{mongoDb.DbUrl}/{CustomIdDbName}";
+                    })
+                //dedicated contexts for the startup seeding tests, left unseeded here
+                .AddDbContext<ISeedObserverOneDbContext, SeedObserverOneDbContext>(
+                    _ => new SeedObserverOneDbContext(SeedingObservations),
+                    options =>
+                    {
+                        options.ConnectionString = $"{mongoDb.DbUrl}/{SeedObserverOneDbName}";
+                    })
+                .AddDbContext<ISeedObserverTwoDbContext, SeedObserverTwoDbContext>(
+                    _ => new SeedObserverTwoDbContext(SeedingObservations),
+                    options =>
+                    {
+                        options.ConnectionString = $"{mongoDb.DbUrl}/{SeedObserverTwoDbName}";
                     });
 
             serviceProvider = services.BuildServiceProvider();

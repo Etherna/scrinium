@@ -14,6 +14,7 @@
 
 using Etherna.MongoDB.Driver;
 using Etherna.MongODM.Core.ExecContext.AsyncLocal;
+using Etherna.MongODM.Core.Extensions;
 using System;
 using System.Collections;
 using System.Collections.Generic;
@@ -53,10 +54,7 @@ namespace Etherna.MongODM.Core.Utility
             if (executionContext.Items is null) //if an execution context doesn't exist, create it
                 asyncLocalContextHandler = AsyncLocalContext.Instance.InitAsyncLocalContext();
 
-            if (!executionContext.Items!.ContainsKey(HandlerKey))
-                executionContext.Items.Add(HandlerKey, new List<DbSessionHandler>());
-
-            requests = (ICollection<DbSessionHandler>)executionContext.Items[HandlerKey]!;
+            requests = executionContext.GetOrAddItemsList<DbSessionHandler>(HandlerKey);
 
             lock (((ICollection)requests).SyncRoot)
                 requests.Add(this);
@@ -79,11 +77,9 @@ namespace Etherna.MongODM.Core.Utility
         {
             ArgumentNullException.ThrowIfNull(dbContextEngine);
 
-            var executionContext = dbContextEngine.ExecutionContext;
-            if (executionContext.Items is null ||
-                !executionContext.Items.TryGetValue(HandlerKey, out var requestsObj))
+            var requests = dbContextEngine.ExecutionContext.TryGetItemsList<DbSessionHandler>(HandlerKey);
+            if (requests is null)
                 return null;
-            var requests = (ICollection<DbSessionHandler>)requestsObj!;
 
             /* Get the last handler of the same engine with a stack system, for nesting
              * sessions between different db contexts. Sessions are per connection: handlers

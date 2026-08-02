@@ -20,6 +20,13 @@ namespace Etherna.MongODM.Core.ExecContext
     /// Represents an execution context, where information can be put and retrieve alongside
     /// the process with a key-value dictionary.
     /// </summary>
+    /// <remarks>
+    /// An execution context serves a single logical flow (an HTTP request, a job, a startup
+    /// operation): the ambient state kept in <see cref="Items"/> resolves by nesting inside
+    /// one flow. Parallel flows must each initialize their own context (e.g. with
+    /// <see cref="AsyncLocal.IAsyncLocalContext.InitAsyncLocalContext"/>), instead of
+    /// sharing one.
+    /// </remarks>
     public interface IExecutionContext
     {
         /// <summary>

@@ -12,10 +12,9 @@
 // You should have received a copy of the GNU Lesser General Public License along with MongODM.
 // If not, see <https://www.gnu.org/licenses/>.
 
-using Etherna.MongoDB.Driver;
 using Etherna.MongODM.Core.ExecContext.AsyncLocal;
 using Moq;
-using System;
+using System.Collections;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -23,15 +22,14 @@ using Xunit;
 
 namespace Etherna.MongODM.Core.Utility
 {
-    public class DbSessionHandlerTest
+    public class DbExecutionContextHandlerTest
     {
         // Fields.
         private readonly Mock<IDbContextEngine> engineMock = new();
         private readonly Mock<IDbContextEngine> otherEngineMock = new();
-        private readonly Mock<IClientSessionHandle> sessionMock = new();
 
         // Constructor.
-        public DbSessionHandlerTest()
+        public DbExecutionContextHandlerTest()
         {
             engineMock.Setup(e => e.ExecutionContext)
                 .Returns(AsyncLocalContext.Instance);
@@ -41,20 +39,6 @@ namespace Etherna.MongODM.Core.Utility
 
         // Tests.
         [Fact]
-        public void AmbientSessionIsResolvedOnlyForItsEngine()
-        {
-            using var contextHandler = AsyncLocalContext.Instance.InitAsyncLocalContext();
-
-            using (new DbSessionHandler(engineMock.Object, sessionMock.Object))
-            {
-                Assert.Same(sessionMock.Object, DbSessionHandler.TryGetCurrentSession(engineMock.Object));
-                Assert.Null(DbSessionHandler.TryGetCurrentSession(otherEngineMock.Object));
-            }
-
-            Assert.Null(DbSessionHandler.TryGetCurrentSession(engineMock.Object));
-        }
-
-        [Fact]
         public async Task ConcurrentFirstHandlersOnSharedContextRegisterAtomically()
         {
             /* Parallel flows sharing one execution context can construct their first handler
@@ -63,9 +47,8 @@ namespace Etherna.MongODM.Core.Utility
             const int flowsCount = 4;
             const int attempts = 1000;
 
-            //materialize the mocked engine and session before the parallel flows access them
+            //materialize the mocked engine before the parallel flows access it
             var engine = engineMock.Object;
-            var session = sessionMock.Object;
 
             for (int i = 0; i < attempts; i++)
             {
@@ -80,15 +63,20 @@ namespace Etherna.MongODM.Core.Utility
                         .Select(_ => Task.Run(() =>
                         {
                             barrier.SignalAndWait();
-                            return new DbSessionHandler(engine, session);
+                            return new DbExecutionContextHandler(engine);
                         }))
                         .ToArray());
 
                 // Assert.
-                Assert.Same(session, DbSessionHandler.TryGetCurrentSession(engine));
+                //all handlers registered into the single bookkeeping list of the context
+                var items = AsyncLocalContext.Instance.Items!;
+                var requests = (ICollection)Assert.Single(items).Value!;
+                Assert.Equal(flowsCount, requests.Count);
+
+                Assert.Same(engine, DbExecutionContextHandler.TryGetCurrentDbContextEngine(AsyncLocalContext.Instance));
                 foreach (var handler in handlers)
                     handler.Dispose();
-                Assert.Null(DbSessionHandler.TryGetCurrentSession(engine));
+                Assert.Null(DbExecutionContextHandler.TryGetCurrentDbContextEngine(AsyncLocalContext.Instance));
             }
         }
 
@@ -97,10 +85,10 @@ namespace Etherna.MongODM.Core.Utility
         {
             Assert.Null(AsyncLocalContext.Instance.Items);
 
-            using (new DbSessionHandler(engineMock.Object, sessionMock.Object))
+            using (new DbExecutionContextHandler(engineMock.Object))
             {
                 Assert.NotNull(AsyncLocalContext.Instance.Items);
-                Assert.Same(sessionMock.Object, DbSessionHandler.TryGetCurrentSession(engineMock.Object));
+                Assert.Same(engineMock.Object, DbExecutionContextHandler.TryGetCurrentDbContextEngine(AsyncLocalContext.Instance));
             }
 
             //the handler disposes the execution context created by itself
@@ -108,35 +96,30 @@ namespace Etherna.MongODM.Core.Utility
         }
 
         [Fact]
-        public void InnermostSessionWinsAndDisposeRestoresOuter()
-        {
-            using var contextHandler = AsyncLocalContext.Instance.InitAsyncLocalContext();
-            var innerSessionMock = new Mock<IClientSessionHandle>();
-
-            using (new DbSessionHandler(engineMock.Object, sessionMock.Object))
-            {
-                using (new DbSessionHandler(engineMock.Object, innerSessionMock.Object))
-                {
-                    Assert.Same(innerSessionMock.Object, DbSessionHandler.TryGetCurrentSession(engineMock.Object));
-                }
-
-                Assert.Same(sessionMock.Object, DbSessionHandler.TryGetCurrentSession(engineMock.Object));
-            }
-        }
-
-        [Fact]
-        public void MissingExecutionContextResolvesNoSession()
+        public void MissingExecutionContextResolvesNoHandler()
         {
             Assert.Null(AsyncLocalContext.Instance.Items);
-            Assert.Null(DbSessionHandler.TryGetCurrentSession(engineMock.Object));
+            Assert.Null(DbExecutionContextHandler.TryGetCurrentDbContext(AsyncLocalContext.Instance));
+            Assert.Null(DbExecutionContextHandler.TryGetCurrentDbContextEngine(AsyncLocalContext.Instance));
+            Assert.Null(DbExecutionContextHandler.TryGetCurrentRepository(AsyncLocalContext.Instance));
         }
 
         [Fact]
-        public void NullArgumentsAreRejected()
+        public void NestedHandlersResolveLastAndDisposeRestoresOuter()
         {
-            Assert.Throws<ArgumentNullException>(() => new DbSessionHandler(null!, sessionMock.Object));
-            Assert.Throws<ArgumentNullException>(() => new DbSessionHandler(engineMock.Object, null!));
-            Assert.Throws<ArgumentNullException>(() => DbSessionHandler.TryGetCurrentSession(null!));
+            using var contextHandler = AsyncLocalContext.Instance.InitAsyncLocalContext();
+
+            using (new DbExecutionContextHandler(engineMock.Object))
+            {
+                using (new DbExecutionContextHandler(otherEngineMock.Object))
+                {
+                    Assert.Same(otherEngineMock.Object, DbExecutionContextHandler.TryGetCurrentDbContextEngine(AsyncLocalContext.Instance));
+                }
+
+                Assert.Same(engineMock.Object, DbExecutionContextHandler.TryGetCurrentDbContextEngine(AsyncLocalContext.Instance));
+            }
+
+            Assert.Null(DbExecutionContextHandler.TryGetCurrentDbContextEngine(AsyncLocalContext.Instance));
         }
     }
 }
