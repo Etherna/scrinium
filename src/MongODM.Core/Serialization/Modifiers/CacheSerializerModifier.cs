@@ -14,6 +14,7 @@
 
 using Etherna.MongODM.Core.ExecContext;
 using Etherna.MongODM.Core.ExecContext.Exceptions;
+using Etherna.MongODM.Core.Extensions;
 using System;
 using System.Collections;
 using System.Collections.Generic;
@@ -33,13 +34,8 @@ namespace Etherna.MongODM.Core.Serialization.Modifiers
         public CacheSerializerModifier(IExecutionContext context)
         {
             ArgumentNullException.ThrowIfNull(context);
-            if (context.Items is null)
-                throw new ExecutionContextNotFoundException();
 
-            if (!context.Items.ContainsKey(ModifierKey))
-                context.Items.Add(ModifierKey, new List<CacheSerializerModifier>());
-
-            requests = (ICollection<CacheSerializerModifier>)context.Items[ModifierKey]!;
+            requests = context.GetOrAddItemsList<CacheSerializerModifier>(ModifierKey);
 
             lock (((ICollection)requests).SyncRoot)
                 requests.Add(this);
@@ -60,9 +56,9 @@ namespace Etherna.MongODM.Core.Serialization.Modifiers
             if (context.Items is null)
                 throw new ExecutionContextNotFoundException();
 
-            if (!context.Items.TryGetValue(ModifierKey, out var requestsObj))
+            var requests = context.TryGetItemsList<CacheSerializerModifier>(ModifierKey);
+            if (requests is null)
                 return false;
-            var requests = (ICollection<CacheSerializerModifier>)requestsObj!;
 
             lock (((ICollection)requests).SyncRoot)
                 return requests.Any(r => r.NoCache);

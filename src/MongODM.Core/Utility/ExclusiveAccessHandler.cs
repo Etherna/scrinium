@@ -14,6 +14,7 @@
 
 using Etherna.MongODM.Core.ExecContext;
 using Etherna.MongODM.Core.ExecContext.Exceptions;
+using Etherna.MongODM.Core.Extensions;
 using System;
 using System.Collections;
 using System.Collections.Generic;
@@ -32,13 +33,8 @@ namespace Etherna.MongODM.Core.Utility
         public ExclusiveAccessHandler(IExecutionContext context)
         {
             ArgumentNullException.ThrowIfNull(context);
-            if (context.Items is null)
-                throw new ExecutionContextNotFoundException();
 
-            if (!context.Items.ContainsKey(HandlerKey))
-                context.Items.Add(HandlerKey, new List<ExclusiveAccessHandler>());
-
-            requests = (ICollection<ExclusiveAccessHandler>)context.Items[HandlerKey]!;
+            requests = context.GetOrAddItemsList<ExclusiveAccessHandler>(HandlerKey);
 
             lock (((ICollection)requests).SyncRoot)
                 requests.Add(this);
@@ -56,9 +52,9 @@ namespace Etherna.MongODM.Core.Utility
             if (context.Items is null)
                 throw new ExecutionContextNotFoundException();
 
-            if (!context.Items.TryGetValue(HandlerKey, out var requestsObj))
+            var requests = context.TryGetItemsList<ExclusiveAccessHandler>(HandlerKey);
+            if (requests is null)
                 return false;
-            var requests = (ICollection<ExclusiveAccessHandler>)requestsObj!;
 
             lock (((ICollection)requests).SyncRoot)
                 return requests.Count != 0;

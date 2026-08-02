@@ -14,6 +14,7 @@
 
 using Etherna.MongODM.Core.ExecContext;
 using Etherna.MongODM.Core.ExecContext.AsyncLocal;
+using Etherna.MongODM.Core.Extensions;
 using Etherna.MongODM.Core.Repositories;
 using System;
 using System.Collections;
@@ -52,10 +53,7 @@ namespace Etherna.MongODM.Core.Utility
             if (executionContext.Items is null) //if an execution context doesn't exist, create it
                 asyncLocalContextHandler = AsyncLocalContext.Instance.InitAsyncLocalContext();
 
-            if (!executionContext.Items!.ContainsKey(HandlerKey))
-                executionContext.Items.Add(HandlerKey, new List<DbExecutionContextHandler>());
-
-            requests = (ICollection<DbExecutionContextHandler>)executionContext.Items[HandlerKey]!;
+            requests = executionContext.GetOrAddItemsList<DbExecutionContextHandler>(HandlerKey);
 
             lock (((ICollection)requests).SyncRoot)
                 requests.Add(this);
@@ -105,10 +103,9 @@ namespace Etherna.MongODM.Core.Utility
         {
             ArgumentNullException.ThrowIfNull(context);
 
-            if (context.Items is null ||
-                !context.Items.TryGetValue(HandlerKey, out var requestsObj))
+            var requests = context.TryGetItemsList<DbExecutionContextHandler>(HandlerKey);
+            if (requests is null)
                 return null;
-            var requests = (ICollection<DbExecutionContextHandler>)requestsObj!;
 
             //get the last with a stack system, for recursing calls between different dbContexts
             lock (((ICollection)requests).SyncRoot)

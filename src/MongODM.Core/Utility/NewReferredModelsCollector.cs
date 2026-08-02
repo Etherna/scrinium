@@ -14,7 +14,7 @@
 
 using Etherna.MongODM.Core.Domain.Models;
 using Etherna.MongODM.Core.ExecContext;
-using Etherna.MongODM.Core.ExecContext.Exceptions;
+using Etherna.MongODM.Core.Extensions;
 using Etherna.MongODM.Core.Repositories;
 using System;
 using System.Collections;
@@ -43,13 +43,8 @@ namespace Etherna.MongODM.Core.Utility
         public NewReferredModelsCollector(IExecutionContext context)
         {
             ArgumentNullException.ThrowIfNull(context);
-            if (context.Items is null)
-                throw new ExecutionContextNotFoundException();
 
-            if (!context.Items.ContainsKey(CollectorKey))
-                context.Items.Add(CollectorKey, new List<NewReferredModelsCollector>());
-
-            requests = (ICollection<NewReferredModelsCollector>)context.Items[CollectorKey]!;
+            requests = context.GetOrAddItemsList<NewReferredModelsCollector>(CollectorKey);
 
             lock (((ICollection)requests).SyncRoot)
                 requests.Add(this);
@@ -79,10 +74,9 @@ namespace Etherna.MongODM.Core.Utility
         {
             ArgumentNullException.ThrowIfNull(context);
 
-            if (context.Items is null ||
-                !context.Items.TryGetValue(CollectorKey, out var requestsObj))
+            var requests = context.TryGetItemsList<NewReferredModelsCollector>(CollectorKey);
+            if (requests is null)
                 return null;
-            var requests = (ICollection<NewReferredModelsCollector>)requestsObj!;
 
             //get the last with a stack system, like the db execution context handlers
             lock (((ICollection)requests).SyncRoot)

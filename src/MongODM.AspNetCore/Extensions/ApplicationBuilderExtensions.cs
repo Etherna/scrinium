@@ -19,7 +19,6 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using System;
-using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 
@@ -40,18 +39,19 @@ namespace Etherna.MongODM.AspNetCore.Extensions
             var dbContextTypes = mongODMOptions.Value.DbContextTypes;
             var dbContexts = dbContextTypes.Select(type => (IDbContext)serviceScope.ServiceProvider.GetRequiredService(type));
 
-            // Create an execution context.
-            using var execContext = AsyncLocalContext.Instance.InitAsyncLocalContext();
-
-            // Seed all dbcontexts.
-            var tasks = new List<Task>();
-            foreach (var dbContext in dbContexts)
-                if (!dbContext.IsSeeded)
-                    tasks.Add(dbContext.SeedIfNeededAsync());
-
-            Task.WaitAll(tasks.ToArray());
+            // Seed all dbcontexts in parallel, each inside its own execution context.
+            Task.WaitAll(dbContexts.Select(SeedDbContextAsync).ToArray());
 
             return builder;
+        }
+
+        // Helpers.
+        private static async Task SeedDbContextAsync(IDbContext dbContext)
+        {
+            /* An execution context serves a single flow: seeding inside a shared one
+             * would share the ambient db state between the parallel seeds. */
+            using var execContext = AsyncLocalContext.Instance.InitAsyncLocalContext();
+            await dbContext.SeedIfNeededAsync().ConfigureAwait(false);
         }
     }
 }
