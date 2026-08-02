@@ -39,10 +39,10 @@ jobs:
         run: dotnet build --configuration Release
 
       - name: Run unit tests
-        run: dotnet test --configuration Release
+        run: dotnet test --configuration Release --no-build
 
       - name: Generate nuget package
-        run: dotnet pack --configuration Release -o nupkg
+        run: dotnet pack --configuration Release --no-build -o nupkg
 
       - name: Push packages
         run: dotnet nuget push './nupkg/*.nupkg' --api-key ${{secrets.NUGET_KEY}} --source https://api.nuget.org/v3/index.json
