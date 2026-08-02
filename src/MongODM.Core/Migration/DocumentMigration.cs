@@ -31,7 +31,7 @@ namespace Etherna.MongODM.Core.Migration
     {
         // Consts.
         /// <summary>
-        /// Maximum number of failing documents detailed by a dry run result.
+        /// Maximum number of failing documents detailed by a migration result.
         /// </summary>
         public const int MaxTrackedDocumentErrors = 100;
 
@@ -43,16 +43,18 @@ namespace Etherna.MongODM.Core.Migration
         /// Perform migration with optional updating callback
         /// </summary>
         /// <param name="callbackEveryTotDocuments">Interval of processed documents between callback invokations. 0 if ignore callback</param>
-        /// <param name="callbackAsync">The async callback function. Parameter is number of processed documents</param>
+        /// <param name="callbackAsync">The async callback function. Parameter is number of migrated documents</param>
         /// <param name="dryRun">If true, simulate the migration without persisting anything:
-        /// each document deserializes and processes with simulated collection writes, and each
-        /// failing document reports into the result errors instead of aborting the migration</param>
+        /// each document processes with simulated collection writes</param>
+        /// <param name="stopAtFirstError">If true, abort the migration at the first failing
+        /// document, instead of skipping it and processing every other document</param>
         /// <param name="cancellationToken"></param>
         /// <returns>The migration result</returns>
         public abstract Task<MigrationResult> MigrateAsync(
             int callbackEveryTotDocuments = 0,
             Func<long, Task>? callbackAsync = null,
             bool dryRun = false,
+            bool stopAtFirstError = false,
             CancellationToken cancellationToken = default);
     }
 
@@ -113,87 +115,71 @@ namespace Etherna.MongODM.Core.Migration
             int callbackEveryTotDocuments = 0,
             Func<long, Task>? callbackAsync = null,
             bool dryRun = false,
+            bool stopAtFirstError = false,
             CancellationToken cancellationToken = default) =>
             _sourceRepository.AccessToCollectionAsync(async sourceCollection =>
             {
                 List<DocumentMigrationError> documentErrors = [];
                 var totDocumentErrors = 0L;
                 var totMigratedDocuments = 0L;
+                var totProcessedDocuments = 0L;
                 try
                 {
                     if (callbackEveryTotDocuments < 0)
                         throw new ArgumentOutOfRangeException(nameof(callbackEveryTotDocuments), "Value can't be negative");
 
-                    if (dryRun)
-                    {
-                        // Simulate documents migration.
-                        /* Scan raw documents and deserialize each one apart: a document failing
-                         * deserialization reports its error without aborting the scan, which a
-                         * typed cursor can't grant. The processor executes with an ambient dry
-                         * run scope, simulating every write it performs. */
-                        await sourceCollection.Find(FilterDefinition<TModel>.Empty, new FindOptions { NoCursorTimeout = true })
-                            .As<BsonDocument>()
-                            .ForEachAsync(async document =>
+                    // Migrate documents.
+                    /* Scan raw documents and deserialize each one apart: a document failing
+                     * deserialization reports its error without aborting the scan, which a
+                     * typed cursor can't grant. */
+                    await sourceCollection.Find(FilterDefinition<TModel>.Empty, new FindOptions { NoCursorTimeout = true })
+                        .As<BsonDocument>()
+                        .ForEachAsync(async document =>
+                        {
+                            // Increment counter.
+                            totProcessedDocuments++;
+
+                            try
                             {
-                                try
-                                {
-                                    // Deserialize the model like the typed find of a real migration would.
-                                    TModel model;
-                                    using (var documentReader = new BsonDocumentReader(document))
-                                        model = sourceCollection.DocumentSerializer.Deserialize(
-                                            BsonDeserializationContext.CreateRoot(documentReader));
+                                // Deserialize the model.
+                                TModel model;
+                                using (var documentReader = new BsonDocumentReader(document))
+                                    model = sourceCollection.DocumentSerializer.Deserialize(
+                                        BsonDeserializationContext.CreateRoot(documentReader));
 
-                                    // Process the model with simulated writes.
-                                    using (new DryRunHandler(_sourceRepository.DbContext.Engine.ExecutionContext))
-                                        await sourceModelProcessorActionAsync(model).ConfigureAwait(false);
-                                }
-                                catch (Exception e) when (e is not OperationCanceledException)
-                                {
-                                    totDocumentErrors++;
-                                    if (documentErrors.Count < MaxTrackedDocumentErrors)
-                                        documentErrors.Add(new DocumentMigrationError(
-                                            document.TryGetValue("_id", out var documentId) ? documentId.ToString()! : "?",
-                                            $"{e.GetType().Name}: {e.Message}"));
-                                }
+                                // Process the model. A dry run simulates every write it performs.
+                                using (dryRun ? new DryRunHandler(_sourceRepository.DbContext.Engine.ExecutionContext) : null)
+                                    await sourceModelProcessorActionAsync(model).ConfigureAwait(false);
 
-                                // Increment counter.
                                 totMigratedDocuments++;
-
-                                // Execute callback.
-                                if (callbackEveryTotDocuments > 0 &&
-                                    totMigratedDocuments % callbackEveryTotDocuments == 0 &&
-                                    callbackAsync != null)
-                                    await callbackAsync(totMigratedDocuments).ConfigureAwait(false);
-
-                            }, cancellationToken).ConfigureAwait(false);
-
-                        if (totDocumentErrors > 0)
-                            return MigrationResult.Failed(
-                                totMigratedDocuments,
-                                documentErrors: documentErrors,
-                                totDocumentErrors: totDocumentErrors);
-                    }
-                    else
-                    {
-                        // Migrate documents.
-                        await sourceCollection.Find(FilterDefinition<TModel>.Empty, new FindOptions { NoCursorTimeout = true })
-                            .ForEachAsync(async model =>
+                            }
+                            catch (Exception e) when (e is not OperationCanceledException)
                             {
-                                await sourceModelProcessorActionAsync(model).ConfigureAwait(false);
+                                // Report the failing document, leaving it on its current content.
+                                totDocumentErrors++;
+                                if (documentErrors.Count < MaxTrackedDocumentErrors)
+                                    documentErrors.Add(new DocumentMigrationError(
+                                        document.TryGetValue("_id", out var documentId) ? documentId.ToString()! : "?",
+                                        $"{e.GetType().Name}: {e.Message}"));
 
-                                // Increment counter.
-                                totMigratedDocuments++;
+                                if (stopAtFirstError)
+                                    throw;
+                            }
 
-                                // Execute callback.
-                                if (callbackEveryTotDocuments > 0 &&
-                                    totMigratedDocuments % callbackEveryTotDocuments == 0 &&
-                                    callbackAsync != null)
-                                    await callbackAsync(totMigratedDocuments).ConfigureAwait(false);
+                            // Execute callback.
+                            if (callbackEveryTotDocuments > 0 &&
+                                totProcessedDocuments % callbackEveryTotDocuments == 0 &&
+                                callbackAsync != null)
+                                await callbackAsync(totMigratedDocuments).ConfigureAwait(false);
 
-                            }, cancellationToken).ConfigureAwait(false);
-                    }
+                        }, cancellationToken).ConfigureAwait(false);
 
-                    return MigrationResult.Succeeded(totMigratedDocuments);
+                    return totDocumentErrors == 0
+                        ? MigrationResult.Succeeded(totMigratedDocuments)
+                        : MigrationResult.Failed(
+                            totMigratedDocuments,
+                            documentErrors: documentErrors,
+                            totDocumentErrors: totDocumentErrors);
                 }
                 catch (Exception e)
                 {

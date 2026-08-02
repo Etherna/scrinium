@@ -253,8 +253,10 @@ namespace Etherna.MongODM.Core
         /// </summary>
         /// <param name="dryRun">If true, start a dry run: simulate the document migrations
         /// without persisting anything, reporting failing documents into the operation logs</param>
+        /// <param name="stopAtFirstError">If true, abort a documents migration at its first
+        /// failing document, instead of skipping it and processing every other document</param>
         /// <returns>The new migration operation, or null if another one is already in progress</returns>
-        Task<DbMigrationOperation?> TryStartMigrationAsync(bool dryRun = false);
+        Task<DbMigrationOperation?> TryStartMigrationAsync(bool dryRun = false, bool stopAtFirstError = false);
 
         /// <summary>
         /// Set the model document of a model on this db context instance: the serialized

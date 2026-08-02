@@ -25,13 +25,22 @@ namespace Etherna.MongODM.Core.Migration
 
         // Properties.
         /// <summary>
-        /// The detail of the documents failed by a dry run, capped at
+        /// The detail of the failing documents, capped at
         /// <see cref="DocumentMigration.MaxTrackedDocumentErrors"/> entries.
         /// <see cref="TotDocumentErrors"/> reports the full count.
         /// </summary>
         public IReadOnlyCollection<DocumentMigrationError> DocumentErrors { get; private set; } = [];
         public Exception? Exception { get; private set; }
+        /// <summary>
+        /// Number of documents processed without errors. Failing documents count
+        /// on <see cref="TotDocumentErrors"/> instead.
+        /// </summary>
         public long MigratedDocuments { get; private set; }
+        /// <summary>
+        /// Number of documents scanned by the migration: the migrated ones,
+        /// plus the failing ones.
+        /// </summary>
+        public long ProcessedDocuments => MigratedDocuments + TotDocumentErrors;
         public bool Succeded { get; private set; }
         public long TotDocumentErrors { get; private set; }
 

@@ -121,20 +121,7 @@ namespace Etherna.MongODM.IntegrationTests
             var note = new Note("valid text");
             await migrationsDbContext.Notes.CreateAsync(note);
 
-            //persist a raw document breaking deserialization: a document value on the string member
-            BsonDocument brokenDocument = null!;
-            await migrationsDbContext.Notes.AccessToCollectionAsync(async collection =>
-            {
-                var rawCollection = collection.Database.GetCollection<BsonDocument>(
-                    collection.CollectionNamespace.CollectionName);
-                var validDocument = await (await rawCollection.FindAsync(FilterDefinition<BsonDocument>.Empty)).SingleAsync();
-
-                brokenDocument = (BsonDocument)validDocument.DeepClone();
-                brokenDocument["_id"] = ObjectId.GenerateNewId();
-                var textElementName = brokenDocument.Elements.Single(e => e.Value == "valid text").Name;
-                brokenDocument[textElementName] = new BsonDocument("broken", true);
-                await rawCollection.InsertOneAsync(brokenDocument);
-            });
+            var brokenDocument = await InsertBrokenNoteDocumentAsync("valid text");
 
             migrationsDbContext.DocumentMigrations =
                 [new DocumentMigration<Note, string>(migrationsDbContext.Notes)];
@@ -159,6 +146,56 @@ namespace Etherna.MongODM.IntegrationTests
             Assert.Equal(DbMigrationOperation.Status.Failed, completedOp.CurrentStatus);
             Assert.DoesNotContain(completedOp.Logs, log => log is DeleteOldIndexesMigrationLog or BuildNewIndexesMigrationLog);
             var documentLog = Assert.IsType<DocumentMigrationLog>(Assert.Single(completedOp.Logs));
+            Assert.Equal(MigrationLogBase.ExecutionState.Failed, documentLog.State);
+            Assert.Equal(1, documentLog.TotMigratedDocs);
+            Assert.Equal(1, documentLog.TotErrorDocs);
+            var documentError = Assert.Single(documentLog.Errors);
+            Assert.Equal(brokenDocument["_id"].ToString(), documentError.DocumentId);
+            Assert.NotEmpty(documentError.Message);
+        }
+
+        [Fact]
+        public async Task MigrationContinuesPastFailingDocuments()
+        {
+            // Setup.
+            using var contextHandler = AsyncLocalContext.Instance.InitAsyncLocalContext();
+            await migrationsDbContext.Notes.DeleteManyAsync(Builders<Note>.Filter.Empty);
+
+            /* The failing document sits between two valid ones: migrating both proves the
+             * scan went on past it, whatever order the collection returns its documents. */
+            var firstNote = new Note("first");
+            await migrationsDbContext.Notes.CreateAsync(firstNote);
+            var brokenDocument = await InsertBrokenNoteDocumentAsync("first");
+            var secondNote = new Note("second");
+            await migrationsDbContext.Notes.CreateAsync(secondNote);
+
+            migrationsDbContext.DocumentMigrations =
+            [
+                new DocumentMigration<Note, string>(migrationsDbContext.Notes, async note =>
+                {
+                    note.Tag = "migrated";
+                    await migrationsDbContext.SaveChangesAsync();
+                })
+            ];
+
+            // Action.
+            var migrationOp = await migrationsDbContext.TryStartMigrationAsync();
+            Assert.NotNull(migrationOp);
+            Assert.False(migrationOp.IsStopAtFirstErrorEnabled);
+            await migrationsDbContext.ExecuteMigrationAsync(migrationOp.Id);
+
+            // Assert.
+            //every valid document migrated, and the failing one keeps its content
+            using var verifyScope = fixture.ServiceProvider.CreateScope();
+            var verifyDbContext = verifyScope.ServiceProvider.GetRequiredService<IMigrationsDbContext>();
+            Assert.Equal("migrated", (await verifyDbContext.Notes.FindOneAsync(firstNote.Id)).Tag);
+            Assert.Equal("migrated", (await verifyDbContext.Notes.FindOneAsync(secondNote.Id)).Tag);
+            Assert.Contains(brokenDocument, await ListRawNoteDocumentsAsync());
+
+            //the operation completed the scan, and closes failed reporting the failing document
+            var completedOp = await verifyDbContext.GetMigrationAsync(migrationOp.Id);
+            Assert.Equal(DbMigrationOperation.Status.Failed, completedOp.CurrentStatus);
+            var documentLog = Assert.Single(completedOp.Logs.OfType<DocumentMigrationLog>());
             Assert.Equal(MigrationLogBase.ExecutionState.Failed, documentLog.State);
             Assert.Equal(2, documentLog.TotMigratedDocs);
             Assert.Equal(1, documentLog.TotErrorDocs);
@@ -224,7 +261,71 @@ namespace Etherna.MongODM.IntegrationTests
             Assert.Equal("migrated", (await ReadRawDigestAsync(digest.Id))["PinnedNote"]["Tag"].AsString);
         }
 
+        [Fact]
+        public async Task MigrationStopsAtFirstFailingDocumentWhenRequired()
+        {
+            // Setup.
+            using var contextHandler = AsyncLocalContext.Instance.InitAsyncLocalContext();
+            await migrationsDbContext.Notes.DeleteManyAsync(Builders<Note>.Filter.Empty);
+
+            await migrationsDbContext.Notes.CreateAsync(new Note("first"));
+            await migrationsDbContext.Notes.CreateAsync(new Note("second"));
+            await migrationsDbContext.Notes.CreateAsync(new Note("third"));
+
+            //every document fails: only the first one processes, whatever order the scan follows
+            var processedNotes = 0;
+            migrationsDbContext.DocumentMigrations =
+            [
+                new DocumentMigration<Note, string>(migrationsDbContext.Notes, _ =>
+                {
+                    processedNotes++;
+                    throw new InvalidOperationException("processor failure");
+                })
+            ];
+
+            // Action.
+            var migrationOp = await migrationsDbContext.TryStartMigrationAsync(stopAtFirstError: true);
+            Assert.NotNull(migrationOp);
+            Assert.True(migrationOp.IsStopAtFirstErrorEnabled);
+            await migrationsDbContext.ExecuteMigrationAsync(migrationOp.Id);
+
+            // Assert.
+            Assert.Equal(1, processedNotes);
+
+            //the operation reports the document aborting it, without scanning the others
+            using var verifyScope = fixture.ServiceProvider.CreateScope();
+            var verifyDbContext = verifyScope.ServiceProvider.GetRequiredService<IMigrationsDbContext>();
+            var completedOp = await verifyDbContext.GetMigrationAsync(migrationOp.Id);
+            Assert.True(completedOp.IsStopAtFirstErrorEnabled);
+            Assert.Equal(DbMigrationOperation.Status.Failed, completedOp.CurrentStatus);
+            var documentLog = Assert.Single(completedOp.Logs.OfType<DocumentMigrationLog>());
+            Assert.Equal(MigrationLogBase.ExecutionState.Failed, documentLog.State);
+            Assert.Equal(0, documentLog.TotMigratedDocs);
+            Assert.Equal(1, documentLog.TotErrorDocs);
+            var documentError = Assert.Single(documentLog.Errors);
+            Assert.Contains("processor failure", documentError.Message, StringComparison.Ordinal);
+        }
+
         // Helpers.
+        /* Persist a raw note document breaking deserialization: a valid document, cloned with a
+         * new id, gets a document value on its string text member. */
+        private Task<BsonDocument> InsertBrokenNoteDocumentAsync(string sourceNoteText) =>
+            migrationsDbContext.Notes.AccessToCollectionAsync(async collection =>
+            {
+                var rawCollection = collection.Database.GetCollection<BsonDocument>(
+                    collection.CollectionNamespace.CollectionName);
+                var documents = await (await rawCollection.FindAsync(FilterDefinition<BsonDocument>.Empty)).ToListAsync();
+                var sourceDocument = documents.Single(d => d.Elements.Any(e => e.Value == sourceNoteText));
+
+                var brokenDocument = (BsonDocument)sourceDocument.DeepClone();
+                brokenDocument["_id"] = ObjectId.GenerateNewId();
+                var textElementName = brokenDocument.Elements.Single(e => e.Value == sourceNoteText).Name;
+                brokenDocument[textElementName] = new BsonDocument("broken", true);
+                await rawCollection.InsertOneAsync(brokenDocument);
+
+                return brokenDocument;
+            });
+
         private Task<List<BsonDocument>> ListRawNoteDocumentsAsync() =>
             migrationsDbContext.Notes.AccessToCollectionAsync(async collection =>
             {

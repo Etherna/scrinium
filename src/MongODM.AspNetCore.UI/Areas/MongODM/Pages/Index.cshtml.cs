@@ -188,7 +188,10 @@ namespace Etherna.MongODM.AspNetCore.UI.Areas.MongODM.Pages
             return new JsonResult(statuses);
         }
 
-        public async Task<IActionResult> OnPostStartMigrationAsync(string identifier, bool dryRun = false)
+        public async Task<IActionResult> OnPostStartMigrationAsync(
+            string identifier,
+            bool dryRun = false,
+            bool stopAtFirstError = false)
         {
             InitializePage();
 
@@ -196,7 +199,7 @@ namespace Etherna.MongODM.AspNetCore.UI.Areas.MongODM.Pages
             if (dbContext is null)
                 return NotFound();
 
-            var migrationOperation = await dbContext.TryStartMigrationAsync(dryRun).ConfigureAwait(false);
+            var migrationOperation = await dbContext.TryStartMigrationAsync(dryRun, stopAtFirstError).ConfigureAwait(false);
 
             return new JsonResult(new
             {
@@ -217,6 +220,7 @@ namespace Etherna.MongODM.AspNetCore.UI.Areas.MongODM.Pages
         {
             id = operation.Id,
             isDryRun = operation.IsDryRun,
+            stopAtFirstError = operation.IsStopAtFirstErrorEnabled,
             status = operation.CurrentStatus.ToString(),
             //the ObjectId id embeds the creation instant
             creationDateTime = ObjectId.TryParse(operation.Id, out var objectId) ? new DateTimeOffset(objectId.CreationTime) : (DateTimeOffset?)null,
