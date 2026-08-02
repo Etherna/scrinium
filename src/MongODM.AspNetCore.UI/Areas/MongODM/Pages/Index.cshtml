@@ -5,6 +5,9 @@
     ViewData["Title"] = "Db contexts";
 }
 
+@* Antiforgery token, sent by mongodmDash.js as request header on every POST. *@
+@Html.AntiForgeryToken()
+
 <div id="connection-banner" class="connection-banner" hidden>
     Connection to the server lost. Retrying&hellip;
 </div>

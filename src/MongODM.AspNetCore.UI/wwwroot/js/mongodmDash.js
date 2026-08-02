@@ -6,6 +6,8 @@
     var FEEDBACK_TIMEOUT_MS = 5000;
 
     var baseUrl = window.location.pathname;
+    //antiforgery token rendered by the page, validated by the server on every post
+    var antiforgeryToken = document.querySelector('input[name="__RequestVerificationToken"]').value;
     var banner = document.getElementById('connection-banner');
     var allCards = Array.prototype.slice.call(document.querySelectorAll('.dbcontext-card'));
     //read-only db contexts render as static cards, with no migration controls to drive
@@ -63,7 +65,10 @@
 
         fetch(baseUrl + '?handler=StartMigration', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'RequestVerificationToken': antiforgeryToken
+            },
             body: new URLSearchParams({
                 identifier: identifier,
                 dryRun: dryRun,
