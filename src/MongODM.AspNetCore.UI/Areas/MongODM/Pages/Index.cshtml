@@ -1,5 +1,6 @@
 @page
 @using Etherna.MongODM.AspNetCore.UI.Areas.MongODM.Pages
+@using Etherna.MongODM.Core.Utility
 @model IndexModel
 @{
     ViewData["Title"] = "Db contexts";
@@ -41,6 +42,27 @@
             }
             else
             {
+                <details class="migration-advanced">
+                    <summary>Advanced</summary>
+
+                    <label class="migration-option">
+                        Lock lease duration
+                        <input type="number" data-role="lock-lease-duration" disabled
+                               min="1" max="@IndexModel.MaxLockLeaseDurationMinutes" step="1"
+                               value="@((int)DbContextLock.DefaultLeaseDuration.TotalMinutes)" />
+                        minutes
+                    </label>
+
+                    <p class="muted">
+                        How long this db context stays locked if this application instance dies before the
+                        migration finishes: until the lease expires, no instance can start a migration or a
+                        seeding of it. It also has to cover the delay before the background worker picks the
+                        job up, the only window nothing renews the lease. It does <strong>not</strong> have to
+                        cover the migration duration, however long it takes: the lease is renewed while the
+                        migration runs. Accepted up to @IndexModel.MaxLockLeaseDurationMinutes minutes.
+                    </p>
+                </details>
+
                 <p class="action-feedback" data-role="feedback" hidden></p>
 
                 <div class="migration-live" data-role="live" hidden>

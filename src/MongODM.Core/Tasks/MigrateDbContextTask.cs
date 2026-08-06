@@ -29,7 +29,9 @@ namespace Etherna.MongODM.Core.Tasks
 
             var dbMigrationOp = (DbMigrationOperation)await dbContext.DbOperations.FindOneAsync(dbMigrationOpId).ConfigureAwait(false);
 
-            // A dry run doesn't persist anything: it runs without locking the db context.
+            /* A dry run doesn't persist anything: it runs without the in-process exclusive
+             * access, keeping the collections available to the other flows. The db context
+             * lock claimed with its operation still applies, denying the other migrations. */
             if (dbMigrationOp.IsDryRun)
                 await dbContext.ExecuteMigrationAsync(dbMigrationOpId, taskId).ConfigureAwait(false);
             else

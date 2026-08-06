@@ -33,6 +33,13 @@ namespace Etherna.MongODM.AspNetCore.UI.Areas.MongODM.Pages
     public class IndexModel : PageModel
     {
         // Consts.
+        /// <summary>
+        /// Longest db context lock lease duration accepted by a migration start, in minutes:
+        /// a whole day. A longer lease would keep the db context locked for days after an
+        /// instance dies, with no way to start a migration or a seeding of it meanwhile.
+        /// </summary>
+        public const int MaxLockLeaseDurationMinutes = 24 * 60;
+
         private const int HistoryLength = 5;
 
         // Fields.
@@ -170,7 +177,16 @@ namespace Etherna.MongODM.AspNetCore.UI.Areas.MongODM.Pages
                 if (dbContext.Engine.Options.IsReadOnly)
                     continue;
 
-                var runningOperation = await dbContext.IsMigrationRunningAsync().ConfigureAwait(false);
+                /* An operation stays open also when the instance executing it dies: a migration
+                 * is in progress only while the db context lock lease of its owner is alive.
+                 * Reporting an orphaned operation as running would disable the start controls
+                 * forever, while a start is the only thing closing the orphaned operations. */
+                var openOperation = await dbContext.IsMigrationRunningAsync().ConfigureAwait(false);
+                var runningOperation =
+                    openOperation is not null &&
+                    await dbContext.Engine.DbContextLock.IsLockedAsync().ConfigureAwait(false)
+                        ? openOperation
+                        : null;
                 var lastOperations = await dbContext.GetLastMigrationsAsync(0, HistoryLength).ConfigureAwait(false);
 
                 statuses.Add(new
@@ -190,7 +206,8 @@ namespace Etherna.MongODM.AspNetCore.UI.Areas.MongODM.Pages
         public async Task<IActionResult> OnPostStartMigrationAsync(
             string identifier,
             bool dryRun = false,
-            bool stopAtFirstError = false)
+            bool stopAtFirstError = false,
+            int? lockLeaseDurationMinutes = null)
         {
             InitializePage();
 
@@ -198,7 +215,27 @@ namespace Etherna.MongODM.AspNetCore.UI.Areas.MongODM.Pages
             if (dbContext is null)
                 return NotFound();
 
-            var migrationOperation = await dbContext.TryStartMigrationAsync(dryRun, stopAtFirstError).ConfigureAwait(false);
+            /* The lease duration arrives from the browser: the page controls bound it, but the
+             * request doesn't have to come from them. A missing or non positive lease can't
+             * claim anything, and an unbounded one would keep the db context locked for as long
+             * as it says if this instance dies. */
+            if (lockLeaseDurationMinutes is not > 0)
+                return BadRequest(new
+                {
+                    started = false,
+                    error = "The lock lease duration must be a positive number of minutes."
+                });
+            if (lockLeaseDurationMinutes > MaxLockLeaseDurationMinutes)
+                return BadRequest(new
+                {
+                    started = false,
+                    error = $"The lock lease duration can't exceed {MaxLockLeaseDurationMinutes} minutes."
+                });
+
+            var migrationOperation = await dbContext.TryStartMigrationAsync(
+                dryRun,
+                stopAtFirstError,
+                TimeSpan.FromMinutes(lockLeaseDurationMinutes.Value)).ConfigureAwait(false);
 
             return new JsonResult(new
             {

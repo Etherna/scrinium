@@ -82,6 +82,13 @@ documents to complex application domains.
   recording the schema that wrote it.
 - **Data migrations** — configurable migration scripts between document schemas, skipping and reporting
   the failing documents, with a **dry run** mode simulating the migration without persisting anything.
+  Migrations and seeding are serialized across every application instance connected to the database,
+  through a server side lock with an expiring lease (persisted in the `_db_lock` collection, renamable
+  with `DbContextOptions.DbLockCollectionName`). The lease is renewed while the work runs, so its
+  duration is how long a dead instance blocks the others: each operation chooses it, with
+  `TryStartMigrationAsync(lockLeaseDuration)` and `SeedIfNeededAsync(lockWaitTimeout, lockLeaseDuration)`
+  (forwarded by the startup `SeedDbContexts`), 10 minutes by default. An unspecified seeding wait for
+  the lock owner defaults to the lease duration of that seeding.
 - **Customizable indexes** — declare the indexes of a collection, with automatic indexes for the id paths
   of referenced documents.
 - **Read-only access** — deny writes on a whole db context or on a single repository, to safely consume

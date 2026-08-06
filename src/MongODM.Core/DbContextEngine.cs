@@ -12,6 +12,7 @@
 // You should have received a copy of the GNU Lesser General Public License along with MongODM.
 // If not, see <https://www.gnu.org/licenses/>.
 
+using Etherna.MongoDB.Bson;
 using Etherna.MongoDB.Bson.Serialization;
 using Etherna.MongoDB.Driver;
 using Etherna.MongoDB.Driver.Core.Clusters;
@@ -41,6 +42,7 @@ namespace Etherna.MongODM.Core
         : IDbContextEngine, IDisposable
     {
         // Fields.
+        private IDbContextLock? _dbContextLock;
         private volatile bool _isExclusiveReadEnabled;
         private volatile bool _isExclusiveWriteEnabled;
         private bool? _isSeededCache;
@@ -131,6 +133,28 @@ namespace Etherna.MongODM.Core
         // Properties.
         public IMongoClient Client { get; private set; } = null!;
         public IMongoDatabase Database { get; private set; } = null!;
+        /* Built lazily at first use: the lock collection is accessed raw, out of the engine
+         * access limitations, being the coordination infrastructure of the exclusive works. */
+        public IDbContextLock DbContextLock
+        {
+            get
+            {
+                /* The lock collection is written raw, out of the read-only enforcement of the
+                 * guarded collections: deny the whole lock on a read-only db context, or
+                 * claiming it would write on a database this db context can only read. */
+                if (Options.IsReadOnly)
+                    throw new InvalidOperationException(
+                        $"Can't access the db context lock of the read-only db context {Identifier}: " +
+                        $"claiming it would write the {Options.DbLockCollectionName} collection of database {Options.DbName}. " +
+                        "Seeding and migrations of that database belong to the application owning it");
+
+                return LazyInitializer.EnsureInitialized(ref _dbContextLock, () => new DbContextLock(
+                    Database.GetCollection<BsonDocument>(Options.DbLockCollectionName),
+                    Identifier,
+                    ExecutionContext,
+                    logger));
+            }
+        }
         public Type DbContextType { get; private set; } = null!;
         public IDbMaintainer DbMaintainer { get; private set; } = null!;
         public IDbMigrationManager DbMigrationManager { get; private set; } = null!;

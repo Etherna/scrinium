@@ -45,6 +45,16 @@ namespace Etherna.MongODM.Core
         IMongoDatabase Database { get; }
 
         /// <summary>
+        /// Server side lock of the db context, coordinating its exclusive works (seeding and
+        /// migrations) once per db context across every application instance connected to the
+        /// database. Applications configuring different lock collection names for the same
+        /// database don't exclude each other.
+        /// </summary>
+        /// <exception cref="InvalidOperationException">The db context is read-only: claiming
+        /// the lock would write on a database it can only read</exception>
+        IDbContextLock DbContextLock { get; }
+
+        /// <summary>
         /// Type of the db context of this engine.
         /// </summary>
         Type DbContextType { get; }

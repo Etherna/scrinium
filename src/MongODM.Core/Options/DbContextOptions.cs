@@ -26,6 +26,7 @@ namespace Etherna.MongODM.Core.Options
         // Properties.
         public IEnumerable<Type> ChildDbContextTypes => _childDbContextTypes;
         public string ConnectionString { get; set; } = "mongodb://localhost/localDb";
+        public string DbLockCollectionName { get; set; } = "_db_lock";
         public string DbName => ConnectionString.Split('?')[0]
                                                 .Split('/').Last();
         public string DbOperationsCollectionName { get; set; } = "_db_ops";

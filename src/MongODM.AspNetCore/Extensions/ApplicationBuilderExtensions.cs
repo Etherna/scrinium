@@ -26,8 +26,25 @@ namespace Etherna.MongODM.AspNetCore.Extensions
 {
     public static class ApplicationBuilderExtensions
     {
+        /// <summary>
+        /// Seed every registered db context still not seeded, in parallel, blocking the
+        /// application startup until they all complete.
+        /// </summary>
+        /// <param name="builder">The application builder</param>
+        /// <param name="lockWaitTimeout">Maximum time each seeding waits for the db context lock
+        /// held by ANOTHER owner, forwarded to
+        /// <see cref="IDbContext.SeedIfNeededAsync(TimeSpan?, TimeSpan?)"/> and defaulted by it
+        /// to the lease duration of the seeding</param>
+        /// <param name="lockLeaseDuration">Duration of the lock lease claimed by EACH seeding,
+        /// forwarded to <see cref="IDbContext.SeedIfNeededAsync(TimeSpan?, TimeSpan?)"/> and
+        /// defaulted by it to <see cref="Core.Utility.DbContextLock.DefaultLeaseDuration"/>: how
+        /// long a db context stays locked if this application instance dies before its seeding
+        /// completes</param>
+        /// <returns>The application builder</returns>
         public static IApplicationBuilder SeedDbContexts(
-            this IApplicationBuilder builder)
+            this IApplicationBuilder builder,
+            TimeSpan? lockWaitTimeout = null,
+            TimeSpan? lockLeaseDuration = null)
         {
             ArgumentNullException.ThrowIfNull(builder);
 
@@ -40,18 +57,23 @@ namespace Etherna.MongODM.AspNetCore.Extensions
             var dbContexts = dbContextTypes.Select(type => (IDbContext)serviceScope.ServiceProvider.GetRequiredService(type));
 
             // Seed all dbcontexts in parallel, each inside its own execution context.
-            Task.WaitAll(dbContexts.Select(SeedDbContextAsync).ToArray());
+            Task.WaitAll(dbContexts
+                .Select(dbContext => SeedDbContextAsync(dbContext, lockWaitTimeout, lockLeaseDuration))
+                .ToArray());
 
             return builder;
         }
 
         // Helpers.
-        private static async Task SeedDbContextAsync(IDbContext dbContext)
+        private static async Task SeedDbContextAsync(
+            IDbContext dbContext,
+            TimeSpan? lockWaitTimeout,
+            TimeSpan? lockLeaseDuration)
         {
             /* An execution context serves a single flow: seeding inside a shared one
              * would share the ambient db state between the parallel seeds. */
             using var execContext = AsyncLocalContext.Instance.InitAsyncLocalContext();
-            await dbContext.SeedIfNeededAsync().ConfigureAwait(false);
+            await dbContext.SeedIfNeededAsync(lockWaitTimeout, lockLeaseDuration).ConfigureAwait(false);
         }
     }
 }

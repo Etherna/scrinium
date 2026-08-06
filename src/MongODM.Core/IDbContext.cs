@@ -119,6 +119,10 @@ namespace Etherna.MongODM.Core
         /// The caller must already hold an exclusive access on the db context, except for a dry
         /// run operation, that simulates the document migrations without persisting anything,
         /// skips the index steps, and reports failing documents into the operation logs.
+        /// The execution resumes the db context lock claimed with the operation, keeping its
+        /// lease renewed and releasing it at completion, unless an outer flow (e.g. seeding)
+        /// already holds a lease; an operation whose claim doesn't resume (its lock has been
+        /// taken over by another owner, or released) closes cancelled without migrating.
         /// </summary>
         /// <param name="dbMigrationOpId">Id of the migration operation to execute</param>
         /// <param name="taskId">Optional id of the background task running the migration</param>
@@ -234,10 +238,27 @@ namespace Etherna.MongODM.Core
         Task SaveChangesAsync(CancellationToken cancellationToken = default);
 
         /// <summary>
-        /// Seed database context if still not seeded, applying a db migration before the seed
+        /// Seed database context if still not seeded, applying a db migration before the seed.
+        /// The seeding claims the db context lock, running once per db context across every
+        /// application instance connected to the database: while another owner holds the lock
+        /// (another application instance, or another flow of this process) the call waits,
+        /// re-reading the seeding state from the db.
         /// </summary>
+        /// <param name="lockWaitTimeout">Maximum time this seeding waits for the db context
+        /// lock held by ANOTHER owner, defaulted to the lease duration of this call. With the
+        /// default, the lease of a dead owner always expires inside the wait: only an owner
+        /// still alive, and working longer than the wait, fails the seeding. The wait covers
+        /// the whole work of the other owner (a seeding, a migration, or a diagnostic dry
+        /// run), so it must be generous enough for it: startup seeding blocks on it</param>
+        /// <param name="lockLeaseDuration">Duration of the lock lease claimed by THIS seeding,
+        /// defaulted to <see cref="Utility.DbContextLock.DefaultLeaseDuration"/>: how long the
+        /// db context stays locked if this application instance dies before the seeding
+        /// completes. It doesn't have to cover the seeding duration, since the lease is renewed
+        /// in background while the seeding runs</param>
         /// <returns>True if seed has been executed. False otherwise</returns>
-        Task<bool> SeedIfNeededAsync();
+        /// <exception cref="Exceptions.MongodmDbSeedingException">The seed failed, or the db
+        /// context lock stayed held by another owner for the whole wait timeout</exception>
+        Task<bool> SeedIfNeededAsync(TimeSpan? lockWaitTimeout = null, TimeSpan? lockLeaseDuration = null);
 
         /// <summary>
         /// Try to get the model instance already loaded on this db context instance for a
@@ -249,14 +270,29 @@ namespace Etherna.MongODM.Core
         IEntityModel? TryGetLoadedModel(IRepository repository, object modelId);
 
         /// <summary>
-        /// Try to start a db context migration process, if no other migration is queued or running.
+        /// Try to start a db context migration process, claiming the db context lock with the
+        /// new operation as owner: the claim is atomic on the server, so a single start wins
+        /// also with concurrent starts from different application instances, and it is denied
+        /// while another owner (a queued or running migration, or a seeding) holds the lock.
+        /// Operations orphaned by dead owners close at the next start, once their lease expires.
         /// </summary>
         /// <param name="dryRun">If true, start a dry run: simulate the document migrations
         /// without persisting anything, reporting failing documents into the operation logs</param>
         /// <param name="stopAtFirstError">If true, abort a documents migration at its first
         /// failing document, instead of skipping it and processing every other document</param>
-        /// <returns>The new migration operation, or null if another one is already in progress</returns>
-        Task<DbMigrationOperation?> TryStartMigrationAsync(bool dryRun = false, bool stopAtFirstError = false);
+        /// <param name="lockLeaseDuration">Duration of the lock lease claimed by this start,
+        /// defaulted to <see cref="Utility.DbContextLock.DefaultLeaseDuration"/>: how long the
+        /// db context stays locked if this application instance dies before the migration
+        /// completes, and how long the claim survives waiting for the background task runner to
+        /// pick the operation up, the only window nothing renews it. It doesn't have to cover
+        /// the migration duration, since the execution keeps the lease renewed</param>
+        /// <returns>The new migration operation, or null when the start is denied: a read-only
+        /// db context, an exclusive access already running in this process, or the db context
+        /// lock held by another owner</returns>
+        Task<DbMigrationOperation?> TryStartMigrationAsync(
+            bool dryRun = false,
+            bool stopAtFirstError = false,
+            TimeSpan? lockLeaseDuration = null);
 
         /// <summary>
         /// Set the model document of a model on this db context instance: the serialized

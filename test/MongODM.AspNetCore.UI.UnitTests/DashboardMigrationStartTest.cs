@@ -18,6 +18,7 @@ using Etherna.MongODM.Core;
 using Etherna.MongODM.Core.Domain.Models;
 using Etherna.MongODM.Core.Options;
 using Etherna.MongODM.Core.Repositories;
+using Etherna.MongODM.Core.Utility;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
@@ -27,6 +28,7 @@ using Microsoft.Extensions.Hosting;
 using Moq;
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using System.Net;
 using System.Net.Http;
@@ -36,7 +38,9 @@ using Xunit;
 
 namespace Etherna.MongODM.AspNetCore.UI
 {
-    public class DashboardAntiforgeryTest
+    /* The lock lease duration of a migration start arrives from the browser: the page controls
+     * bound it, but nothing guarantees the request comes from them. */
+    public class DashboardMigrationStartTest
     {
         // Internal classes.
         private sealed class AllowAllAuthFilter : IDashboardAuthFilter
@@ -52,7 +56,7 @@ namespace Etherna.MongODM.AspNetCore.UI
         private readonly Mock<IDbContext> dbContextMock;
 
         // Constructor.
-        public DashboardAntiforgeryTest()
+        public DashboardMigrationStartTest()
         {
             var engineMock = new Mock<IDbContextEngine>();
             engineMock.Setup(engine => engine.Identifier).Returns(DbContextIdentifier);
@@ -70,95 +74,100 @@ namespace Etherna.MongODM.AspNetCore.UI
             dbContextMock.Setup(dbContext => dbContext.RepositoryRegistry).Returns(repositoryRegistryMock.Object);
             dbContextMock.Setup(dbContext => dbContext.TryStartMigrationAsync(
                     It.IsAny<bool>(), It.IsAny<bool>(), It.IsAny<TimeSpan?>()))
-                .ReturnsAsync((DbMigrationOperation?)null);
+                .ReturnsAsync(new DbMigrationOperation(engineMock.Object));
         }
 
         // Tests.
         [Fact]
-        public async Task IndexPageRendersAntiforgeryToken()
+        public async Task PageRendersTheLockLeaseDurationControl()
         {
             // Setup.
             using var host = await StartDashboardHostAsync();
-            var client = host.GetTestClient();
 
             // Action.
-            var response = await client.GetAsync(new Uri(PagePath, UriKind.Relative));
+            var response = await host.GetTestClient().GetAsync(new Uri(PagePath, UriKind.Relative));
 
             // Assert.
             response.EnsureSuccessStatusCode();
             var pageHtml = await response.Content.ReadAsStringAsync();
-            Assert.Contains("__RequestVerificationToken", pageHtml, StringComparison.Ordinal);
+            Assert.Contains("data-role=\"lock-lease-duration\"", pageHtml, StringComparison.Ordinal);
+            //the control offers the default lease duration, inside the range the handler accepts
+            Assert.Contains(
+                $"value=\"{(int)DbContextLock.DefaultLeaseDuration.TotalMinutes}\"",
+                pageHtml,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                $"max=\"{IndexModel.MaxLockLeaseDurationMinutes}\"",
+                pageHtml,
+                StringComparison.Ordinal);
         }
 
         [Fact]
-        public async Task StartMigrationPostWithTokenExecutesHandler()
+        public async Task StartForwardsTheRequestedLockLeaseDuration()
         {
             // Setup.
             using var host = await StartDashboardHostAsync();
-            var client = host.GetTestClient();
-
-            var pageResponse = await client.GetAsync(new Uri(PagePath, UriKind.Relative));
-            pageResponse.EnsureSuccessStatusCode();
-            var (token, cookie) = await ExtractAntiforgeryAsync(pageResponse);
-
-            using var request = new HttpRequestMessage(HttpMethod.Post, PagePath + "?handler=StartMigration");
-            request.Content = new FormUrlEncodedContent(new Dictionary<string, string>
-            {
-                ["identifier"] = DbContextIdentifier,
-                ["lockLeaseDurationMinutes"] = "10"
-            });
-            request.Headers.Add("Cookie", cookie);
-            //same header sent by mongodmDash.js
-            request.Headers.Add("RequestVerificationToken", token);
 
             // Action.
-            var response = await client.SendAsync(request);
+            var response = await PostStartMigrationAsync(host, "25");
 
             // Assert.
             response.EnsureSuccessStatusCode();
-            var responseJson = await response.Content.ReadAsStringAsync();
-            Assert.Contains("\"started\":false", responseJson, StringComparison.Ordinal);
+            Assert.Contains(
+                "\"started\":true",
+                await response.Content.ReadAsStringAsync(),
+                StringComparison.Ordinal);
             dbContextMock.Verify(
-                dbContext => dbContext.TryStartMigrationAsync(false, false, TimeSpan.FromMinutes(10)),
+                dbContext => dbContext.TryStartMigrationAsync(false, false, TimeSpan.FromMinutes(25)),
                 Times.Once());
         }
 
         [Fact]
-        public async Task StartMigrationPostWithoutTokenIsRejected()
+        public async Task StartRejectsALockLeaseDurationOverTheMaximum()
         {
+            /* An unbounded lease would keep the db context locked for as long as it says, with
+             * no way to start a migration or a seeding of it meanwhile. */
+
             // Setup.
             using var host = await StartDashboardHostAsync();
-            var client = host.GetTestClient();
-
-            using var request = new HttpRequestMessage(HttpMethod.Post, PagePath + "?handler=StartMigration");
-            request.Content = new FormUrlEncodedContent(
-                new Dictionary<string, string> { ["identifier"] = DbContextIdentifier });
 
             // Action.
-            var response = await client.SendAsync(request);
+            var response = await PostStartMigrationAsync(
+                host,
+                (IndexModel.MaxLockLeaseDurationMinutes + 1).ToString(CultureInfo.InvariantCulture));
 
             // Assert.
             Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
-            dbContextMock.Verify(
-                dbContext => dbContext.TryStartMigrationAsync(
-                    It.IsAny<bool>(), It.IsAny<bool>(), It.IsAny<TimeSpan?>()),
-                Times.Never());
+            //the page renders the error of the body through its feedback path
+            var responseJson = await response.Content.ReadAsStringAsync();
+            Assert.Contains("\"started\":false", responseJson, StringComparison.Ordinal);
+            Assert.Contains(
+                IndexModel.MaxLockLeaseDurationMinutes.ToString(CultureInfo.InvariantCulture),
+                responseJson,
+                StringComparison.Ordinal);
+            VerifyNoMigrationStarted();
         }
 
-        [Fact]
-        public async Task StatusGetRequiresNoToken()
+        [Theory]
+        //absent: a start without a lease duration has nothing to claim the lock with
+        [InlineData(null)]
+        [InlineData("0")]
+        [InlineData("-5")]
+        [InlineData("notANumber")]
+        public async Task StartRejectsAnUnusableLockLeaseDuration(string? lockLeaseDurationMinutes)
         {
             // Setup.
             using var host = await StartDashboardHostAsync();
-            var client = host.GetTestClient();
 
             // Action.
-            var response = await client.GetAsync(new Uri(PagePath + "?handler=Status", UriKind.Relative));
+            var response = await PostStartMigrationAsync(host, lockLeaseDurationMinutes);
 
             // Assert.
-            response.EnsureSuccessStatusCode();
+            Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
             var responseJson = await response.Content.ReadAsStringAsync();
-            Assert.Contains($"\"identifier\":\"{DbContextIdentifier}\"", responseJson, StringComparison.Ordinal);
+            Assert.Contains("\"started\":false", responseJson, StringComparison.Ordinal);
+            Assert.Contains("positive", responseJson, StringComparison.Ordinal);
+            VerifyNoMigrationStarted();
         }
 
         // Helpers.
@@ -173,6 +182,31 @@ namespace Etherna.MongODM.AspNetCore.UI
                 .Split(';')[0];
 
             return (tokenMatch.Groups[1].Value, cookie);
+        }
+
+        private static async Task<HttpResponseMessage> PostStartMigrationAsync(
+            IHost host,
+            string? lockLeaseDurationMinutes)
+        {
+            var client = host.GetTestClient();
+
+            var pageResponse = await client.GetAsync(new Uri(PagePath, UriKind.Relative));
+            pageResponse.EnsureSuccessStatusCode();
+            var (token, cookie) = await ExtractAntiforgeryAsync(pageResponse);
+
+            var form = new Dictionary<string, string> { ["identifier"] = DbContextIdentifier };
+            if (lockLeaseDurationMinutes is not null)
+                form["lockLeaseDurationMinutes"] = lockLeaseDurationMinutes;
+
+            using var request = new HttpRequestMessage(HttpMethod.Post, PagePath + "?handler=StartMigration")
+            {
+                Content = new FormUrlEncodedContent(form)
+            };
+            request.Headers.Add("Cookie", cookie);
+            //same header sent by mongodmDash.js
+            request.Headers.Add("RequestVerificationToken", token);
+
+            return await client.SendAsync(request);
         }
 
         private async Task<IHost> StartDashboardHostAsync() =>
@@ -201,5 +235,11 @@ namespace Etherna.MongODM.AspNetCore.UI
                         app.UseEndpoints(endpoints => endpoints.MapRazorPages());
                     }))
                 .StartAsync();
+
+        private void VerifyNoMigrationStarted() =>
+            dbContextMock.Verify(
+                dbContext => dbContext.TryStartMigrationAsync(
+                    It.IsAny<bool>(), It.IsAny<bool>(), It.IsAny<TimeSpan?>()),
+                Times.Never());
     }
 }
