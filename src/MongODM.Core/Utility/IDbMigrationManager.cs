@@ -13,6 +13,7 @@
 // If not, see <https://www.gnu.org/licenses/>.
 
 using Etherna.MongODM.Core.Domain.Models;
+using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 
@@ -26,6 +27,10 @@ namespace Etherna.MongODM.Core.Utility
         /// operation asks to stop at the first error. The caller must already hold an exclusive
         /// access on the db context, except for a dry run operation, that simulates the document
         /// migrations without persisting anything and skips the index steps.
+        /// The execution resumes the db context lock claimed with the operation, keeping its
+        /// lease renewed and releasing it at completion, unless an outer flow (e.g. seeding)
+        /// already holds a lease; an operation whose claim doesn't resume (its lock has been
+        /// taken over by another owner, or released) closes cancelled without migrating.
         /// </summary>
         /// <param name="dbContext">The db context to migrate</param>
         /// <param name="dbMigrationOpId">Id of the migration operation to execute</param>
@@ -40,17 +45,30 @@ namespace Etherna.MongODM.Core.Utility
         Task<DbMigrationOperation> GetMigrationAsync(IDbContext dbContext, string migrateOperationId);
 
         /// <summary>
-        /// Try to start a db context migration process, if no other migration is queued or running.
+        /// Try to start a db context migration process, claiming the db context lock with the
+        /// new operation as owner: the claim is atomic on the server, so a single start wins
+        /// also with concurrent starts from different application instances, and it is denied
+        /// while another owner (a queued or running migration, or a seeding) holds the lock.
+        /// Operations orphaned by dead owners close at the next start, once their lease expires.
         /// </summary>
         /// <param name="dbContext">The db context to migrate</param>
         /// <param name="dryRun">If true, start a dry run: simulate the document migrations
         /// without persisting anything, reporting failing documents into the operation logs</param>
         /// <param name="stopAtFirstError">If true, abort a documents migration at its first
         /// failing document, instead of skipping it and processing every other document</param>
-        /// <returns>The new migration operation, or null if another one is already in progress</returns>
+        /// <param name="lockLeaseDuration">Duration of the lock lease claimed by this start,
+        /// defaulted to <see cref="DbContextLock.DefaultLeaseDuration"/>: how long the db
+        /// context stays locked if this application instance dies before the migration
+        /// completes, and how long the claim survives waiting for the background task runner to
+        /// pick the operation up, the only window nothing renews it. It doesn't have to cover
+        /// the migration duration, since the execution keeps the lease renewed</param>
+        /// <returns>The new migration operation, or null when the start is denied: a read-only
+        /// db context, an exclusive access already running in this process, or the db context
+        /// lock held by another owner</returns>
         Task<DbMigrationOperation?> TryStartDbContextMigrationAsync(
             IDbContext dbContext,
             bool dryRun = false,
-            bool stopAtFirstError = false);
+            bool stopAtFirstError = false,
+            TimeSpan? lockLeaseDuration = null);
     }
 }

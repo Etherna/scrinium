@@ -20,7 +20,7 @@ namespace Etherna.MongODM.Core.Extensions
 {
     /*
      * Always group similar log delegates by type, always use incremental event ids.
-     * Last event id is: 50
+     * Last event id is: 58
      */
     public static class LoggerExtensions
     {
@@ -190,6 +190,12 @@ namespace Etherna.MongODM.Core.Extensions
                 new EventId(46, nameof(DbContextSeedingSkippedOnReadOnly)),
                 "DbContext {DbName} skipped seeding: the db context is read-only");
 
+        private static readonly Action<ILogger, string, Exception> _dbContextSeedingWaitingForLock =
+            LoggerMessage.Define<string>(
+                LogLevel.Information,
+                new EventId(56, nameof(DbContextSeedingWaitingForLock)),
+                "DbContext {DbName} is waiting for the db context lock before seeding: another instance may be seeding or migrating");
+
         private static readonly Action<ILogger, string, string, int, Exception> _repositoryAutoCreatedNewReferredModels =
             LoggerMessage.Define<string, string, int>(
                 LogLevel.Information,
@@ -281,6 +287,42 @@ namespace Etherna.MongODM.Core.Extensions
                 new EventId(43, nameof(DbContextImplicitLazyLoad)),
                 "DbContext {DbName} implicitly lazy loaded model type {ModelType} reading member {MemberName}: prefer an explicit preload with LoadValuesAsync");
 
+        private static readonly Action<ILogger, string, string, Exception> _dbContextLockLeaseRenewalFailed =
+            LoggerMessage.Define<string, string>(
+                LogLevel.Warning,
+                new EventId(52, nameof(DbContextLockLeaseRenewalFailed)),
+                "Db context lock {LockId} lease renewal failed for owner {OwnerId}: retrying until the lease expiration");
+
+        private static readonly Action<ILogger, string, string, Exception> _dbContextLockReleaseFailed =
+            LoggerMessage.Define<string, string>(
+                LogLevel.Warning,
+                new EventId(53, nameof(DbContextLockReleaseFailed)),
+                "Db context lock {LockId} release failed for owner {OwnerId}: the lease will expire on its own");
+
+        private static readonly Action<ILogger, string, string, Exception> _dbMigrationCancelledWithoutLockClaim =
+            LoggerMessage.Define<string, string>(
+                LogLevel.Warning,
+                new EventId(54, nameof(DbMigrationCancelledWithoutLockClaim)),
+                "Db migration operation {DbMigrationOpId} of DbContext {DbName} cancelled: the operation doesn't own the db context lock anymore");
+
+        private static readonly Action<ILogger, long, string, Exception> _dbMigrationClosedOrphanedOperations =
+            LoggerMessage.Define<long, string>(
+                LogLevel.Warning,
+                new EventId(55, nameof(DbMigrationClosedOrphanedOperations)),
+                "DbMigrationManager closed {OperationsCount} migration operations of DbContext {DbName}, orphaned by dead owners with expired lock leases");
+
+        private static readonly Action<ILogger, string, string, Exception> _dbMigrationDeniedStartCleanupFailed =
+            LoggerMessage.Define<string, string>(
+                LogLevel.Warning,
+                new EventId(58, nameof(DbMigrationDeniedStartCleanupFailed)),
+                "Db migration operation {DbMigrationOpId} of DbContext {DbName} didn't claim the db context lock, and couldn't be deleted: it closes with the orphaned operations at the next start");
+
+        private static readonly Action<ILogger, string, string, Exception> _dbMigrationStartCleanupFailed =
+            LoggerMessage.Define<string, string>(
+                LogLevel.Warning,
+                new EventId(57, nameof(DbMigrationStartCleanupFailed)),
+                "Db migration operation {DbMigrationOpId} of DbContext {DbName} failed to start, and couldn't release the db context lock it claimed: the lease will expire on its own");
+
         private static readonly Action<ILogger, string, Exception> _dbContextAbortedTransaction =
             LoggerMessage.Define<string>(
                 LogLevel.Warning,
@@ -300,6 +342,12 @@ namespace Etherna.MongODM.Core.Extensions
                 "UpdateDocDependenciesTask skipped on DbContext {DbContextType} with reference repository {ReferenceRepositoryName}: model Id {ModelId} doesn't exist anymore");
 
         //*** ERROR LOGS ***
+        private static readonly Action<ILogger, string, string, Exception> _dbContextLockLeaseLost =
+            LoggerMessage.Define<string, string>(
+                LogLevel.Error,
+                new EventId(51, nameof(DbContextLockLeaseLost)),
+                "Db context lock {LockId} lease lost by owner {OwnerId}: another claimer may already hold the lock");
+
         private static readonly Action<ILogger, string, string, Exception> _dbMigrationFailed =
             LoggerMessage.Define<string, string>(
                 LogLevel.Error,
@@ -323,6 +371,15 @@ namespace Etherna.MongODM.Core.Extensions
 
         public static void DbContextInitialized(this ILogger logger, string dbName) =>
             _dbContextInitialized(logger, dbName, null!);
+
+        public static void DbContextLockLeaseLost(this ILogger logger, string lockId, string ownerId) =>
+            _dbContextLockLeaseLost(logger, lockId, ownerId, null!);
+
+        public static void DbContextLockLeaseRenewalFailed(this ILogger logger, string lockId, string ownerId, Exception exception) =>
+            _dbContextLockLeaseRenewalFailed(logger, lockId, ownerId, exception);
+
+        public static void DbContextLockReleaseFailed(this ILogger logger, string lockId, string ownerId, Exception exception) =>
+            _dbContextLockReleaseFailed(logger, lockId, ownerId, exception);
 
         public static void DbContextRegisteredChangedModel(this ILogger logger, string dbName, string modelId, string repositoryName) =>
             _dbContextRegisteredChangedModel(logger, dbName, modelId, repositoryName, null!);
@@ -351,6 +408,9 @@ namespace Etherna.MongODM.Core.Extensions
         public static void DbContextSeedingSkippedOnReadOnly(this ILogger logger, string dbName) =>
             _dbContextSeedingSkippedOnReadOnly(logger, dbName, null!);
 
+        public static void DbContextSeedingWaitingForLock(this ILogger logger, string dbName) =>
+            _dbContextSeedingWaitingForLock(logger, dbName, null!);
+
         public static void DbContextStartedTransaction(this ILogger logger, string dbName) =>
             _dbContextStartedTransaction(logger, dbName, null!);
 
@@ -372,11 +432,23 @@ namespace Etherna.MongODM.Core.Extensions
         public static void DbMaintainerSkippedDependenciesUpdateWithoutReferences(this ILogger logger, string dbName, string modelId) =>
             _dbMaintainerSkippedDependenciesUpdateWithoutReferences(logger, dbName, modelId, null!);
 
+        public static void DbMigrationCancelledWithoutLockClaim(this ILogger logger, string dbMigrationOpId, string dbName) =>
+            _dbMigrationCancelledWithoutLockClaim(logger, dbMigrationOpId, dbName, null!);
+
+        public static void DbMigrationClosedOrphanedOperations(this ILogger logger, long operationsCount, string dbName) =>
+            _dbMigrationClosedOrphanedOperations(logger, operationsCount, dbName, null!);
+
         public static void DbMigrationFailed(this ILogger logger, string dbMigrationOpId, string dbName, Exception exception) =>
             _dbMigrationFailed(logger, dbMigrationOpId, dbName, exception);
 
         public static void DbMigrationManagerInitialized(this ILogger logger, string dbName) =>
             _dbMigrationManagerInitialized(logger, dbName, null!);
+
+        public static void DbMigrationDeniedStartCleanupFailed(this ILogger logger, string dbMigrationOpId, string dbName, Exception exception) =>
+            _dbMigrationDeniedStartCleanupFailed(logger, dbMigrationOpId, dbName, exception);
+
+        public static void DbMigrationStartCleanupFailed(this ILogger logger, string dbMigrationOpId, string dbName, Exception exception) =>
+            _dbMigrationStartCleanupFailed(logger, dbMigrationOpId, dbName, exception);
 
         public static void DiscriminatorRegistryInitialized(this ILogger logger, string dbName) =>
             _discriminatorRegistryInitialized(logger, dbName, null!);

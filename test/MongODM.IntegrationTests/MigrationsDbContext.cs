@@ -18,6 +18,7 @@ using Etherna.MongODM.Core.Repositories;
 using Etherna.MongODM.Core.Serialization;
 using Etherna.MongODM.IntegrationTests.ModelMaps;
 using Etherna.MongODM.IntegrationTests.Models;
+using Microsoft.Extensions.Logging;
 using System.Collections.Generic;
 
 namespace Etherna.MongODM.IntegrationTests
@@ -29,7 +30,8 @@ namespace Etherna.MongODM.IntegrationTests
         IRepository<Note, string> Notes { get; }
     }
 
-    internal sealed class MigrationsDbContext : DbContext, IMigrationsDbContext
+    internal sealed class MigrationsDbContext(ILogger logger)
+        : DbContext(logger), IMigrationsDbContext
     {
         // Properties.
         //repositories

@@ -149,6 +149,42 @@ main.container {
   gap: 0.35rem;
 }
 
+.migration-option input[type="number"] {
+  background-color: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 0.35rem;
+  color: inherit;
+  font-size: 0.85rem;
+  padding: 0.2rem 0.4rem;
+  width: 5rem;
+}
+
+.migration-option input:disabled {
+  background-color: var(--neutral-bg);
+  cursor: not-allowed;
+}
+
+/* Migration start options kept out of the way, opened on demand. */
+.migration-advanced {
+  margin-top: 0.75rem;
+}
+
+.migration-advanced > summary {
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 0.85rem;
+}
+
+.migration-advanced .migration-option {
+  margin-top: 0.5rem;
+}
+
+.migration-advanced p {
+  font-size: 0.85rem;
+  margin: 0.5rem 0 0;
+  max-width: 60rem;
+}
+
 .dbcontext-card h3 {
   font-size: 0.95rem;
   margin: 0 0 0.5rem;
@@ -291,6 +327,13 @@ code {
 .status-badge.locked {
   background-color: var(--danger-bg);
   color: var(--danger);
+}
+
+/* An operation cancelled before executing: nothing ran, nothing failed. */
+.status-badge.cancelled {
+  background-color: var(--neutral-bg);
+  color: var(--text-muted);
+  font-style: italic;
 }
 
 .status-badge.read-only {

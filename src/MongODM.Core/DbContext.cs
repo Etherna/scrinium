@@ -29,6 +29,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Linq.Expressions;
 using System.Reflection;
@@ -40,6 +41,10 @@ namespace Etherna.MongODM.Core
     public abstract class DbContext(ILogger? logger = null)
         : IDbContext, IDbContextBuilder
     {
+        // Consts.
+        private const int SeedingLockMinRetries = 4;
+        private static readonly TimeSpan SeedingLockRetryDelay = TimeSpan.FromSeconds(5);
+
         // Fields.
         /* Change tracking state keyed by reference identity: a model is tracked by its
          * serialized model document captured at load, and a proxy signals its mutations marking
@@ -428,7 +433,7 @@ namespace Etherna.MongODM.Core
             logger.DbContextSavedChanges(engine.Options.DbName);
         }
 
-        public async Task<bool> SeedIfNeededAsync()
+        public async Task<bool> SeedIfNeededAsync(TimeSpan? lockWaitTimeout = null, TimeSpan? lockLeaseDuration = null)
         {
             // Skip on a read-only db context: seeding and migrations belong to the db owner.
             if (engine.Options.IsReadOnly)
@@ -441,33 +446,93 @@ namespace Etherna.MongODM.Core
             if (IsSeeded)
                 return false;
 
-            return await engine.RunWithExclusiveAccessAsync(async () =>
+            // Claim the db context lock before entering the exclusive window: seeding must run
+            // once per db context across every application instance connected to the database,
+            // and the in-process exclusive access can't exclude the other processes.
+            /* While another owner holds the lock it may be seeding this same database: wait
+             * re-reading the seeding state from the db, instead of seeding again. A dead owner
+             * stops renewing its lease, whose expiration unblocks the claim. */
+            var lockOwnerId = Guid.NewGuid().ToString();
+            var effectiveLockLeaseDuration = lockLeaseDuration ?? DbContextLock.DefaultLeaseDuration;
+            /* Without an explicit wait, the lease duration of this seeding bounds it: a dead
+             * owner's lease always expires inside it, so only a live owner working longer fails
+             * the seeding. */
+            var effectiveLockWaitTimeout = lockWaitTimeout ?? effectiveLockLeaseDuration;
+            //retry with the standard delay, shortened when the wait admits less retries
+            var lockRetryDelay = TimeSpan.FromTicks(Math.Min(
+                SeedingLockRetryDelay.Ticks,
+                effectiveLockWaitTimeout.Ticks / SeedingLockMinRetries));
+            var lockWaitStopwatch = Stopwatch.StartNew();
+            while (!await engine.DbContextLock.TryClaimAsync(lockOwnerId, effectiveLockLeaseDuration).ConfigureAwait(false))
             {
-                // Check again if seeded.
+                /* The wait is bounded: the caller blocks on the seeding (the startup one waits
+                 * on every db context of the application), so an owner never releasing the
+                 * lock must fail this seeding instead of hanging it forever. */
+                if (lockWaitStopwatch.Elapsed >= effectiveLockWaitTimeout)
+                    throw new MongodmDbSeedingException(
+                        $"Can't seed {GetType().Name} dbContext: another owner held the db context lock " +
+                        $"for more than the {effectiveLockWaitTimeout} wait timeout");
+
+                logger.DbContextSeedingWaitingForLock(engine.Options.DbName);
+                await Task.Delay(lockRetryDelay).ConfigureAwait(false);
+
+                engine.IsSeededCache = null; //not seeded may be cached: re-read from db
                 if (IsSeeded)
                     return false;
+            }
 
-                // Apply db migration, blocking seed in case of errors.
-                // This creates indexes by default on each new database.
-                var dbMigrationOp = new DbMigrationOperation(engine);
-                await DbOperations.CreateAsync(dbMigrationOp).ConfigureAwait(false);
-                await ExecuteMigrationAsync(dbMigrationOp.Id, throwOnErrors: true).ConfigureAwait(false);
+            // Resume the claim into a renewed lease, releasing the claim if it can't be resumed.
+            /* A claim nobody owns would deny every seeding and migration of the db context,
+             * on every application instance, until its lease expiration. */
+            IDbContextLockLease lockLease;
+            try
+            {
+                lockLease = await engine.DbContextLock.TryResumeClaimAsync(lockOwnerId).ConfigureAwait(false)
+                    ?? throw new InvalidOperationException(
+                        $"Can't resume the just claimed db context lock, seeding {GetType().Name} dbContext");
+            }
+            catch
+            {
+                await engine.DbContextLock.TryReleaseAsync(lockOwnerId).ConfigureAwait(false);
+                throw;
+            }
 
-                // Seed.
-                try { await SeedAsync().ConfigureAwait(false); }
-                catch (Exception e) { throw new MongodmDbSeedingException($"Error seeding {GetType().Name} dbContext", e); }
+            try
+            {
+                return await engine.RunWithExclusiveAccessAsync(async () =>
+                {
+                    // Check again if seeded: the claim serializes the seeders across processes,
+                    // but another one may have completed before the claim.
+                    engine.IsSeededCache = null;
+                    if (IsSeeded)
+                        return false;
 
-                // Report operation.
-                var seedOperation = new SeedOperation(engine);
-                await DbOperations.CreateAsync(seedOperation).ConfigureAwait(false);
+                    // Apply db migration, blocking seed in case of errors.
+                    // This creates indexes by default on each new database.
+                    var dbMigrationOp = new DbMigrationOperation(engine);
+                    await DbOperations.CreateAsync(dbMigrationOp).ConfigureAwait(false);
+                    await ExecuteMigrationAsync(dbMigrationOp.Id, throwOnErrors: true).ConfigureAwait(false);
 
-                // Cache as seeded.
-                engine.IsSeededCache = true;
+                    // Seed.
+                    try { await SeedAsync().ConfigureAwait(false); }
+                    catch (Exception e) { throw new MongodmDbSeedingException($"Error seeding {GetType().Name} dbContext", e); }
 
-                logger.DbContextSeeded(engine.Options.DbName);
+                    // Report operation.
+                    var seedOperation = new SeedOperation(engine);
+                    await DbOperations.CreateAsync(seedOperation).ConfigureAwait(false);
 
-                return true;
-            }).ConfigureAwait(false);
+                    // Cache as seeded.
+                    engine.IsSeededCache = true;
+
+                    logger.DbContextSeeded(engine.Options.DbName);
+
+                    return true;
+                }).ConfigureAwait(false);
+            }
+            finally
+            {
+                await lockLease.DisposeAsync().ConfigureAwait(false);
+            }
         }
 
         public IEntityModel? TryGetLoadedModel(IRepository repository, object modelId)
@@ -485,8 +550,11 @@ namespace Etherna.MongODM.Core
             return model;
         }
 
-        public Task<DbMigrationOperation?> TryStartMigrationAsync(bool dryRun = false, bool stopAtFirstError = false) =>
-            engine.DbMigrationManager.TryStartDbContextMigrationAsync(this, dryRun, stopAtFirstError);
+        public Task<DbMigrationOperation?> TryStartMigrationAsync(
+            bool dryRun = false,
+            bool stopAtFirstError = false,
+            TimeSpan? lockLeaseDuration = null) =>
+            engine.DbMigrationManager.TryStartDbContextMigrationAsync(this, dryRun, stopAtFirstError, lockLeaseDuration);
 
         public void RemoveModelTracking(IEntityModel model)
         {

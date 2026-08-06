@@ -27,6 +27,16 @@ namespace Etherna.MongODM.Core.Options
         public IEnumerable<Type> ChildDbContextTypes { get; }
 
         public string ConnectionString { get; }
+
+        /// <summary>
+        /// Name of the collection persisting the db context lock: the server side lease
+        /// document coordinating the exclusive works of the db context (seeding and
+        /// migrations) once per db context across every application instance connected to the
+        /// database. Applications configuring different collection names for the same database
+        /// don't exclude each other.
+        /// </summary>
+        public string DbLockCollectionName { get; }
+
         public string DbName { get; }
         public string DbOperationsCollectionName { get; }
 

@@ -34,6 +34,10 @@ namespace Etherna.MongODM.Core
 {
     public class DbContextTest : IDisposable
     {
+        // Consts.
+        //bounds the seeding lock waits: a regressed wait resolution must fail the tests, not hang them
+        private static readonly TimeSpan SeedingWaitBound = TimeSpan.FromSeconds(30);
+
         // Fields.
         private readonly FakeDbContext dbContext;
         private readonly IDbContextEngine engine;
@@ -455,6 +459,137 @@ namespace Etherna.MongODM.Core
             (readOnlyEngine as IDisposable)?.Dispose();
         }
 
+        [Fact]
+        public void DbContextLockDeniesOnReadOnlyDbContext()
+        {
+            /* The lock collection is written raw, out of the read-only enforcement of the
+             * guarded collections: claiming it would write on a database owned by another
+             * application, that this db context can only read. */
+
+            // Setup.
+            BuildDbContext(new DbContextOptions { IsReadOnly = true }, out var readOnlyEngine);
+
+            // Action and assert.
+            var lockException = Assert.Throws<InvalidOperationException>(() => readOnlyEngine.DbContextLock);
+            Assert.Contains("read-only", lockException.Message, StringComparison.Ordinal);
+
+            (readOnlyEngine as IDisposable)?.Dispose();
+        }
+
+        [Fact]
+        public async Task SeedIfNeededFailsWhenTheLockStaysHeldForTheWaitTimeout()
+        {
+            /* The caller blocks on the seeding, and the startup one waits on every db context
+             * of the application: an owner never releasing the lock must fail this seeding,
+             * instead of hanging the whole startup forever. */
+
+            // Setup.
+            var dbContextLockMock = new Mock<IDbContextLock>();
+            dbContextLockMock.Setup(l => l.TryClaimAsync(It.IsAny<string>(), It.IsAny<TimeSpan?>()))
+                .ReturnsAsync(false);
+            var seedingDbContext = BuildDbContextOnMockedEngine(
+                dbContextLockMock.Object,
+                new DbContextOptions());
+
+            // Action.
+            var seedingException = await Assert.ThrowsAsync<MongodmDbSeedingException>(
+                () => seedingDbContext.SeedIfNeededAsync(TimeSpan.FromMilliseconds(200)).WaitAsync(SeedingWaitBound));
+
+            // Assert.
+            //the failure names the db context and the requested timeout
+            Assert.Contains(nameof(FakeDbContext), seedingException.Message, StringComparison.Ordinal);
+            Assert.Contains("00:00:00.2", seedingException.Message, StringComparison.Ordinal);
+            dbContextLockMock.Verify(l => l.TryClaimAsync(It.IsAny<string>(), It.IsAny<TimeSpan?>()), Times.AtLeast(2));
+        }
+
+        [Fact]
+        public async Task SeedIfNeededClaimsTheLockWithItsLeaseDuration()
+        {
+            /* The seeding claim is the owner of the lock for the whole flow: its lease is how
+             * long the db context stays locked if this instance dies while seeding. */
+
+            // Setup.
+            var chosenLeaseDuration = TimeSpan.FromMinutes(3);
+            var dbContextLockMock = new Mock<IDbContextLock>();
+            dbContextLockMock.Setup(l => l.TryClaimAsync(It.IsAny<string>(), It.IsAny<TimeSpan?>()))
+                .ReturnsAsync(true);
+            dbContextLockMock.Setup(l => l.TryResumeClaimAsync(It.IsAny<string>()))
+                .ReturnsAsync((IDbContextLockLease?)null);
+            var seedingDbContext = BuildDbContextOnMockedEngine(dbContextLockMock.Object, new DbContextOptions());
+
+            // Action.
+            //the resume denial stops the flow right after the claim, the only step under test here
+            await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                seedingDbContext.SeedIfNeededAsync(lockLeaseDuration: chosenLeaseDuration));
+
+            // Assert.
+            dbContextLockMock.Verify(
+                l => l.TryClaimAsync(It.IsAny<string>(), chosenLeaseDuration),
+                Times.Once());
+        }
+
+        [Fact]
+        public async Task SeedIfNeededClaimsTheLockWithTheDefaultLeaseDurationWithoutAnExplicitOne()
+        {
+            // Setup.
+            var dbContextLockMock = new Mock<IDbContextLock>();
+            dbContextLockMock.Setup(l => l.TryClaimAsync(It.IsAny<string>(), It.IsAny<TimeSpan?>()))
+                .ReturnsAsync(true);
+            dbContextLockMock.Setup(l => l.TryResumeClaimAsync(It.IsAny<string>()))
+                .ReturnsAsync((IDbContextLockLease?)null);
+            var seedingDbContext = BuildDbContextOnMockedEngine(dbContextLockMock.Object, new DbContextOptions());
+
+            // Action.
+            await Assert.ThrowsAsync<InvalidOperationException>(() => seedingDbContext.SeedIfNeededAsync());
+
+            // Assert.
+            dbContextLockMock.Verify(
+                l => l.TryClaimAsync(It.IsAny<string>(), DbContextLock.DefaultLeaseDuration),
+                Times.Once());
+        }
+
+        [Fact]
+        public async Task SeedIfNeededReleasesTheClaimWhenItCantResume()
+        {
+            /* A claim resumed by nobody would deny every seeding and migration of the db
+             * context, on every application instance, until its lease expiration. */
+
+            // Setup.
+            var dbContextLockMock = new Mock<IDbContextLock>();
+            dbContextLockMock.Setup(l => l.TryClaimAsync(It.IsAny<string>(), It.IsAny<TimeSpan?>()))
+                .ReturnsAsync(true);
+            dbContextLockMock.Setup(l => l.TryResumeClaimAsync(It.IsAny<string>()))
+                .ReturnsAsync((IDbContextLockLease?)null);
+            var seedingDbContext = BuildDbContextOnMockedEngine(dbContextLockMock.Object, new DbContextOptions());
+
+            // Action and assert.
+            await Assert.ThrowsAsync<InvalidOperationException>(() => seedingDbContext.SeedIfNeededAsync());
+            dbContextLockMock.Verify(l => l.TryReleaseAsync(It.IsAny<string>()), Times.Once());
+        }
+
+        [Fact]
+        public async Task SeedIfNeededWaitsForTheLockLeaseDurationByDefault()
+        {
+            /* A dead owner stops renewing its lease, that expires inside the default wait:
+             * only an owner still alive, and working longer than it, fails the seeding. */
+
+            // Setup.
+            var dbContextLockMock = new Mock<IDbContextLock>();
+            dbContextLockMock.Setup(l => l.TryClaimAsync(It.IsAny<string>(), It.IsAny<TimeSpan?>()))
+                .ReturnsAsync(false);
+            var seedingDbContext = BuildDbContextOnMockedEngine(dbContextLockMock.Object, new DbContextOptions());
+
+            // Action.
+            //without an explicit wait, the lease duration of this seeding is the one bounding it
+            var seedingException = await Assert.ThrowsAsync<MongodmDbSeedingException>(
+                () => seedingDbContext.SeedIfNeededAsync(lockLeaseDuration: TimeSpan.FromMilliseconds(200))
+                                      .WaitAsync(SeedingWaitBound));
+
+            // Assert.
+            Assert.Contains("00:00:00.2", seedingException.Message, StringComparison.Ordinal);
+            dbContextLockMock.Verify(l => l.TryClaimAsync(It.IsAny<string>(), It.IsAny<TimeSpan?>()), Times.AtLeast(2));
+        }
+
         // Helpers.
         private FakeDbContext BuildDbContext(DbContextOptions dbContextOptions, out IDbContextEngine dbContextEngine)
         {
@@ -464,6 +599,26 @@ namespace Etherna.MongODM.Core
                 mongoClientMock.Object,
                 dbContextOptions);
             newDbContext.AttachToEngine(dbContextEngine, [], dependenciesMock.Object.RepositoryRegistry);
+            return newDbContext;
+        }
+
+        /* The seeding lock flow lives entirely on the engine: a mocked engine drives its lock
+         * and its seeding cache, without any database behind. */
+        private static FakeDbContext BuildDbContextOnMockedEngine(
+            IDbContextLock dbContextLock,
+            DbContextOptions dbContextOptions)
+        {
+            bool? isSeededCache = false;
+            var mockedEngineMock = new Mock<IDbContextEngine>();
+            mockedEngineMock.Setup(e => e.DbContextLock).Returns(dbContextLock);
+            mockedEngineMock.Setup(e => e.Options).Returns(dbContextOptions);
+            mockedEngineMock.SetupGet(e => e.IsSeededCache).Returns(() => isSeededCache);
+            //the db re-reads of the wait loop keep reporting the database as not seeded
+            mockedEngineMock.SetupSet<bool?>(e => e.IsSeededCache = It.IsAny<bool?>())
+                .Callback(value => isSeededCache = value ?? false);
+
+            var newDbContext = new FakeDbContext();
+            newDbContext.AttachToEngine(mockedEngineMock.Object, [], new RepositoryRegistry());
             return newDbContext;
         }
 

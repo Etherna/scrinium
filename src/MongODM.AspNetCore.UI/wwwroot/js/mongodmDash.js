@@ -48,6 +48,8 @@
     function startMigration(card, dryRun) {
         var identifier = card.dataset.identifier;
         var stopAtFirstError = card.querySelector('[data-role="stop-at-first-error"]').checked;
+        //the lease duration is validated server side too: the control only bounds the ordinary case
+        var lockLeaseDurationMinutes = card.querySelector('[data-role="lock-lease-duration"]').value;
         var message = dryRun
             ? 'Start migration dry run on "' + identifier + '"?\n\n' +
               'The dry run simulates the migration without persisting anything, reporting the ' +
@@ -72,20 +74,38 @@
             body: new URLSearchParams({
                 identifier: identifier,
                 dryRun: dryRun,
-                stopAtFirstError: stopAtFirstError
+                stopAtFirstError: stopAtFirstError,
+                lockLeaseDurationMinutes: lockLeaseDurationMinutes
             })
         }).then(function (response) {
-            if (!response.ok)
-                throw new Error('HTTP ' + response.status);
-            return response.json();
+            //a start rejected by the server reports its reason in the body, with an error status
+            return response.json().then(function (result) {
+                if (!response.ok && !result.error)
+                    throw new Error('HTTP ' + response.status);
+                return result;
+            });
         }).then(function (result) {
-            if (!result.started)
+            if (result.error)
+                showFeedback(card, result.error);
+            else if (!result.started)
                 showFeedback(card, 'Migration not started: another operation is already in progress.');
             refreshStatus();
         }).catch(function () {
             showFeedback(card, 'Migration start request failed.');
             refreshStatus();
         });
+    }
+
+    function showFeedback(card, message) {
+        var feedback = card.querySelector('[data-role="feedback"]');
+        feedback.textContent = message;
+        feedback.hidden = false;
+
+        //a new message restarts the hide timeout, instead of inheriting the one of the previous
+        window.clearTimeout(Number(feedback.dataset.hideTimer));
+        feedback.dataset.hideTimer = window.setTimeout(function () {
+            feedback.hidden = true;
+        }, FEEDBACK_TIMEOUT_MS);
     }
 
     function loadCollectionSizes(card) {
@@ -285,6 +305,7 @@
         card.querySelector('[data-role="start"]').disabled = status.isLocked;
         card.querySelector('[data-role="start-dry-run"]').disabled = status.isLocked;
         card.querySelector('[data-role="stop-at-first-error"]').disabled = status.isLocked;
+        card.querySelector('[data-role="lock-lease-duration"]').disabled = status.isLocked;
 
         var live = card.querySelector('[data-role="live"]');
         var logList = card.querySelector('[data-role="logs"]');
@@ -383,8 +404,11 @@
 
             var dates = document.createElement('span');
             dates.className = 'history-dates';
+            //a cancelled operation never executed: it has no completion instant to render
             dates.textContent = 'started ' + formatDateTime(operation.creationDateTime) +
-                (operation.completedDateTime ? ' — completed ' + formatDateTime(operation.completedDateTime) : '');
+                (operation.completedDateTime
+                    ? ' — completed ' + formatDateTime(operation.completedDateTime)
+                    : (operation.status === 'Cancelled' ? ' — cancelled before executing' : ''));
             summary.appendChild(dates);
 
             entry.appendChild(summary);
@@ -402,6 +426,7 @@
         switch (status) {
             case 'Completed': return 'idle';
             case 'Failed': return 'locked';
+            case 'Cancelled': return 'cancelled';
             case 'Running':
             case 'New': return 'running';
             default: return '';

@@ -41,6 +41,7 @@ namespace Etherna.MongODM.IntegrationTests.Fixtures
         public IImplicitSourceDbContext ImplicitSourceDbContext { get; private set; } = null!;
         public string ImplicitSourceDbName { get; } = "mongodm-it-implicit-" + Guid.NewGuid().ToString("N");
         public string MigrationsDbName { get; } = "mongodm-it-migrations-" + Guid.NewGuid().ToString("N");
+        public LogEventCollector MigrationsLogEvents { get; } = new();
         public IMixedAccessDbContext MixedAccessDbContext { get; private set; } = null!;
         public string MongoDbUrl => mongoDb.DbUrl;
         public string ParentDbName { get; } = "mongodm-it-parent-" + Guid.NewGuid().ToString("N");
@@ -109,7 +110,7 @@ namespace Etherna.MongODM.IntegrationTests.Fixtures
                     })
                 //dedicated context for the document migration tests, driving migrations directly
                 .AddDbContext<IMigrationsDbContext, MigrationsDbContext>(
-                    _ => new MigrationsDbContext(),
+                    _ => new MigrationsDbContext(MigrationsLogEvents),
                     options =>
                     {
                         options.ConnectionString = $"{mongoDb.DbUrl}/{MigrationsDbName}";
