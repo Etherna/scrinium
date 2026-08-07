@@ -138,11 +138,11 @@ namespace Etherna.MongODM.Core.Utility
                     // Migrate documents.
                     foreach (var docMigration in dbContext.DocumentMigrationList)
                     {
-                        //running document migration
+                        //running document migration, reporting progress on a single rolling log
                         var result = await docMigration.MigrateAsync(500,
                             async procDocs =>
                             {
-                                dbMigrationOp.AddLog(new DocumentMigrationLog(
+                                dbMigrationOp.AddDocumentMigrationLog(new DocumentMigrationLog(
                                     docMigration.SourceRepository.Name,
                                     MigrationLogBase.ExecutionState.Executing,
                                     procDocs));
@@ -159,8 +159,8 @@ namespace Etherna.MongODM.Core.Utility
                                     ? $"Documents migration failed on \"{docMigration.SourceRepository.Name}\" repository with {result.TotDocumentErrors} document errors"
                                     : $"Documents migration failed on \"{docMigration.SourceRepository.Name}\" repository"));
 
-                        //ended document migration log
-                        dbMigrationOp.AddLog(new DocumentMigrationLog(
+                        //ended document migration log, replacing the rolling progress one
+                        dbMigrationOp.AddDocumentMigrationLog(new DocumentMigrationLog(
                             docMigration.SourceRepository.Name,
                             result.Succeded
                                 ? MigrationLogBase.ExecutionState.Succeded

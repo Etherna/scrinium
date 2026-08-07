@@ -63,6 +63,23 @@ namespace Etherna.MongODM.Core.Domain.Models
         public virtual string? TaskId { get; protected set; }
 
         // Methods.
+        /// <summary>
+        /// Add a documents migration log, removing the previous executing progress log of the
+        /// same collection, if any: progress reports through one rolling entry per collection
+        /// with its running counter, replaced at the end by the ended log, so the operation
+        /// document stays bounded regardless of the collection size.
+        /// </summary>
+        /// <param name="log">The documents migration log to add</param>
+        public virtual void AddDocumentMigrationLog(DocumentMigrationLog log)
+        {
+            ArgumentNullException.ThrowIfNull(log);
+
+            _logs.RemoveAll(l =>
+                l is DocumentMigrationLog { State: MigrationLogBase.ExecutionState.Executing } executingLog &&
+                executingLog.CollectionName == log.CollectionName);
+            _logs.Add(log);
+        }
+
         public virtual void AddLog(MigrationLogBase log)
         {
             ArgumentNullException.ThrowIfNull(log);

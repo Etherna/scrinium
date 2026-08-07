@@ -317,6 +317,39 @@ namespace Etherna.MongODM.IntegrationTests
         }
 
         [Fact]
+        public async Task MigrationReportsProgressOnSingleRollingLog()
+        {
+            // Setup.
+            using var contextHandler = AsyncLocalContext.Instance.InitAsyncLocalContext();
+            await migrationsDbContext.Notes.DeleteManyAsync(Builders<Note>.Filter.Empty);
+
+            //enough documents to raise a periodic progress report during the scan
+            var note = new Note("template");
+            await migrationsDbContext.Notes.CreateAsync(note);
+            await InsertClonedNoteDocumentsAsync("template", 600);
+
+            migrationsDbContext.DocumentMigrations =
+                [new DocumentMigration<Note, string>(migrationsDbContext.Notes, _ => Task.CompletedTask)];
+
+            // Action.
+            var migrationOp = await migrationsDbContext.TryStartMigrationAsync();
+            Assert.NotNull(migrationOp);
+            await migrationsDbContext.ExecuteMigrationAsync(migrationOp.Id);
+
+            // Assert.
+            /* Progress reported through one rolling executing log, replaced by the ended one:
+             * the operation document stays bounded regardless of the collection size. */
+            using var verifyScope = fixture.ServiceProvider.CreateScope();
+            var verifyDbContext = verifyScope.ServiceProvider.GetRequiredService<IMigrationsDbContext>();
+            var completedOp = await verifyDbContext.GetMigrationAsync(migrationOp.Id);
+            Assert.Equal(DbMigrationOperation.Status.Completed, completedOp.CurrentStatus);
+            var documentLog = Assert.Single(completedOp.Logs.OfType<DocumentMigrationLog>());
+            Assert.Equal(MigrationLogBase.ExecutionState.Succeded, documentLog.State);
+            Assert.Equal(601, documentLog.TotMigratedDocs);
+            Assert.Equal(0, documentLog.TotErrorDocs);
+        }
+
+        [Fact]
         public async Task MigrationStopsAtFirstFailingDocumentWhenRequired()
         {
             // Setup.
@@ -379,6 +412,26 @@ namespace Etherna.MongODM.IntegrationTests
                 await rawCollection.InsertOneAsync(brokenDocument);
 
                 return brokenDocument;
+            });
+
+        /* Persist raw copies of a valid note document, cloned with new ids: a fast way to
+         * populate a large collection without a round trip per document. */
+        private Task InsertClonedNoteDocumentsAsync(string sourceNoteText, int copies) =>
+            migrationsDbContext.Notes.AccessToCollectionAsync(async collection =>
+            {
+                var rawCollection = collection.Database.GetCollection<BsonDocument>(
+                    collection.CollectionNamespace.CollectionName);
+                var documents = await (await rawCollection.FindAsync(FilterDefinition<BsonDocument>.Empty)).ToListAsync();
+                var sourceDocument = documents.Single(d => d.Elements.Any(e => e.Value == sourceNoteText));
+
+                var clonedDocuments = new List<BsonDocument>(copies);
+                for (var i = 0; i < copies; i++)
+                {
+                    var clonedDocument = (BsonDocument)sourceDocument.DeepClone();
+                    clonedDocument["_id"] = ObjectId.GenerateNewId();
+                    clonedDocuments.Add(clonedDocument);
+                }
+                await rawCollection.InsertManyAsync(clonedDocuments);
             });
 
         private Task<List<BsonDocument>> ListRawNoteDocumentsAsync() =>
