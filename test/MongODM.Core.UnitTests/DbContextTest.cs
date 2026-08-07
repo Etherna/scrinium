@@ -12,6 +12,7 @@
 // You should have received a copy of the GNU Lesser General Public License along with MongODM.
 // If not, see <https://www.gnu.org/licenses/>.
 
+using Etherna.MongoDB.Bson;
 using Etherna.MongoDB.Bson.Serialization;
 using Etherna.MongoDB.Driver;
 using Etherna.MongoDB.Driver.Core.Clusters;
@@ -377,6 +378,55 @@ namespace Etherna.MongODM.Core
             Assert.Equal("currentModel", exception.ParamName);
             Assert.False(dbContext.IsOutdatedModel(outdatedModel));
             Assert.Same(outdatedModel, dbContext.TryGetLoadedModel(dbContext.FakeModels, "id"));
+        }
+
+        [Fact]
+        public void TransientModelsScopeEvictsModelsEnteredInside()
+        {
+            // Setup.
+            var model = NewBoundProxy("id");
+
+            // Action.
+            using (dbContext.StartTransientModelsScope())
+            {
+                dbContext.RegisterLoadedModel("id", model);
+                dbContext.SetModelBsonDocument(model, []);
+                dbContext.MarkChangeCandidate(model);
+
+                //inside the scope the model loads and tracks normally
+                Assert.Same(model, dbContext.TryGetLoadedModel(dbContext.FakeModels, "id"));
+                Assert.NotNull(dbContext.TryGetModelBsonDocument(model));
+                Assert.Contains(model, dbContext.ChangedModelsList);
+            }
+
+            // Assert.
+            //the scope end evicted the model from the loaded models and the change tracking
+            Assert.Null(dbContext.TryGetLoadedModel(dbContext.FakeModels, "id"));
+            Assert.Null(dbContext.TryGetModelBsonDocument(model));
+            Assert.Empty(dbContext.ChangedModelsList);
+        }
+
+        [Fact]
+        public void TransientModelsScopeKeepsModelsEnteredBefore()
+        {
+            // Setup.
+            var model = NewBoundProxy("id");
+            dbContext.RegisterLoadedModel("id", model);
+            dbContext.SetModelBsonDocument(model, []);
+
+            // Action.
+            var updatedDocument = new BsonDocument("updated", true);
+            using (dbContext.StartTransientModelsScope())
+            {
+                dbContext.SetModelBsonDocument(model, updatedDocument);
+                dbContext.MarkChangeCandidate(model);
+            }
+
+            // Assert.
+            //the model entered before the scope keeps its state, updates inside the scope included
+            Assert.Same(model, dbContext.TryGetLoadedModel(dbContext.FakeModels, "id"));
+            Assert.Same(updatedDocument, dbContext.TryGetModelBsonDocument(model));
+            Assert.Contains(model, dbContext.ChangedModelsList);
         }
 
         [Theory]

@@ -20,7 +20,7 @@ namespace Etherna.MongODM.Core.Extensions
 {
     /*
      * Always group similar log delegates by type, always use incremental event ids.
-     * Last event id is: 58
+     * Last event id is: 59
      */
     public static class LoggerExtensions
     {
@@ -33,6 +33,12 @@ namespace Etherna.MongODM.Core.Extensions
                 "Repository {RepositoryName} of DbContext {DbName} accessed collection");
 
         //*** DEBUG LOGS ***
+        private static readonly Action<ILogger, string, int, int, Exception> _dbContextEvictedTransientModels =
+            LoggerMessage.Define<string, int, int>(
+                LogLevel.Trace,
+                new EventId(59, nameof(DbContextEvictedTransientModels)),
+                "DbContext {DbName} evicted at a transient models scope end {LoadedModelsCount} loaded models and {TrackedModelsCount} tracked models");
+
         private static readonly Action<ILogger, string, string, string, Exception> _dbContextRegisteredChangedModel =
             LoggerMessage.Define<string, string, string>(
                 LogLevel.Trace,
@@ -365,6 +371,9 @@ namespace Etherna.MongODM.Core.Extensions
 
         public static void DbContextCommittedTransaction(this ILogger logger, string dbName) =>
             _dbContextCommittedTransaction(logger, dbName, null!);
+
+        public static void DbContextEvictedTransientModels(this ILogger logger, string dbName, int loadedModelsCount, int trackedModelsCount) =>
+            _dbContextEvictedTransientModels(logger, dbName, loadedModelsCount, trackedModelsCount, null!);
 
         public static void DbContextImplicitLazyLoad(this ILogger logger, string dbName, string modelType, string? memberName) =>
             _dbContextImplicitLazyLoad(logger, dbName, modelType, memberName, null!);

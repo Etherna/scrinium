@@ -31,6 +31,12 @@ namespace Etherna.MongODM.Core.Migration
     {
         // Consts.
         /// <summary>
+        /// Documents processed by a scan between two evictions of its transient models, when
+        /// the migration doesn't ask for another interval.
+        /// </summary>
+        public const int DefaultEvictEveryTotDocuments = 100;
+
+        /// <summary>
         /// Maximum number of failing documents detailed by a migration result.
         /// </summary>
         public const int MaxTrackedDocumentErrors = 100;
@@ -48,6 +54,10 @@ namespace Etherna.MongODM.Core.Migration
         /// each document processes with simulated collection writes</param>
         /// <param name="stopAtFirstError">If true, abort the migration at the first failing
         /// document, instead of skipping it and processing every other document</param>
+        /// <param name="evictEveryTotDocuments">Interval of processed documents between the
+        /// evictions of what the scan loaded and tracked on the db context. It bounds the scan
+        /// memory to the documents of an interval, with their referenced summaries, and it is
+        /// independent from the callback interval: the two tune different costs</param>
         /// <param name="cancellationToken"></param>
         /// <returns>The migration result</returns>
         public abstract Task<MigrationResult> MigrateAsync(
@@ -55,6 +65,7 @@ namespace Etherna.MongODM.Core.Migration
             Func<long, Task>? callbackAsync = null,
             bool dryRun = false,
             bool stopAtFirstError = false,
+            int evictEveryTotDocuments = DefaultEvictEveryTotDocuments,
             CancellationToken cancellationToken = default);
     }
 
@@ -116,6 +127,7 @@ namespace Etherna.MongODM.Core.Migration
             Func<long, Task>? callbackAsync = null,
             bool dryRun = false,
             bool stopAtFirstError = false,
+            int evictEveryTotDocuments = DefaultEvictEveryTotDocuments,
             CancellationToken cancellationToken = default) =>
             _sourceRepository.AccessToCollectionAsync(async sourceCollection =>
             {
@@ -127,52 +139,79 @@ namespace Etherna.MongODM.Core.Migration
                 {
                     if (callbackEveryTotDocuments < 0)
                         throw new ArgumentOutOfRangeException(nameof(callbackEveryTotDocuments), "Value can't be negative");
+                    ArgumentOutOfRangeException.ThrowIfLessThan(evictEveryTotDocuments, 1);
 
-                    // Migrate documents.
-                    /* Scan raw documents and deserialize each one apart: a document failing
-                     * deserialization reports its error without aborting the scan, which a
-                     * typed cursor can't grant. */
-                    await sourceCollection.Find(FilterDefinition<TModel>.Empty, new FindOptions { NoCursorTimeout = true })
-                        .As<BsonDocument>()
-                        .ForEachAsync(async document =>
-                        {
-                            // Increment counter.
-                            totProcessedDocuments++;
-
-                            try
+                    /* Documents processed since the last eviction run inside a transient models
+                     * scope of the db context: everything their flows load or track evicts at
+                     * the scope end, so the scan memory stays bounded to an eviction interval
+                     * whatever the collection size. The migration operation bookkeeping, tracked
+                     * before the scan, stays tracked and updates from the callback. */
+                    IDisposable? transientModelsScope = null;
+                    try
+                    {
+                        // Migrate documents.
+                        /* Scan raw documents and deserialize each one apart: a document failing
+                         * deserialization reports its error without aborting the scan, which a
+                         * typed cursor can't grant. The cursor lives as long as the session the
+                         * driver keeps alive for it: the server side idle timeout of a cursor
+                         * only reaps the cursors without a session, so a long scan doesn't need
+                         * to disable it. */
+                        await sourceCollection.Find(FilterDefinition<TModel>.Empty)
+                            .As<BsonDocument>()
+                            .ForEachAsync(async document =>
                             {
-                                // Deserialize the model.
-                                TModel model;
-                                using (var documentReader = new BsonDocumentReader(document))
-                                    model = sourceCollection.DocumentSerializer.Deserialize(
-                                        BsonDeserializationContext.CreateRoot(documentReader));
+                                // Increment counter.
+                                totProcessedDocuments++;
 
-                                // Process the model. A dry run simulates every write it performs.
-                                using (dryRun ? new DryRunHandler(_sourceRepository.DbContext.Engine.ExecutionContext) : null)
-                                    await sourceModelProcessorActionAsync(model).ConfigureAwait(false);
+                                transientModelsScope ??= _sourceRepository.DbContext.StartTransientModelsScope();
 
-                                totMigratedDocuments++;
-                            }
-                            catch (Exception e) when (e is not OperationCanceledException)
-                            {
-                                // Report the failing document, leaving it on its current content.
-                                totDocumentErrors++;
-                                if (documentErrors.Count < MaxTrackedDocumentErrors)
-                                    documentErrors.Add(new DocumentMigrationError(
-                                        document.TryGetValue("_id", out var documentId) ? documentId.ToString()! : "?",
-                                        $"{e.GetType().Name}: {e.Message}"));
+                                try
+                                {
+                                    // Deserialize the model.
+                                    TModel model;
+                                    using (var documentReader = new BsonDocumentReader(document))
+                                        model = sourceCollection.DocumentSerializer.Deserialize(
+                                            BsonDeserializationContext.CreateRoot(documentReader));
 
-                                if (stopAtFirstError)
-                                    throw;
-                            }
+                                    // Process the model. A dry run simulates every write it performs.
+                                    using (dryRun ? new DryRunHandler(_sourceRepository.DbContext.Engine.ExecutionContext) : null)
+                                        await sourceModelProcessorActionAsync(model).ConfigureAwait(false);
 
-                            // Execute callback.
-                            if (callbackEveryTotDocuments > 0 &&
-                                totProcessedDocuments % callbackEveryTotDocuments == 0 &&
-                                callbackAsync != null)
-                                await callbackAsync(totMigratedDocuments).ConfigureAwait(false);
+                                    totMigratedDocuments++;
+                                }
+                                catch (Exception e) when (e is not OperationCanceledException)
+                                {
+                                    // Report the failing document, leaving it on its current content.
+                                    totDocumentErrors++;
+                                    if (documentErrors.Count < MaxTrackedDocumentErrors)
+                                        documentErrors.Add(new DocumentMigrationError(
+                                            document.TryGetValue("_id", out var documentId) ? documentId.ToString()! : "?",
+                                            $"{e.GetType().Name}: {e.Message}"));
 
-                        }, cancellationToken).ConfigureAwait(false);
+                                    if (stopAtFirstError)
+                                        throw;
+                                }
+
+                                // Evict what the interval documents loaded and tracked.
+                                if (totProcessedDocuments % evictEveryTotDocuments == 0)
+                                {
+                                    transientModelsScope.Dispose();
+                                    transientModelsScope = null;
+                                }
+
+                                // Execute callback.
+                                if (callbackEveryTotDocuments > 0 &&
+                                    totProcessedDocuments % callbackEveryTotDocuments == 0 &&
+                                    callbackAsync != null)
+                                    await callbackAsync(totMigratedDocuments).ConfigureAwait(false);
+
+                            }, cancellationToken).ConfigureAwait(false);
+                    }
+                    finally
+                    {
+                        //evict what the documents of the last, incomplete interval left
+                        transientModelsScope?.Dispose();
+                    }
 
                     return totDocumentErrors == 0
                         ? MigrationResult.Succeeded(totMigratedDocuments)

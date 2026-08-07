@@ -12,6 +12,7 @@
 // You should have received a copy of the GNU Lesser General Public License along with MongODM.
 // If not, see <https://www.gnu.org/licenses/>.
 
+using Etherna.MongODM.Core.Migration;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -34,6 +35,8 @@ namespace Etherna.MongODM.Core.Options
         public string? Identifier { get; set; }
         public ImplicitLazyLoadMode ImplicitLazyLoad { get; set; } = ImplicitLazyLoadMode.Warn;
         public bool IsReadOnly { get; set; }
+        public int MigrationCallbackEveryTotDocuments { get; set; } = 500;
+        public int MigrationEvictEveryTotDocuments { get; set; } = DocumentMigration.DefaultEvictEveryTotDocuments;
         public ModelMapSchemaIdOptions ModelMapSchemaId { get; set; } = new();
 
         // Methods.
