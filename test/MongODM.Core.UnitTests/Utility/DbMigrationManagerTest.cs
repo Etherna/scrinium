@@ -95,7 +95,7 @@ namespace Etherna.MongODM.Core.Utility
             repositoryMock.Setup(r => r.Name).Returns("fakeModels");
             var docMigrationMock = new Mock<DocumentMigration>();
             docMigrationMock.Setup(m => m.SourceRepository).Returns(repositoryMock.Object);
-            docMigrationMock.Setup(m => m.MigrateAsync(It.IsAny<int>(), It.IsAny<Func<long, Task>?>(), It.IsAny<bool>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()))
+            docMigrationMock.Setup(m => m.MigrateAsync(It.IsAny<int>(), It.IsAny<Func<long, Task>?>(), It.IsAny<bool>(), It.IsAny<bool>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
                 .ReturnsAsync(MigrationResult.Failed(
                     10,
                     documentErrors: [new DocumentMigrationError("doc1", "FormatException: bad value")],
@@ -132,7 +132,7 @@ namespace Etherna.MongODM.Core.Utility
             repositoryRegistryMock.Setup(r => r.Repositories).Returns([repositoryMock.Object]);
             var docMigrationMock = new Mock<DocumentMigration>();
             docMigrationMock.Setup(m => m.SourceRepository).Returns(repositoryMock.Object);
-            docMigrationMock.Setup(m => m.MigrateAsync(It.IsAny<int>(), It.IsAny<Func<long, Task>?>(), It.IsAny<bool>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()))
+            docMigrationMock.Setup(m => m.MigrateAsync(It.IsAny<int>(), It.IsAny<Func<long, Task>?>(), It.IsAny<bool>(), It.IsAny<bool>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
                 .ReturnsAsync(MigrationResult.Succeeded(3));
             dbContextMock.Setup(c => c.DocumentMigrationList).Returns([docMigrationMock.Object]);
 
@@ -143,7 +143,7 @@ namespace Etherna.MongODM.Core.Utility
             Assert.Equal(DbMigrationOperation.Status.Completed, dryRunOp.CurrentStatus);
             repositoryMock.Verify(r => r.DeleteOldIndexesAsync(It.IsAny<CancellationToken>()), Times.Never());
             repositoryMock.Verify(r => r.BuildNewIndexesAsync(It.IsAny<CancellationToken>()), Times.Never());
-            docMigrationMock.Verify(m => m.MigrateAsync(It.IsAny<int>(), It.IsAny<Func<long, Task>?>(), true, false, It.IsAny<CancellationToken>()), Times.Once());
+            docMigrationMock.Verify(m => m.MigrateAsync(It.IsAny<int>(), It.IsAny<Func<long, Task>?>(), true, false, It.IsAny<int>(), It.IsAny<CancellationToken>()), Times.Once());
             Assert.DoesNotContain(dryRunOp.Logs, log => log is DeleteOldIndexesMigrationLog or BuildNewIndexesMigrationLog);
             Assert.Contains(dryRunOp.Logs, log => log is DocumentMigrationLog { State: MigrationLogBase.ExecutionState.Succeded, TotMigratedDocs: 3 });
         }
@@ -168,7 +168,7 @@ namespace Etherna.MongODM.Core.Utility
             Assert.Equal(DbMigrationOperation.Status.Cancelled, dbMigrationOp.CurrentStatus);
             Assert.Contains("doesn't own the db context lock", migrationException.Message, StringComparison.Ordinal);
             docMigrationMock.Verify(
-                m => m.MigrateAsync(It.IsAny<int>(), It.IsAny<Func<long, Task>?>(), It.IsAny<bool>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()),
+                m => m.MigrateAsync(It.IsAny<int>(), It.IsAny<Func<long, Task>?>(), It.IsAny<bool>(), It.IsAny<bool>(), It.IsAny<int>(), It.IsAny<CancellationToken>()),
                 Times.Never());
             dbContextMock.Verify(c => c.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once());
         }
@@ -190,8 +190,8 @@ namespace Etherna.MongODM.Core.Utility
             repositoryMock.Setup(r => r.Name).Returns("fakeModels");
             var docMigrationMock = new Mock<DocumentMigration>();
             docMigrationMock.Setup(m => m.SourceRepository).Returns(repositoryMock.Object);
-            docMigrationMock.Setup(m => m.MigrateAsync(It.IsAny<int>(), It.IsAny<Func<long, Task>?>(), It.IsAny<bool>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()))
-                .Returns<int, Func<long, Task>?, bool, bool, CancellationToken>((_, _, _, _, cancellationToken) =>
+            docMigrationMock.Setup(m => m.MigrateAsync(It.IsAny<int>(), It.IsAny<Func<long, Task>?>(), It.IsAny<bool>(), It.IsAny<bool>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+                .Returns<int, Func<long, Task>?, bool, bool, int, CancellationToken>((_, _, _, _, _, cancellationToken) =>
                 {
                     //the lease is taken over while the documents migrate
                     leaseLostTokenSource.Cancel();
@@ -246,7 +246,7 @@ namespace Etherna.MongODM.Core.Utility
         {
             // Setup.
             var docMigrationMock = new Mock<DocumentMigration>();
-            docMigrationMock.Setup(m => m.MigrateAsync(It.IsAny<int>(), It.IsAny<Func<long, Task>?>(), It.IsAny<bool>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()))
+            docMigrationMock.Setup(m => m.MigrateAsync(It.IsAny<int>(), It.IsAny<Func<long, Task>?>(), It.IsAny<bool>(), It.IsAny<bool>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
                 .ThrowsAsync(new InvalidOperationException("Unhandled migration exception"));
             dbContextMock.Setup(c => c.DocumentMigrationList).Returns([docMigrationMock.Object]);
 
@@ -271,7 +271,7 @@ namespace Etherna.MongODM.Core.Utility
             repositoryRegistryMock.Setup(r => r.Repositories).Returns([repositoryMock.Object]);
             var docMigrationMock = new Mock<DocumentMigration>();
             docMigrationMock.Setup(m => m.SourceRepository).Returns(repositoryMock.Object);
-            docMigrationMock.Setup(m => m.MigrateAsync(It.IsAny<int>(), It.IsAny<Func<long, Task>?>(), It.IsAny<bool>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()))
+            docMigrationMock.Setup(m => m.MigrateAsync(It.IsAny<int>(), It.IsAny<Func<long, Task>?>(), It.IsAny<bool>(), It.IsAny<bool>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
                 .ReturnsAsync(MigrationResult.Succeeded(1));
             dbContextMock.Setup(c => c.DocumentMigrationList).Returns([docMigrationMock.Object]);
 
@@ -281,7 +281,7 @@ namespace Etherna.MongODM.Core.Utility
             // Assert.
             //every step observes the lease lost token, aborting work run without exclusivity
             docMigrationMock.Verify(
-                m => m.MigrateAsync(It.IsAny<int>(), It.IsAny<Func<long, Task>?>(), It.IsAny<bool>(), It.IsAny<bool>(), leaseLostTokenSource.Token),
+                m => m.MigrateAsync(It.IsAny<int>(), It.IsAny<Func<long, Task>?>(), It.IsAny<bool>(), It.IsAny<bool>(), It.IsAny<int>(), leaseLostTokenSource.Token),
                 Times.Once());
             repositoryMock.Verify(r => r.DeleteOldIndexesAsync(leaseLostTokenSource.Token), Times.Once());
             repositoryMock.Verify(r => r.BuildNewIndexesAsync(leaseLostTokenSource.Token), Times.Once());
@@ -299,7 +299,7 @@ namespace Etherna.MongODM.Core.Utility
             repositoryMock.Setup(r => r.Name).Returns("fakeModels");
             var docMigrationMock = new Mock<DocumentMigration>();
             docMigrationMock.Setup(m => m.SourceRepository).Returns(repositoryMock.Object);
-            docMigrationMock.Setup(m => m.MigrateAsync(It.IsAny<int>(), It.IsAny<Func<long, Task>?>(), It.IsAny<bool>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()))
+            docMigrationMock.Setup(m => m.MigrateAsync(It.IsAny<int>(), It.IsAny<Func<long, Task>?>(), It.IsAny<bool>(), It.IsAny<bool>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
                 .ReturnsAsync(MigrationResult.Succeeded(3));
             dbContextMock.Setup(c => c.DocumentMigrationList).Returns([docMigrationMock.Object]);
 
@@ -307,7 +307,7 @@ namespace Etherna.MongODM.Core.Utility
             await dbMigrationManager.ExecuteDbContextMigrationAsync(dbContextMock.Object, "opId");
 
             // Assert.
-            docMigrationMock.Verify(m => m.MigrateAsync(It.IsAny<int>(), It.IsAny<Func<long, Task>?>(), false, true, It.IsAny<CancellationToken>()), Times.Once());
+            docMigrationMock.Verify(m => m.MigrateAsync(It.IsAny<int>(), It.IsAny<Func<long, Task>?>(), false, true, It.IsAny<int>(), It.IsAny<CancellationToken>()), Times.Once());
         }
 
         [Fact]
@@ -331,8 +331,8 @@ namespace Etherna.MongODM.Core.Utility
             var progressSnapshots = new List<(int ExecutingLogs, long TotMigratedDocs)>();
             var docMigrationMock = new Mock<DocumentMigration>();
             docMigrationMock.Setup(m => m.SourceRepository).Returns(repositoryMock.Object);
-            docMigrationMock.Setup(m => m.MigrateAsync(It.IsAny<int>(), It.IsAny<Func<long, Task>?>(), It.IsAny<bool>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()))
-                .Returns<int, Func<long, Task>?, bool, bool, CancellationToken>(async (_, callbackAsync, _, _, _) =>
+            docMigrationMock.Setup(m => m.MigrateAsync(It.IsAny<int>(), It.IsAny<Func<long, Task>?>(), It.IsAny<bool>(), It.IsAny<bool>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+                .Returns<int, Func<long, Task>?, bool, bool, int, CancellationToken>(async (_, callbackAsync, _, _, _, _) =>
                 {
                     //three periodic progress reports, like a long collection scan raises
                     foreach (var migratedDocs in new[] { 500L, 1000L, 1500L })
@@ -408,7 +408,7 @@ namespace Etherna.MongODM.Core.Utility
             // Setup.
             var unhandledException = new InvalidOperationException("Unhandled migration exception");
             var docMigrationMock = new Mock<DocumentMigration>();
-            docMigrationMock.Setup(m => m.MigrateAsync(It.IsAny<int>(), It.IsAny<Func<long, Task>?>(), It.IsAny<bool>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()))
+            docMigrationMock.Setup(m => m.MigrateAsync(It.IsAny<int>(), It.IsAny<Func<long, Task>?>(), It.IsAny<bool>(), It.IsAny<bool>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
                 .ThrowsAsync(unhandledException);
             dbContextMock.Setup(c => c.DocumentMigrationList).Returns([docMigrationMock.Object]);
 

@@ -313,6 +313,18 @@ namespace Etherna.MongODM.Core
         void SetModelSourceRepository(IEntityModel model, IRepository sourceRepository);
 
         /// <summary>
+        /// Start a scope keeping transient the models materialized inside it: at the scope
+        /// dispose, every model loaded or tracked on this db context instance after the scope
+        /// start evicts from the loaded models and the change tracking, discarding any unsaved
+        /// change. Models already loaded or tracked before the scope keep their state, updates
+        /// applied inside the scope included. Used by massive scans, like the document
+        /// migrations, to keep the scope memory bounded while each element still loads and
+        /// saves normally.
+        /// </summary>
+        /// <returns>The transient models scope</returns>
+        IDisposable StartTransientModelsScope();
+
+        /// <summary>
         /// Suppress change tracking on this db context instance until the returned scope is
         /// disposed: mutations don't flag change candidates. Used while merging loaded data
         /// into a model, keeping the merge out of the unit of work.

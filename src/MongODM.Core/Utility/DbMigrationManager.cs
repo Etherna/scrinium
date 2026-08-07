@@ -139,7 +139,8 @@ namespace Etherna.MongODM.Core.Utility
                     foreach (var docMigration in dbContext.DocumentMigrationList)
                     {
                         //running document migration, reporting progress on a single rolling log
-                        var result = await docMigration.MigrateAsync(500,
+                        var result = await docMigration.MigrateAsync(
+                            dbContext.Engine.Options.MigrationCallbackEveryTotDocuments,
                             async procDocs =>
                             {
                                 dbMigrationOp.AddDocumentMigrationLog(new DocumentMigrationLog(
@@ -151,6 +152,7 @@ namespace Etherna.MongODM.Core.Utility
                             },
                             dbMigrationOp.IsDryRun,
                             dbMigrationOp.IsStopAtFirstErrorEnabled,
+                            dbContext.Engine.Options.MigrationEvictEveryTotDocuments,
                             lockLostCancellation).ConfigureAwait(false);
 
                         if (!result.Succeded)

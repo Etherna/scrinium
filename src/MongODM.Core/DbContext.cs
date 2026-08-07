@@ -61,6 +61,8 @@ namespace Etherna.MongODM.Core
         private readonly Dictionary<object, IRepository> modelSourceRepositories = new(ReferenceEqualityComparer.Instance);
         private IRepositoryRegistry? scopedRepositoryRegistry;
         private readonly object trackingLock = new();
+        //the transient models scopes open on the flow, collecting the models entering while they run
+        private readonly List<TransientModelsScope> transientModelsScopes = [];
         private readonly HashSet<(Type ModelType, string? MemberName)> warnedImplicitLazyLoads = [];
 
         // Initializer.
@@ -362,7 +364,15 @@ namespace Etherna.MongODM.Core
                 return;
 
             lock (loadedModels)
-                loadedModels[(repository, modelId)] = model;
+            {
+                /* Report only a model entering the identity map: an already loaded key belongs
+                 * to whoever entered it, and a scope registering it again doesn't own it. */
+                var loadedModelKey = (repository, modelId);
+                if (!loadedModels.ContainsKey(loadedModelKey))
+                    ReportToTransientModelsScopes(scope => scope.ReportLoadedModel(loadedModelKey));
+
+                loadedModels[loadedModelKey] = model;
+            }
 
             logger.DbContextRegisteredLoadedModel(engine.Options.DbName, modelId.ToString()!, repository.Name);
         }
@@ -579,7 +589,13 @@ namespace Etherna.MongODM.Core
             ArgumentNullException.ThrowIfNull(bsonDocument);
 
             lock (trackingLock)
+            {
+                //report only a model entering the tracking: a model document update doesn't own it
+                if (!modelBsonDocuments.ContainsKey(model))
+                    ReportToTransientModelsScopes(scope => scope.ReportTrackedModel(model));
+
                 modelBsonDocuments[model] = bsonDocument;
+            }
         }
 
         public void SetModelSourceRepository(IEntityModel model, IRepository sourceRepository)
@@ -589,6 +605,19 @@ namespace Etherna.MongODM.Core
 
             lock (trackingLock)
                 modelSourceRepositories[model] = sourceRepository;
+        }
+
+        public IDisposable StartTransientModelsScope()
+        {
+            /* An open scope collects what the flow registers while it runs, and evicts exactly
+             * that at its dispose: the models entered before keep their state, updates applied
+             * inside the scope included. Collecting the entering models, instead of capturing
+             * the entered ones, keeps the cost of a scope proportional to what it evicts and
+             * not to what the db context already holds. */
+            var scope = new TransientModelsScope(this);
+            lock (transientModelsScopes)
+                transientModelsScopes.Add(scope);
+            return scope;
         }
 
         public IDisposable SuppressChangeTracking()
@@ -633,6 +662,16 @@ namespace Etherna.MongODM.Core
             Task.CompletedTask;
 
         // Helpers.
+        private void ReportToTransientModelsScopes(Action<TransientModelsScope> report)
+        {
+            /* Report to every open scope, not only to the innermost: a model entering inside a
+             * nested scope belongs to the outer ones too, whose eviction of an already evicted
+             * model is a no-op. */
+            lock (transientModelsScopes)
+                foreach (var scope in transientModelsScopes)
+                    report(scope);
+        }
+
         private List<IEntityModel> GetModelsToSave()
         {
             var modelsToSave = new HashSet<object>(ReferenceEqualityComparer.Instance);
@@ -713,6 +752,48 @@ namespace Etherna.MongODM.Core
                 lock (dbContext.trackingLock)
                     dbContext.changeTrackingSuppressions--;
             }
+        }
+
+        private sealed class TransientModelsScope(DbContext dbContext) : IDisposable
+        {
+            // Fields.
+            private readonly HashSet<(IRepository Repository, object ModelId)> enteredLoadedModelsKeys = [];
+            private readonly HashSet<object> enteredTrackedModels = new(ReferenceEqualityComparer.Instance);
+
+            // Methods.
+            public void Dispose()
+            {
+                lock (dbContext.transientModelsScopes)
+                    if (!dbContext.transientModelsScopes.Remove(this))
+                        return; //already disposed
+
+                // Evict the models registered as loaded inside the scope.
+                int evictedLoadedModelsCount = 0;
+                lock (dbContext.loadedModels)
+                    foreach (var key in enteredLoadedModelsKeys)
+                        if (dbContext.loadedModels.Remove(key))
+                            evictedLoadedModelsCount++;
+
+                // Evict the tracking of the models tracked inside the scope.
+                /* A change candidate always carries a model document, so untracking the models
+                 * entered here drops their candidate flags too. A candidate flagged inside the
+                 * scope on a model tracked before it stays: its change is real application
+                 * state, saved by the next changes save. */
+                foreach (var model in enteredTrackedModels.Cast<IEntityModel>())
+                    dbContext.RemoveModelTracking(model);
+
+                dbContext.logger.DbContextEvictedTransientModels(
+                    dbContext.engine.Options.DbName,
+                    evictedLoadedModelsCount,
+                    enteredTrackedModels.Count);
+            }
+
+            //reported under the lock guarding the state they enter
+            public void ReportLoadedModel((IRepository Repository, object ModelId) key) =>
+                enteredLoadedModelsKeys.Add(key);
+
+            public void ReportTrackedModel(object model) =>
+                enteredTrackedModels.Add(model);
         }
     }
 }

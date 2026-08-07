@@ -66,6 +66,21 @@ namespace Etherna.MongODM.Core.Options
         public bool IsReadOnly { get; }
 
         /// <summary>
+        /// Documents processed by a migration scan between two progress reports on its
+        /// operation log. Reporting more often costs a write of the operation document each
+        /// time, and tells nothing more about the outcome.
+        /// </summary>
+        public int MigrationCallbackEveryTotDocuments { get; }
+
+        /// <summary>
+        /// Documents processed by a migration scan between two evictions of the models it
+        /// loaded and tracked. It bounds the scan memory to the documents of an interval, with
+        /// their referenced summaries: a shorter interval holds less memory, a longer one
+        /// evicts less often and lets the documents of an interval share what they load.
+        /// </summary>
+        public int MigrationEvictEveryTotDocuments { get; }
+
+        /// <summary>
         /// Configuration of the document element carrying the model map schema id.
         /// </summary>
         public ModelMapSchemaIdOptions ModelMapSchemaId { get; }

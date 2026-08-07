@@ -350,6 +350,188 @@ namespace Etherna.MongODM.IntegrationTests
         }
 
         [Fact]
+        public async Task MigrationScanDoesNotRetainReferencedSummaries()
+        {
+            // Setup.
+            using var contextHandler = AsyncLocalContext.Instance.InitAsyncLocalContext();
+            await migrationsDbContext.Digests.DeleteManyAsync(Builders<Digest>.Filter.Empty);
+            await migrationsDbContext.Notes.DeleteManyAsync(Builders<Note>.Filter.Empty);
+
+            var note = new Note("text") { Tag = "original" };
+            await migrationsDbContext.Notes.CreateAsync(note);
+
+            //a digest denormalizes the tag of the note into its summary
+            var digest = new Digest("digest", note);
+            await migrationsDbContext.Digests.CreateAsync(digest);
+
+            //the default migration replaces each scanned document as it is
+            migrationsDbContext.DocumentMigrations =
+                [new DocumentMigration<Digest, string>(migrationsDbContext.Digests)];
+
+            // Action.
+            var migrationOp = await migrationsDbContext.TryStartMigrationAsync();
+            Assert.NotNull(migrationOp);
+            await migrationsDbContext.ExecuteMigrationAsync(migrationOp.Id);
+
+            // Assert.
+            //neither the scanned digest nor its referenced note summary are retained on the scope
+            Assert.Null(migrationsDbContext.TryGetLoadedModel(migrationsDbContext.Digests, digest.Id));
+            Assert.Null(migrationsDbContext.TryGetLoadedModel(migrationsDbContext.Notes, note.Id));
+
+            //the migration completed processing the digest, reading from a fresh scope
+            using var verifyScope = fixture.ServiceProvider.CreateScope();
+            var verifyDbContext = verifyScope.ServiceProvider.GetRequiredService<IMigrationsDbContext>();
+            var completedOp = await verifyDbContext.GetMigrationAsync(migrationOp.Id);
+            Assert.Equal(DbMigrationOperation.Status.Completed, completedOp.CurrentStatus);
+            Assert.Contains(completedOp.Logs, log => log is DocumentMigrationLog
+            {
+                State: MigrationLogBase.ExecutionState.Succeded,
+                TotMigratedDocs: 1,
+                TotErrorDocs: 0
+            });
+        }
+
+        [Fact]
+        public async Task MigrationScanEvictsOnItsConfiguredInterval()
+        {
+            /* The eviction interval decides how many documents share the loaded state before it
+             * evicts, and it is independent from the progress report interval. */
+
+            // Setup.
+            using var contextHandler = AsyncLocalContext.Instance.InitAsyncLocalContext();
+            await migrationsDbContext.Notes.DeleteManyAsync(Builders<Note>.Filter.Empty);
+
+            List<string> noteIds = [];
+            for (var i = 0; i < 4; i++)
+            {
+                var note = new Note($"note {i}");
+                await migrationsDbContext.Notes.CreateAsync(note);
+                noteIds.Add(note.Id);
+            }
+            noteIds.Sort(StringComparer.Ordinal); //the scan reads them by ascending id
+
+            //at each document, how many of the notes scanned so far are still loaded
+            List<int> loadedScannedNotesCounts = [];
+            var docMigration = new DocumentMigration<Note, string>(
+                migrationsDbContext.Notes,
+                _ =>
+                {
+                    loadedScannedNotesCounts.Add(noteIds.Count(
+                        id => migrationsDbContext.TryGetLoadedModel(migrationsDbContext.Notes, id) is not null));
+                    return Task.CompletedTask;
+                });
+
+            // Action.
+            var result = await docMigration.MigrateAsync(evictEveryTotDocuments: 2);
+
+            // Assert.
+            //the first two documents share the scope, the eviction after the second starts a new one
+            Assert.True(result.Succeded);
+            Assert.Equal([1, 2, 1, 2], loadedScannedNotesCounts);
+            foreach (var noteId in noteIds)
+                Assert.Null(migrationsDbContext.TryGetLoadedModel(migrationsDbContext.Notes, noteId));
+        }
+
+        [Fact]
+        public async Task MigrationScanDoesNotRetainScannedModels()
+        {
+            // Setup.
+            using var contextHandler = AsyncLocalContext.Instance.InitAsyncLocalContext();
+            await migrationsDbContext.Notes.DeleteManyAsync(Builders<Note>.Filter.Empty);
+
+            List<string> noteIds = [];
+            for (var i = 0; i < 5; i++)
+            {
+                var note = new Note($"note {i}");
+                await migrationsDbContext.Notes.CreateAsync(note);
+                noteIds.Add(note.Id);
+            }
+
+            List<Note> scannedNotes = [];
+            migrationsDbContext.DocumentMigrations =
+            [
+                new DocumentMigration<Note, string>(migrationsDbContext.Notes, async n =>
+                {
+                    scannedNotes.Add(n);
+                    n.Tag = "migrated";
+                    await migrationsDbContext.SaveChangesAsync();
+                })
+            ];
+
+            // Action.
+            var migrationOp = await migrationsDbContext.TryStartMigrationAsync();
+            Assert.NotNull(migrationOp);
+            await migrationsDbContext.ExecuteMigrationAsync(migrationOp.Id);
+
+            // Assert.
+            //the scanned models left the scope state: loaded models, model documents and change candidates
+            Assert.Equal(noteIds.Count, scannedNotes.Count);
+            foreach (var scannedNote in scannedNotes)
+            {
+                Assert.Null(migrationsDbContext.TryGetLoadedModel(migrationsDbContext.Notes, scannedNote.Id));
+                Assert.Null(migrationsDbContext.TryGetModelBsonDocument(scannedNote));
+            }
+            Assert.Empty(migrationsDbContext.ChangedModelsList);
+
+            //every processed document persisted, and the operation completed, reading from a fresh scope
+            using var verifyScope = fixture.ServiceProvider.CreateScope();
+            var verifyDbContext = verifyScope.ServiceProvider.GetRequiredService<IMigrationsDbContext>();
+            foreach (var noteId in noteIds)
+                Assert.Equal("migrated", (await verifyDbContext.Notes.FindOneAsync(noteId)).Tag);
+            var completedOp = await verifyDbContext.GetMigrationAsync(migrationOp.Id);
+            Assert.Equal(DbMigrationOperation.Status.Completed, completedOp.CurrentStatus);
+            Assert.Contains(completedOp.Logs, log => log is DocumentMigrationLog
+            {
+                State: MigrationLogBase.ExecutionState.Succeded,
+                TotMigratedDocs: 5,
+                TotErrorDocs: 0
+            });
+        }
+
+        [Fact]
+        public async Task MigrationScanKeepsModelsTrackedBeforeTheScan()
+        {
+            // Setup.
+            using var contextHandler = AsyncLocalContext.Instance.InitAsyncLocalContext();
+            await migrationsDbContext.Digests.DeleteManyAsync(Builders<Digest>.Filter.Empty);
+            await migrationsDbContext.Notes.DeleteManyAsync(Builders<Note>.Filter.Empty);
+
+            var note = new Note("control") { Tag = "original" };
+            await migrationsDbContext.Notes.CreateAsync(note);
+            for (var i = 0; i < 4; i++)
+                await migrationsDbContext.Digests.CreateAsync(new Digest($"digest {i}", note));
+
+            //load the control note on the scope before the scan, like the migration operation is
+            var loadedNote = await migrationsDbContext.Notes.FindOneAsync(note.Id);
+
+            var docMigration = new DocumentMigration<Digest, string>(migrationsDbContext.Digests);
+
+            // Action.
+            //the callback runs between the per document evictions, like the operation updates do
+            var callbackCount = 0;
+            var result = await docMigration.MigrateAsync(2, async _ =>
+            {
+                callbackCount++;
+                loadedNote.Tag = $"callback {callbackCount}";
+                await migrationsDbContext.SaveChangesAsync();
+            });
+
+            // Assert.
+            Assert.True(result.Succeded);
+            Assert.Equal(4, result.MigratedDocuments);
+            Assert.Equal(2, callbackCount);
+
+            //the control note, entered before the scan, is still the loaded and tracked instance
+            Assert.Same(loadedNote, migrationsDbContext.TryGetLoadedModel(migrationsDbContext.Notes, note.Id));
+            Assert.NotNull(migrationsDbContext.TryGetModelBsonDocument(loadedNote));
+
+            //the callback saves persisted through the scan evictions, reading from a fresh scope
+            using var verifyScope = fixture.ServiceProvider.CreateScope();
+            var verifyDbContext = verifyScope.ServiceProvider.GetRequiredService<IMigrationsDbContext>();
+            Assert.Equal("callback 2", (await verifyDbContext.Notes.FindOneAsync(note.Id)).Tag);
+        }
+
+        [Fact]
         public async Task MigrationStopsAtFirstFailingDocumentWhenRequired()
         {
             // Setup.
