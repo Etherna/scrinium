@@ -25,6 +25,7 @@ using Microsoft.Extensions.Logging;
 using Moq;
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Xunit;
@@ -319,6 +320,47 @@ namespace Etherna.MongODM.Core.Utility
             //the execution resumes the claim of the operation, and releases it at completion
             dbContextLockMock.Verify(l => l.TryResumeClaimAsync("opId"), Times.Once());
             dbContextLockLeaseMock.Verify(l => l.DisposeAsync(), Times.Once());
+        }
+
+        [Fact]
+        public async Task ExecuteMigrationReportsDocumentProgressOnRollingLog()
+        {
+            // Setup.
+            var repositoryMock = new Mock<IRepository>();
+            repositoryMock.Setup(r => r.Name).Returns("fakeModels");
+            var progressSnapshots = new List<(int ExecutingLogs, long TotMigratedDocs)>();
+            var docMigrationMock = new Mock<DocumentMigration>();
+            docMigrationMock.Setup(m => m.SourceRepository).Returns(repositoryMock.Object);
+            docMigrationMock.Setup(m => m.MigrateAsync(It.IsAny<int>(), It.IsAny<Func<long, Task>?>(), It.IsAny<bool>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()))
+                .Returns<int, Func<long, Task>?, bool, bool, CancellationToken>(async (_, callbackAsync, _, _, _) =>
+                {
+                    //three periodic progress reports, like a long collection scan raises
+                    foreach (var migratedDocs in new[] { 500L, 1000L, 1500L })
+                    {
+                        await callbackAsync!(migratedDocs);
+
+                        var executingLogs = dbMigrationOp.Logs.OfType<DocumentMigrationLog>()
+                            .Where(log => log.State == MigrationLogBase.ExecutionState.Executing)
+                            .ToList();
+                        progressSnapshots.Add((executingLogs.Count, executingLogs.Last().TotMigratedDocs));
+                    }
+                    return MigrationResult.Succeeded(1500);
+                });
+            dbContextMock.Setup(c => c.DocumentMigrationList).Returns([docMigrationMock.Object]);
+
+            // Action.
+            await dbMigrationManager.ExecuteDbContextMigrationAsync(dbContextMock.Object, "opId");
+
+            // Assert.
+            //each periodic report updates one rolling executing log, with the running counter
+            List<(int ExecutingLogs, long TotMigratedDocs)> expectedSnapshots = [(1, 500), (1, 1000), (1, 1500)];
+            Assert.Equal(expectedSnapshots, progressSnapshots);
+
+            //the ended log replaces the rolling one: the operation keeps a single documents log
+            Assert.Equal(DbMigrationOperation.Status.Completed, dbMigrationOp.CurrentStatus);
+            var documentLog = Assert.IsType<DocumentMigrationLog>(Assert.Single(dbMigrationOp.Logs));
+            Assert.Equal(MigrationLogBase.ExecutionState.Succeded, documentLog.State);
+            Assert.Equal(1500, documentLog.TotMigratedDocs);
         }
 
         [Fact]
