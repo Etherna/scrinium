@@ -46,6 +46,10 @@ namespace Etherna.MongODM.Core.Utility
         /* A lease short enough to observe its background renewals inside a test: they run at
          * a fifth of the lease duration carried by the lease document. */
         private static readonly TimeSpan FastRenewalLeaseDuration = TimeSpan.FromMilliseconds(250);
+        /* A lease long enough for a renewal to recover from a failed one inside it, on a
+         * loaded machine: a recovery landing past the lease duration would lose the lease,
+         * which is the behavior of its own test. */
+        private static readonly TimeSpan RecoverableRenewalLeaseDuration = TimeSpan.FromSeconds(2.5);
         private const string LockId = "FakeDbContext";
         private static readonly TimeSpan RenewalsWaitBound = TimeSpan.FromSeconds(10);
 
@@ -355,8 +359,8 @@ namespace Etherna.MongODM.Core.Utility
              * still alive until its expiration, and the next renewals keep it so. */
 
             // Setup.
-            //a lease claimed for a short duration: its renewals run at a fifth of it
-            SetupLeaseStamp(NewLeaseDocument(FastRenewalLeaseDuration));
+            //renewals run at a fifth of the lease: the recovery lands well inside it
+            SetupLeaseStamp(NewLeaseDocument(RecoverableRenewalLeaseDuration));
 
             var renewalsSignal = new TaskCompletionSource();
             var updates = 0;
@@ -373,7 +377,8 @@ namespace Etherna.MongODM.Core.Utility
                         return Task.FromException<UpdateResult>(new MongoConnectionException(
                             NewConnectionId(), "The server is unreachable"));
 
-                    if (update >= 4)
+                    //the resume renewed, the second failed, this one recovers
+                    if (update >= 3)
                         renewalsSignal.TrySetResult();
                     return Task.FromResult<UpdateResult>(new UpdateResult.Acknowledged(1, 1, null));
                 });
