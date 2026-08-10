@@ -36,6 +36,8 @@ namespace Etherna.MongODM.Core
     public class DbContextTest : IDisposable
     {
         // Consts.
+        //bounds the handovers between the flows of a test: a missing signal must fail it, not hang it
+        private static readonly TimeSpan HandoverBound = TimeSpan.FromSeconds(30);
         //bounds the seeding lock waits: a regressed wait resolution must fail the tests, not hang them
         private static readonly TimeSpan SeedingWaitBound = TimeSpan.FromSeconds(30);
 
@@ -434,54 +436,63 @@ namespace Etherna.MongODM.Core
         [InlineData(true)]
         public async Task CanRunExclusiveAccess(bool lockOnRead)
         {
+            /* The two flows hand over with signals, and not with delays: an exclusive window
+             * that opens late, on a loaded machine, would otherwise still be open when the
+             * other flow expects it closed. */
             var fakeModel = new FakeModel { Id = "id" };
+            var deniedAccessObserved = new TaskCompletionSource();
+            var exclusiveAccessEnded = new TaskCompletionSource();
+            var exclusiveAccessStarted = new TaskCompletionSource();
+            var freeAccessObserved = new TaskCompletionSource();
 
             async Task Process1()
             {
                 using var contextHandler = AsyncLocalContext.Instance.InitAsyncLocalContext();
-                
+
                 //succeeds without exclusive access
                 await dbContext.FakeModels.CreateAsync(fakeModel);
                 await dbContext.FakeModels.FindOneAsync("test");
+                freeAccessObserved.SetResult();
 
-                await Task.Delay(500);
-                
                 //fails with exclusive access without an allowed area. Can read if not locked
+                await exclusiveAccessStarted.Task.WaitAsync(HandoverBound);
                 await Assert.ThrowsAsync<UnauthorizedAccessException>(() => dbContext.FakeModels.CreateAsync(fakeModel));
                 if (lockOnRead)
                     await Assert.ThrowsAsync<UnauthorizedAccessException>(() => dbContext.FakeModels.FindOneAsync("test"));
                 else
                     await dbContext.FakeModels.FindOneAsync("test");
-                
-                await Task.Delay(500);
-                
+                deniedAccessObserved.SetResult();
+
                 //succeeds without exclusive access
+                await exclusiveAccessEnded.Task.WaitAsync(HandoverBound);
                 await dbContext.FakeModels.CreateAsync(fakeModel);
                 await dbContext.FakeModels.FindOneAsync("test");
             }
             async Task Process2()
             {
                 using var contextHandler = AsyncLocalContext.Instance.InitAsyncLocalContext();
-                
+
                 //succeeds without exclusive access
                 await dbContext.FakeModels.CreateAsync(fakeModel);
                 await dbContext.FakeModels.FindOneAsync("test");
-                
-                await Task.Delay(250);
-                
-                //run exclusive access with allowed area
+
+                //run exclusive access with allowed area, entered after the other flow accessed freely
+                await freeAccessObserved.Task.WaitAsync(HandoverBound);
                 var result = await dbContext.Engine.RunWithExclusiveAccessAsync(async () =>
                 {
                     //succeed with exclusive access in allowed area
                     await dbContext.FakeModels.CreateAsync(fakeModel);
                     await dbContext.FakeModels.FindOneAsync("test");
-                    
-                    await Task.Delay(500);
-                    
+                    exclusiveAccessStarted.SetResult();
+
+                    //hold the window open until the other flow observed its denial
+                    await deniedAccessObserved.Task.WaitAsync(HandoverBound);
+
                     return 42;
                 }, lockOnRead);
                 Assert.Equal(42, result);
-                
+                exclusiveAccessEnded.SetResult();
+
                 //succeeds without exclusive access
                 await dbContext.FakeModels.CreateAsync(fakeModel);
                 await dbContext.FakeModels.FindOneAsync("test");
