@@ -31,19 +31,16 @@ namespace Etherna.MongODM.Core.Conventions
         // Fields.
         private readonly IDbContextEngine? _dbContextEngine; //remove nullability with constructors that don't ask it, when will be possible
         private readonly IExecutionContext? executionContext;
+        private readonly IDiscriminatorConvention hierarchicalDriverConvention;
+        private readonly IDiscriminatorConvention objectDriverConvention;
 
         // Constructors.
-        [SuppressMessage("Usage", "CA2249:Consider using \'string.Contains\' instead of \'string.IndexOf\'")]
-        [SuppressMessage("Globalization", "CA1307:Specify StringComparison for clarity")]
         public HierarchicalProxyTolerantDiscriminatorConvention(
             IDbContextEngine dbContextEngine,
             string elementName)
+            : this(elementName)
         {
             _dbContextEngine = dbContextEngine;
-
-            ElementName = elementName ?? throw new ArgumentNullException(nameof(elementName));
-            if (elementName.IndexOf('\0') != -1)
-                throw new ArgumentException("Element names cannot contain nulls.", nameof(elementName));
         }
 
         /// <summary>
@@ -52,48 +49,56 @@ namespace Etherna.MongODM.Core.Conventions
         /// </summary>
         /// <param name="elementName">Discriminator element name</param>
         /// <param name="executionContext">Execution context</param>
-        [SuppressMessage("Usage", "CA2249:Consider using \'string.Contains\' instead of \'string.IndexOf\'")]
-        [SuppressMessage("Globalization", "CA1307:Specify StringComparison for clarity")]
         public HierarchicalProxyTolerantDiscriminatorConvention(
             string elementName,
             IExecutionContext executionContext)
+            : this(elementName)
+        {
+            this.executionContext = executionContext;
+        }
+
+        [SuppressMessage("Usage", "CA2249:Consider using \'string.Contains\' instead of \'string.IndexOf\'")]
+        [SuppressMessage("Globalization", "CA1307:Specify StringComparison for clarity")]
+        private HierarchicalProxyTolerantDiscriminatorConvention(
+            string elementName)
         {
             ElementName = elementName ?? throw new ArgumentNullException(nameof(elementName));
             if (elementName.IndexOf('\0') != -1)
                 throw new ArgumentException("Element names cannot contain nulls.", nameof(elementName));
 
-            this.executionContext = executionContext;
+            hierarchicalDriverConvention = new HierarchicalDiscriminatorConvention(elementName);
+            objectDriverConvention = new ObjectDiscriminatorConvention(elementName);
         }
 
-        public IDbContextEngine DbContextEngine
-        {
-            get
-            {
-                if (_dbContextEngine is not null)
-                    return _dbContextEngine;
-
-                /* If we didn't injected a dbContextEngine, this is an instance retrieved from a static invoke.
-                 * Try to find it from execution contenxt. */
-                if (executionContext is null)
-                    throw new InvalidOperationException();
-
-                return DbExecutionContextHandler.TryGetCurrentDbContextEngine(executionContext)
-                    ?? throw new InvalidOperationException();
-            }
-        }
+        // Properties.
+        /// <summary>
+        /// The db context engine resolving discriminators: the injected one, or the engine of the
+        /// db operation running on the current flow, when the convention is invoked through a
+        /// static driver lookup. Null when no db operation is running on the current flow.
+        /// </summary>
+        public IDbContextEngine? DbContextEngine =>
+            _dbContextEngine ??
+            (executionContext is null ?
+                null :
+                DbExecutionContextHandler.TryGetCurrentDbContextEngine(executionContext));
         public string ElementName { get; }
 
         // Methods.
         public Type GetActualType(IBsonReader bsonReader, Type nominalType)
         {
             ArgumentNullException.ThrowIfNull(bsonReader);
+            ArgumentNullException.ThrowIfNull(nominalType);
+
+            var dbContextEngine = DbContextEngine;
+            if (dbContextEngine is null)
+                return GetDriverConvention(nominalType).GetActualType(bsonReader, nominalType);
 
             //the BsonReader is sitting at the value whose actual type needs to be found
             var bsonType = bsonReader.GetCurrentBsonType();
             if (bsonType == BsonType.Document)
             {
                 //we can skip looking for a discriminator if nominalType has no discriminated sub types
-                if (DbContextEngine.DiscriminatorRegistry.IsTypeDiscriminated(nominalType))
+                if (dbContextEngine.DiscriminatorRegistry.IsTypeDiscriminated(nominalType))
                 {
                     var bookmark = bsonReader.GetBookmark();
                     bsonReader.ReadStartDocument();
@@ -106,7 +111,7 @@ namespace Etherna.MongODM.Core.Conventions
                         {
                             discriminator = discriminator.AsBsonArray.Last(); //last item is leaf class discriminator
                         }
-                        actualType = DbContextEngine.DiscriminatorRegistry.LookupActualType(nominalType, discriminator);
+                        actualType = dbContextEngine.DiscriminatorRegistry.LookupActualType(nominalType, discriminator);
                     }
                     bsonReader.ReturnToBookmark(bookmark);
                     return actualType;
@@ -124,11 +129,17 @@ namespace Etherna.MongODM.Core.Conventions
         /// <returns>The discriminator value.</returns>
         public BsonValue? GetDiscriminator(Type nominalType, Type actualType)
         {
+            ArgumentNullException.ThrowIfNull(nominalType);
+
+            var dbContextEngine = DbContextEngine;
+            if (dbContextEngine is null)
+                return GetDriverConvention(nominalType).GetDiscriminator(nominalType, actualType);
+
             // Remove proxy type.
-            actualType = DbContextEngine.ProxyGenerator.PurgeProxyType(actualType);
-            
+            actualType = dbContextEngine.ProxyGenerator.PurgeProxyType(actualType);
+
             // Find active schema for model type.
-            if (!DbContextEngine.MapRegistry.TryGetModelMap(actualType, out var modelMap))
+            if (!dbContextEngine.MapRegistry.TryGetModelMap(actualType, out var modelMap))
                 return null;
             var schema = modelMap.ActiveSchema;
             
@@ -150,5 +161,25 @@ namespace Etherna.MongODM.Core.Conventions
 
             return schema.Discriminator;
         }
+
+        // Helpers.
+        /* The static registration on typeof(object) is inherited by every type of the process,
+         * MongODM models and foreign ones alike, and the driver caches the resolved convention
+         * for each type forever. Without a db context engine on the current flow there is no
+         * MongODM discriminator registry to resolve, and the type is served with the same
+         * driver convention it would get with no registration on typeof(object).
+         *
+         * This mirrors the outcome of the driver's own `BsonSerializer
+         * .LookupDiscriminatorConvention`, verified against it: `typeof(object)` and the
+         * interfaces resolve the object convention, while a class resolves the hierarchical
+         * one, registered for it when its class map serializer is built.
+         *
+         * The selection can't delegate to that lookup: a type without a convention of its own
+         * inherits the one of `typeof(object)`, which in a MongODM process is this convention,
+         * so asking the driver would resolve back here. */
+        private IDiscriminatorConvention GetDriverConvention(Type nominalType) =>
+            nominalType == typeof(object) || nominalType.IsInterface ?
+                objectDriverConvention :
+                hierarchicalDriverConvention;
     }
 }

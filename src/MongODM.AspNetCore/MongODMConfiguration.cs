@@ -14,7 +14,9 @@
 
 using Etherna.MongoDB.Driver;
 using Etherna.MongoDB.Driver.Core.Configuration;
+using Etherna.MongODM.AspNetCore.ExecContext;
 using Etherna.MongODM.Core;
+using Etherna.MongODM.Core.ExecContext;
 using Etherna.MongODM.Core.Options;
 using Etherna.MongODM.Core.Repositories;
 using Microsoft.Extensions.DependencyInjection;
@@ -107,6 +109,12 @@ namespace Etherna.MongODM.AspNetCore
                 // Register dbContext engine, keyed by its dbContext type.
                 services.AddKeyedSingleton<IDbContextEngine>(typeof(TDbContextImpl), (sp, _) =>
                 {
+                    // Bind the driver static hooks to the application execution context.
+                    /* The hooks resolve the db context engine of the current flow from the
+                     * execution context, and are configured with the service collection: the
+                     * application service provider is available only here. */
+                    DeferredExecutionContext.Instance.Bind(sp.GetRequiredService<IExecutionContext>());
+
                     // Get dependencies.
                     var dependencies = sp.GetRequiredService<IDbDependencies>();
 
