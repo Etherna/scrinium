@@ -468,8 +468,14 @@ namespace Etherna.MongODM.Core.Serialization.Mapping
                 {
                     var baseModelType = modelMapSchema.ModelType.BaseType;
 
-                    // If don't need to be linked, because it is typeof(object).
-                    if (baseModelType is null)
+                    // Skip if the model type is at the top of its hierarchy.
+                    /* typeof(object) must not get a map: its model map serializer would
+                     * register in place of the driver ObjectSerializer, dropping the
+                     * allowed types guard on object shaped members, and breaking the
+                     * driver serializers requiring an ObjectSerializer registered for
+                     * object (e.g. on interface typed members). The class map freeze
+                     * resolves the object base class map on its own. */
+                    if (baseModelType is null || baseModelType == typeof(object))
                         continue;
 
                     // Get base type map, or generate it.

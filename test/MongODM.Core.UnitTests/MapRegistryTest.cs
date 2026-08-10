@@ -234,7 +234,7 @@ namespace Etherna.MongODM.Core
                 e => e.ProxyGenerator.CreateInstance(It.IsAny<Type>(), It.IsAny<object[]>()),
                 Times.Never());
             Assert.Equal(
-                new[] { typeof(FakeModel), typeof(FakeEntityModelBase<string>), typeof(ModelBase), typeof(object) }.OrderBy(t => t.FullName),
+                new[] { typeof(FakeModel), typeof(FakeEntityModelBase<string>), typeof(ModelBase) }.OrderBy(t => t.FullName),
                 mapRegistry.MapsByModelType.Keys.OrderBy(t => t.FullName));
         }
 
@@ -393,6 +393,51 @@ namespace Etherna.MongODM.Core
             // Assert.
             Assert.Contains(ModelMapSchema.FallbackId, exception.Message, StringComparison.Ordinal);
             Assert.Contains(nameof(FirstModel), exception.Message, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void FreezeKeepsCustomSerializerMapForObjectType()
+        {
+            /* An application hosting its own types into object shaped members can register
+             * an ObjectSerializer with an explicit allow list through a custom serializer
+             * map: the freeze keeps it as the registered serializer for object. */
+
+            // Setup.
+            var customObjectSerializer = new ObjectSerializer(type =>
+                ObjectSerializer.DefaultAllowedTypes(type) || type == typeof(FirstModel));
+            mapRegistry.AddCustomSerializerMap<object>(customObjectSerializer);
+            mapRegistry.AddModelMap<FakeModel>("fakeSchemaId", ScalarMembersInitializer);
+
+            // Action.
+            mapRegistry.Freeze();
+
+            // Assert.
+            Assert.Same(customObjectSerializer, serializerRegistry.GetSerializer<object>());
+        }
+
+        [Fact]
+        public void FreezeKeepsDriverObjectSerializerForObjectType()
+        {
+            /* MODM-231: linking base model maps stops before typeof(object), so no model
+             * map serializer registers for object in place of the driver ObjectSerializer,
+             * whose allowed types guard protects object shaped members. */
+
+            // Setup.
+            /* Mirror the engine registry consumption order: the driver primitive provider,
+             * serving object, is consumed before the map registry provider. */
+            dbContextEngineMock.Setup(e => e.MapRegistry)
+                .Returns(mapRegistry);
+            serializerRegistry.RegisterSerializationProvider(new MapRegistrySerializationProvider(dbContextEngineMock.Object));
+            serializerRegistry.RegisterSerializationProvider(new PrimitiveSerializationProvider());
+
+            mapRegistry.AddModelMap<FakeModel>("fakeSchemaId", ScalarMembersInitializer);
+
+            // Action.
+            mapRegistry.Freeze();
+
+            // Assert.
+            Assert.DoesNotContain(typeof(object), mapRegistry.MapsByModelType.Keys);
+            Assert.IsType<ObjectSerializer>(serializerRegistry.GetSerializer<object>());
         }
 
         [Fact]
