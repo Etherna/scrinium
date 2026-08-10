@@ -65,10 +65,14 @@ namespace Etherna.MongODM.AspNetCore.Extensions
                 (options, taskRunnerBuilder) =>
                 {
                     // Register global conventions.
+                    /* The driver convention registry is process wide: the pack applies only to
+                     * the class maps built while a db context engine registers its maps, so the
+                     * enum representation of any other type automapped in the process, by another
+                     * consumer of the driver, keeps the driver default. */
                     ConventionRegistry.Register("Enum string", new ConventionPack
                     {
                         new EnumRepresentationConvention(BsonType.String)
-                    }, c => true);
+                    }, _ => MapsRegistrationHandler.IsRegisteringMaps(DeferredExecutionContext.Instance));
 
                     // Freeze configuration into mongodm options.
                     configuration.Freeze(options);
@@ -87,16 +91,15 @@ namespace Etherna.MongODM.AspNetCore.Extensions
              * default returned instance from static calls to BsonSerializer.LookupDiscriminatorConvention(Type).
              * Several points internal to drivers invoke this method, and we can't avoid it. We need to set the default.
              */
-            var sp = services.BuildServiceProvider();
-            var execContext = sp.GetRequiredService<IExecutionContext>();
             BsonSerializer.RegisterDiscriminatorConvention(typeof(object),
-                new HierarchicalProxyTolerantDiscriminatorConvention("_t", execContext));
+                new HierarchicalProxyTolerantDiscriminatorConvention("_t", DeferredExecutionContext.Instance));
 
             /* For same reason of handle static calls to BsonSerializer.LookupSerializer(Type),
              * we need a way to inject a current context accessor. This is a modification on official drivers,
              * waiting an official implementation of serialization contexts.
              */
-            BsonSerializer.SetSerializationContextAccessor(new SerializationContextAccessor(execContext));
+            BsonSerializer.SetSerializationContextAccessor(
+                new SerializationContextAccessor(DeferredExecutionContext.Instance));
 
             // DbContext internal.
             //dependencies

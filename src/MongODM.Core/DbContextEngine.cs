@@ -92,18 +92,24 @@ namespace Etherna.MongODM.Core
             InitializeSerializerRegistry();
 
             // Register model maps.
-            //internal maps
-            new DbMigrationOperationMap().Register(this);
-            new ModelBaseMap().Register(this);
-            new OperationBaseMap().Register(this);
-            new SeedOperationMap().Register(this);
+            /* Maps registration builds the class maps of the db context: the conventions that
+             * MongODM registers on the driver global convention registry apply only inside this
+             * scope, leaving every other type automapped in the process to the driver defaults. */
+            using (new MapsRegistrationHandler(ExecutionContext))
+            {
+                //internal maps
+                new DbMigrationOperationMap().Register(this);
+                new ModelBaseMap().Register(this);
+                new OperationBaseMap().Register(this);
+                new SeedOperationMap().Register(this);
 
-            //application maps
-            foreach (var maps in modelMapsCollectors)
-                maps.Register(this);
+                //application maps
+                foreach (var maps in modelMapsCollectors)
+                    maps.Register(this);
 
-            // Build and freeze map registry.
-            MapRegistry.Freeze();
+                // Build and freeze map registry.
+                MapRegistry.Freeze();
+            }
 
             // Initialize MongoDB database.
             Client = mongoClient;
