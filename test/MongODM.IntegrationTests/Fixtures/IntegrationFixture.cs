@@ -44,6 +44,8 @@ namespace Etherna.MongODM.IntegrationTests.Fixtures
         public LogEventCollector MigrationsLogEvents { get; } = new();
         public IMixedAccessDbContext MixedAccessDbContext { get; private set; } = null!;
         public string MongoDbUrl => mongoDb.DbUrl;
+        public IObjectMembersDbContext ObjectMembersDbContext { get; private set; } = null!;
+        public string ObjectMembersDbName { get; } = "mongodm-it-objmembers-" + Guid.NewGuid().ToString("N");
         public string ParentDbName { get; } = "mongodm-it-parent-" + Guid.NewGuid().ToString("N");
         public IReadOnlyDbContext ReadOnlyDbContext { get; private set; } = null!;
         public ISecondDbContext SecondDbContext { get; private set; } = null!;
@@ -64,6 +66,7 @@ namespace Etherna.MongODM.IntegrationTests.Fixtures
                 await TestDbContext.Engine.Client.DropDatabaseAsync(CustomIdDbName);
                 await TestDbContext.Engine.Client.DropDatabaseAsync(ImplicitSourceDbName);
                 await TestDbContext.Engine.Client.DropDatabaseAsync(MigrationsDbName);
+                await TestDbContext.Engine.Client.DropDatabaseAsync(ObjectMembersDbName);
                 await TestDbContext.Engine.Client.DropDatabaseAsync(ParentDbName);
                 await TestDbContext.Engine.Client.DropDatabaseAsync(TestDbName);
                 await TestDbContext.Engine.Client.DropDatabaseAsync(SecondDbName);
@@ -148,6 +151,13 @@ namespace Etherna.MongODM.IntegrationTests.Fixtures
                     options =>
                     {
                         options.ConnectionString = $"{mongoDb.DbUrl}/{SeedObserverTwoDbName}";
+                    })
+                //dedicated context for the object shaped member tests
+                .AddDbContext<IObjectMembersDbContext, ObjectMembersDbContext>(
+                    _ => new ObjectMembersDbContext(),
+                    options =>
+                    {
+                        options.ConnectionString = $"{mongoDb.DbUrl}/{ObjectMembersDbName}";
                     });
 
             serviceProvider = services.BuildServiceProvider();
@@ -155,6 +165,7 @@ namespace Etherna.MongODM.IntegrationTests.Fixtures
             CustomIdDbContext = serviceProvider.GetRequiredService<ICustomIdDbContext>();
             ImplicitSourceDbContext = serviceProvider.GetRequiredService<IImplicitSourceDbContext>();
             MixedAccessDbContext = serviceProvider.GetRequiredService<IMixedAccessDbContext>();
+            ObjectMembersDbContext = serviceProvider.GetRequiredService<IObjectMembersDbContext>();
             ReadOnlyDbContext = serviceProvider.GetRequiredService<IReadOnlyDbContext>();
             TaskRunner = (InlineTaskRunner)serviceProvider.GetRequiredService<ITaskRunner>();
             TestDbContext = serviceProvider.GetRequiredService<ITestDbContext>();
