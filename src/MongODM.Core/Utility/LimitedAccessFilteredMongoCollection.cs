@@ -21,22 +21,13 @@ namespace Etherna.MongODM.Core.Utility
      * operation keeps the guards of the originating collection, with the same engine
      * and read-only flag, and reading the filter verifies the read permission. */
     [SuppressMessage("Naming", "CA1711:Identifiers should not have incorrect suffix")]
-    internal sealed class LimitedAccessFilteredMongoCollection<TDocument>
-        : LimitedAccessMongoCollection<TDocument>, IFilteredMongoCollection<TDocument>
+    internal sealed class LimitedAccessFilteredMongoCollection<TDocument>(
+        IDbContextEngine dbContextEngine,
+        IFilteredMongoCollection<TDocument> filteredMongoCollection,
+        bool isReadOnly)
+        : LimitedAccessMongoCollection<TDocument>(dbContextEngine, filteredMongoCollection, isReadOnly),
+            IFilteredMongoCollection<TDocument>
     {
-        // Fields.
-        private readonly IFilteredMongoCollection<TDocument> filteredMongoCollection;
-
-        // Constructors.
-        public LimitedAccessFilteredMongoCollection(
-            IDbContextEngine dbContextEngine,
-            IFilteredMongoCollection<TDocument> filteredMongoCollection,
-            bool isReadOnly)
-            : base(dbContextEngine, filteredMongoCollection, isReadOnly)
-        {
-            this.filteredMongoCollection = filteredMongoCollection;
-        }
-
         // Properties.
         public FilterDefinition<TDocument> Filter
         {
