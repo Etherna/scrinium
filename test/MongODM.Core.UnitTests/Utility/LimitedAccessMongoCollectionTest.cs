@@ -55,6 +55,31 @@ namespace Etherna.MongODM.Core.Utility
 
         // Tests.
         [Fact]
+        public async Task DatabaseHandsOutGuardedCollections()
+        {
+            // Setup.
+            /* An exclusive write lock is active on the engine, and the current flow holds
+             * no exclusive access allowance. */
+            using var contextHandler = AsyncLocalContext.Instance.InitAsyncLocalContext();
+            engineMock.Setup(e => e.IsExclusiveWriteEnabled)
+                .Returns(true);
+            var databaseMock = new Mock<IMongoDatabase>();
+            var innerCollectionMock = new Mock<IMongoCollection<FakeModel>>();
+            collectionMock.Setup(c => c.Database)
+                .Returns(databaseMock.Object);
+            databaseMock.Setup(d => d.GetCollection<FakeModel>("fakes", It.IsAny<MongoCollectionSettings>()))
+                .Returns(innerCollectionMock.Object);
+            var collection = new LimitedAccessMongoCollection<FakeModel>(engineMock.Object, collectionMock.Object, false);
+
+            // Action and assert.
+            var retrievedCollection = collection.Database.GetCollection<FakeModel>("fakes");
+            await Assert.ThrowsAsync<UnauthorizedAccessException>(() => retrievedCollection.InsertOneAsync(new FakeModel()));
+            await Assert.ThrowsAsync<UnauthorizedAccessException>(() => retrievedCollection.DeleteManyAsync(Builders<FakeModel>.Filter.Empty));
+            innerCollectionMock.VerifyNoOtherCalls();
+        }
+
+        // Tests.
+        [Fact]
         public async Task ForeignExclusiveAccessDeniesAggregateToCollectionPipelines()
         {
             // Setup.
@@ -112,6 +137,38 @@ namespace Etherna.MongODM.Core.Utility
                 }));
 #pragma warning restore CS0618
             collectionMock.VerifyNoOtherCalls();
+        }
+
+        [Fact]
+        public async Task ReadOnlyCollectionAllowsDatabaseReads()
+        {
+            // Setup.
+            var databaseMock = new Mock<IMongoDatabase>();
+            var innerCollectionMock = new Mock<IMongoCollection<FakeModel>>();
+            collectionMock.Setup(c => c.Database)
+                .Returns(databaseMock.Object);
+            databaseMock.Setup(d => d.DatabaseNamespace)
+                .Returns(new DatabaseNamespace("fakeDb"));
+            databaseMock.Setup(d => d.GetCollection<FakeModel>("fakes", It.IsAny<MongoCollectionSettings>()))
+                .Returns(innerCollectionMock.Object);
+            var namesCursor = new Mock<IAsyncCursor<string>>().Object;
+            databaseMock.Setup(d => d.ListCollectionNamesAsync(It.IsAny<ListCollectionNamesOptions>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(namesCursor);
+            var documentsCursor = new Mock<IAsyncCursor<FakeModel>>().Object;
+            innerCollectionMock.Setup(c => c.FindAsync(It.IsAny<FilterDefinition<FakeModel>>(), It.IsAny<FindOptions<FakeModel, FakeModel>>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(documentsCursor);
+            var collection = new LimitedAccessMongoCollection<FakeModel>(engineMock.Object, collectionMock.Object, true);
+
+            // Action.
+            var database = collection.Database;
+            var databaseNamespace = database.DatabaseNamespace;
+            var listedNames = await database.ListCollectionNamesAsync();
+            var foundCursor = await database.GetCollection<FakeModel>("fakes").FindAsync(Builders<FakeModel>.Filter.Empty);
+
+            // Assert.
+            Assert.Equal("fakeDb", databaseNamespace.DatabaseName);
+            Assert.Same(namesCursor, listedNames);
+            Assert.Same(documentsCursor, foundCursor);
         }
 
         [Fact]
@@ -197,6 +254,34 @@ namespace Etherna.MongODM.Core.Utility
         }
 
         [Fact]
+        public async Task ReadOnlyCollectionAllowsReadsThroughOfType()
+        {
+            // Setup.
+            var filteredCollectionMock = new Mock<IFilteredMongoCollection<FakeModelWithExtraElements>>();
+            collectionMock.Setup(c => c.OfType<FakeModelWithExtraElements>())
+                .Returns(filteredCollectionMock.Object);
+            var filter = Builders<FakeModelWithExtraElements>.Filter.Empty;
+            filteredCollectionMock.Setup(c => c.Filter)
+                .Returns(filter);
+            var cursor = new Mock<IAsyncCursor<FakeModelWithExtraElements>>().Object;
+            filteredCollectionMock.Setup(c => c.FindAsync(
+                    It.IsAny<FilterDefinition<FakeModelWithExtraElements>>(),
+                    It.IsAny<FindOptions<FakeModelWithExtraElements, FakeModelWithExtraElements>>(),
+                    It.IsAny<CancellationToken>()))
+                .ReturnsAsync(cursor);
+            var collection = new LimitedAccessMongoCollection<FakeModel>(engineMock.Object, collectionMock.Object, true);
+
+            // Action.
+            var filteredCollection = collection.OfType<FakeModelWithExtraElements>();
+            var filterDefinition = filteredCollection.Filter;
+            var foundCursor = await filteredCollection.FindAsync(Builders<FakeModelWithExtraElements>.Filter.Empty);
+
+            // Assert.
+            Assert.Same(filter, filterDefinition);
+            Assert.Same(cursor, foundCursor);
+        }
+
+        [Fact]
         public async Task ReadOnlyCollectionDeniesAggregateToCollectionPipelines()
         {
             // Setup.
@@ -216,6 +301,39 @@ namespace Etherna.MongODM.Core.Utility
             await Assert.ThrowsAsync<UnauthorizedAccessException>(() => collection.AggregateAsync(mergePipeline));
             collectionMock.VerifyGet(c => c.DocumentSerializer, Times.AtLeastOnce());
             collectionMock.VerifyNoOtherCalls();
+        }
+
+        [Fact]
+        public async Task ReadOnlyCollectionDeniesDatabaseLevelWrites()
+        {
+            // Setup.
+            var databaseMock = new Mock<IMongoDatabase>();
+            collectionMock.Setup(c => c.Database)
+                .Returns(databaseMock.Object);
+            var collection = new LimitedAccessMongoCollection<FakeModel>(engineMock.Object, collectionMock.Object, true);
+
+            // Action and assert.
+            var database = collection.Database;
+            var exception = Assert.Throws<UnauthorizedAccessException>(() => database.DropCollection("fakes"));
+            Assert.Equal("Database is read only", exception.Message);
+            Assert.Throws<UnauthorizedAccessException>(() => database.AggregateToCollection(new EmptyPipelineDefinition<NoPipelineInput>()));
+            //a database level aggregate writing into a collection is a write, like at collection level
+            var outPipeline = PipelineDefinition<NoPipelineInput, BsonDocument>.Create(
+                new BsonDocument("$out", "targetCollection"));
+            Assert.Throws<UnauthorizedAccessException>(() => database.Aggregate(outPipeline));
+            await Assert.ThrowsAsync<UnauthorizedAccessException>(() => database.AggregateAsync(outPipeline));
+            Assert.Throws<UnauthorizedAccessException>(() => database.CreateCollection("denied"));
+            await Assert.ThrowsAsync<UnauthorizedAccessException>(() => database.CreateCollectionAsync("denied"));
+            await Assert.ThrowsAsync<UnauthorizedAccessException>(() => database.CreateViewAsync(
+                "deniedView", "fakes", new EmptyPipelineDefinition<FakeModel>()));
+            await Assert.ThrowsAsync<UnauthorizedAccessException>(() => database.DropCollectionAsync("fakes"));
+            Assert.Throws<UnauthorizedAccessException>(() => database.RenameCollection("fakes", "renamedFakes"));
+            await Assert.ThrowsAsync<UnauthorizedAccessException>(() => database.RenameCollectionAsync("fakes", "renamedFakes"));
+            Assert.Throws<UnauthorizedAccessException>(() => database.RunCommand(
+                new BsonDocumentCommand<BsonDocument>(new BsonDocument("dropDatabase", 1))));
+            await Assert.ThrowsAsync<UnauthorizedAccessException>(() => database.RunCommandAsync(
+                new BsonDocumentCommand<BsonDocument>(new BsonDocument("dropDatabase", 1))));
+            databaseMock.VerifyNoOtherCalls();
         }
 
         [Fact]
@@ -304,6 +422,49 @@ namespace Etherna.MongODM.Core.Utility
         }
 
         [Fact]
+        public async Task ReadOnlyCollectionDeniesWritesThroughDatabaseCollections()
+        {
+            // Setup.
+            var databaseMock = new Mock<IMongoDatabase>();
+            var innerCollectionMock = new Mock<IMongoCollection<FakeModel>>();
+            collectionMock.Setup(c => c.Database)
+                .Returns(databaseMock.Object);
+            databaseMock.Setup(d => d.GetCollection<FakeModel>("fakes", It.IsAny<MongoCollectionSettings>()))
+                .Returns(innerCollectionMock.Object);
+            var collection = new LimitedAccessMongoCollection<FakeModel>(engineMock.Object, collectionMock.Object, true);
+
+            // Action and assert.
+            var retrievedCollection = collection.Database.GetCollection<FakeModel>("fakes");
+            await Assert.ThrowsAsync<UnauthorizedAccessException>(() => retrievedCollection.DeleteManyAsync(Builders<FakeModel>.Filter.Empty));
+            await Assert.ThrowsAsync<UnauthorizedAccessException>(() => retrievedCollection.InsertOneAsync(new FakeModel()));
+            await Assert.ThrowsAsync<UnauthorizedAccessException>(() => retrievedCollection.ReplaceOneAsync(
+                Builders<FakeModel>.Filter.Empty, new FakeModel()));
+            innerCollectionMock.VerifyNoOtherCalls();
+        }
+
+        [Fact]
+        public async Task ReadOnlyCollectionDeniesWritesThroughOfType()
+        {
+            // Setup.
+            var filteredCollectionMock = new Mock<IFilteredMongoCollection<FakeModelWithExtraElements>>();
+            collectionMock.Setup(c => c.OfType<FakeModelWithExtraElements>())
+                .Returns(filteredCollectionMock.Object);
+            var collection = new LimitedAccessMongoCollection<FakeModel>(engineMock.Object, collectionMock.Object, true);
+
+            // Action and assert.
+            var filteredCollection = collection.OfType<FakeModelWithExtraElements>();
+            var exception = await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
+                filteredCollection.DeleteManyAsync(Builders<FakeModelWithExtraElements>.Filter.Empty));
+            Assert.Equal("Collection is read only", exception.Message);
+            await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
+                filteredCollection.InsertOneAsync(new FakeModelWithExtraElements()));
+            await Assert.ThrowsAsync<UnauthorizedAccessException>(() => filteredCollection.UpdateManyAsync(
+                Builders<FakeModelWithExtraElements>.Filter.Empty,
+                Builders<FakeModelWithExtraElements>.Update.Set(m => m.IntegerProp, 1)));
+            filteredCollectionMock.VerifyNoOtherCalls();
+        }
+
+        [Fact]
         public async Task WritableCollectionAllowsWrites()
         {
             // Setup.
@@ -319,5 +480,43 @@ namespace Etherna.MongODM.Core.Utility
             collectionMock.Verify(c => c.InsertOneAsync(model, It.IsAny<InsertOneOptions>(), It.IsAny<CancellationToken>()), Times.Once());
             indexManagerMock.Verify(m => m.CreateOneAsync(It.IsAny<CreateIndexModel<FakeModel>>(), It.IsAny<CreateOneIndexOptions>(), It.IsAny<CancellationToken>()), Times.Once());
         }
+        [Fact]
+        public async Task WritableCollectionAllowsWritesThroughDatabaseAndOfType()
+        {
+            // Setup.
+            var databaseMock = new Mock<IMongoDatabase>();
+            var filteredCollectionMock = new Mock<IFilteredMongoCollection<FakeModelWithExtraElements>>();
+            var innerCollectionMock = new Mock<IMongoCollection<FakeModel>>();
+            collectionMock.Setup(c => c.Database)
+                .Returns(databaseMock.Object);
+            collectionMock.Setup(c => c.OfType<FakeModelWithExtraElements>())
+                .Returns(filteredCollectionMock.Object);
+            databaseMock.Setup(d => d.GetCollection<FakeModel>("fakes", It.IsAny<MongoCollectionSettings>()))
+                .Returns(innerCollectionMock.Object);
+            databaseMock.Setup(d => d.RunCommandAsync(
+                    It.IsAny<Command<BsonDocument>>(),
+                    It.IsAny<ReadPreference>(),
+                    It.IsAny<CancellationToken>()))
+                .ReturnsAsync(new BsonDocument());
+            var collection = new LimitedAccessMongoCollection<FakeModel>(engineMock.Object, collectionMock.Object, false);
+            var model = new FakeModel();
+
+            // Action.
+            await collection.Database.GetCollection<FakeModel>("fakes").InsertOneAsync(model);
+            await collection.Database.RunCommandAsync(new BsonDocumentCommand<BsonDocument>(new BsonDocument("collStats", "fakes")));
+            await collection.OfType<FakeModelWithExtraElements>().DeleteManyAsync(Builders<FakeModelWithExtraElements>.Filter.Empty);
+
+            // Assert.
+            innerCollectionMock.Verify(c => c.InsertOneAsync(model, It.IsAny<InsertOneOptions>(), It.IsAny<CancellationToken>()), Times.Once());
+            databaseMock.Verify(d => d.RunCommandAsync(
+                It.IsAny<Command<BsonDocument>>(),
+                It.IsAny<ReadPreference>(),
+                It.IsAny<CancellationToken>()), Times.Once());
+            filteredCollectionMock.Verify(c => c.DeleteManyAsync(
+                It.IsAny<FilterDefinition<FakeModelWithExtraElements>>(),
+                It.IsAny<DeleteOptions>(),
+                It.IsAny<CancellationToken>()), Times.Once());
+        }
+
     }
 }
