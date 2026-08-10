@@ -12,6 +12,7 @@
 // You should have received a copy of the GNU Lesser General Public License along with MongODM.
 // If not, see <https://www.gnu.org/licenses/>.
 
+using Etherna.MongoDB.Bson;
 using Etherna.MongoDB.Driver;
 using Etherna.MongoDB.Driver.Linq;
 using Etherna.MongODM.Core.Domain.Models;
@@ -185,6 +186,59 @@ namespace Etherna.MongODM.IntegrationTests
                     Builders<Note>.Update.Set(n => n.Text, "denied")));
             await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
                 readOnlyDbContext.Notes.DeleteManyAsync(n => n.Id == note.Id));
+
+            //the owner document is untouched
+            using var verifyContextHandler = AsyncLocalContext.Instance.InitAsyncLocalContext();
+            var foundNote = await secondDbContext.Notes.FindOneAsync(note.Id);
+            Assert.Equal("owner text", foundNote.Text);
+        }
+
+        [Fact]
+        public async Task ReadOnlyDbContextDeniesWritesThroughDatabase()
+        {
+            // Setup.
+            using var setupContextHandler = AsyncLocalContext.Instance.InitAsyncLocalContext();
+            var note = new Note("owner text");
+            await secondDbContext.Notes.CreateAsync(note);
+
+            // Action and assert.
+            using var workContextHandler = AsyncLocalContext.Instance.InitAsyncLocalContext();
+            await readOnlyDbContext.Notes.AccessToCollectionAsync(async collection =>
+            {
+                var database = collection.Database;
+
+                //writes on a database retrieved collection
+                await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
+                    database.GetCollection<Note>("notes").DeleteManyAsync(Builders<Note>.Filter.Empty));
+
+                //database level writes
+                await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
+                    database.DropCollectionAsync("notes"));
+                await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
+                    database.RenameCollectionAsync("notes", "renamedNotes"));
+                await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
+                    database.RunCommandAsync(new BsonDocumentCommand<BsonDocument>(new BsonDocument("dropDatabase", 1))));
+            });
+
+            //the owner document is untouched
+            using var verifyContextHandler = AsyncLocalContext.Instance.InitAsyncLocalContext();
+            var foundNote = await secondDbContext.Notes.FindOneAsync(note.Id);
+            Assert.Equal("owner text", foundNote.Text);
+        }
+
+        [Fact]
+        public async Task ReadOnlyDbContextDeniesWritesThroughOfType()
+        {
+            // Setup.
+            using var setupContextHandler = AsyncLocalContext.Instance.InitAsyncLocalContext();
+            var note = new Note("owner text");
+            await secondDbContext.Notes.CreateAsync(note);
+
+            // Action and assert.
+            using var workContextHandler = AsyncLocalContext.Instance.InitAsyncLocalContext();
+            await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
+                readOnlyDbContext.Notes.AccessToCollectionAsync(collection =>
+                    collection.OfType<Note>().DeleteManyAsync(Builders<Note>.Filter.Empty)));
 
             //the owner document is untouched
             using var verifyContextHandler = AsyncLocalContext.Instance.InitAsyncLocalContext();

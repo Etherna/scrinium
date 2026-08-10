@@ -49,7 +49,13 @@ namespace Etherna.MongODM.Core.Utility
      * returns an acknowledged result without touching the server. Simulated single document
      * write results report the matched document as existing, multi document ones report
      * zero matches. Writes without a client side half (index management, aggregate to
-     * collection, map reduce with an output collection) can't be simulated and throw. */
+     * collection, map reduce with an output collection) can't be simulated and throw.
+     *
+     * Members handing out other driver objects (Database, Indexes, SearchIndexes, OfType
+     * and the With* combinators) return equally guarded wrappers enforcing the same
+     * access limitations, so operations reached through them can't escape the guards.
+     * The only deliberate exit is the raw driver client, reachable through
+     * Database.Client like through IDbContextEngine.Client. */
     [SuppressMessage("Naming", "CA1711:Identifiers should not have incorrect suffix")]
     public class LimitedAccessMongoCollection<TDocument>(
         IDbContextEngine dbContextEngine,
@@ -71,7 +77,7 @@ namespace Etherna.MongODM.Core.Utility
             get
             {
                 VerifyReadPermission();
-                return mongoCollection.Database;
+                return new LimitedAccessMongoDatabase(dbContextEngine, mongoCollection.Database, isReadOnly);
             }
         }
         public IBsonSerializer<TDocument> DocumentSerializer
@@ -860,7 +866,10 @@ namespace Etherna.MongODM.Core.Utility
             where TDerivedDocument : TDocument
         {
             VerifyReadPermission();
-            return mongoCollection.OfType<TDerivedDocument>();
+            return new LimitedAccessFilteredMongoCollection<TDerivedDocument>(
+                dbContextEngine,
+                mongoCollection.OfType<TDerivedDocument>(),
+                isReadOnly);
         }
 
         public ReplaceOneResult ReplaceOne(
@@ -1202,7 +1211,7 @@ namespace Etherna.MongODM.Core.Utility
             VerifyDryRunSimulable("Index management");
         }
 
-        private void VerifyReadPermission()
+        private protected void VerifyReadPermission()
         {
             if (dbContextEngine.IsExclusiveReadEnabled &&
                 !ExclusiveAccessHandler.IsExclusiveAccessAllowed(dbContextEngine.ExecutionContext))
