@@ -251,7 +251,7 @@ namespace Etherna.MongODM.Core.Utility
         {
             ArgumentNullException.ThrowIfNull(dbContext);
 
-            using var exclusiveAccess = new ExclusiveAccessHandler(dbContext.Engine.ExecutionContext);
+            using var exclusiveAccess = new ExclusiveAccessHandler(dbContext.Engine);
 
             // Paginate on Id: ObjectId ids embed the creation instant.
             return await dbContext.DbOperations.QueryElementsAsync(elements =>
@@ -266,7 +266,7 @@ namespace Etherna.MongODM.Core.Utility
             ArgumentNullException.ThrowIfNull(dbContext);
             ArgumentNullException.ThrowIfNull(migrateOperationId);
 
-            using var exclusiveAccess = new ExclusiveAccessHandler(dbContext.Engine.ExecutionContext);
+            using var exclusiveAccess = new ExclusiveAccessHandler(dbContext.Engine);
 
             var migrateOp = await dbContext.DbOperations.QueryElementsAsync(elements =>
                 elements.OfType<DbMigrationOperation>()
@@ -280,7 +280,7 @@ namespace Etherna.MongODM.Core.Utility
         {
             ArgumentNullException.ThrowIfNull(dbContext);
 
-            using var exclusiveAccess = new ExclusiveAccessHandler(dbContext.Engine.ExecutionContext);
+            using var exclusiveAccess = new ExclusiveAccessHandler(dbContext.Engine);
 
             var migrateOp = await dbContext.DbOperations.QueryElementsAsync(elements =>
                 elements.OfType<DbMigrationOperation>()

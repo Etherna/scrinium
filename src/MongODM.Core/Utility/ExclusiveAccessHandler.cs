@@ -12,12 +12,12 @@
 // You should have received a copy of the GNU Lesser General Public License along with MongODM.
 // If not, see <https://www.gnu.org/licenses/>.
 
-using Etherna.MongODM.Core.ExecContext;
 using Etherna.MongODM.Core.ExecContext.Exceptions;
 using Etherna.MongODM.Core.Extensions;
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Linq;
 
 namespace Etherna.MongODM.Core.Utility
 {
@@ -30,11 +30,13 @@ namespace Etherna.MongODM.Core.Utility
         private readonly ICollection<ExclusiveAccessHandler> requests;
 
         // Constructors and dispose.
-        public ExclusiveAccessHandler(IExecutionContext context)
+        public ExclusiveAccessHandler(IDbContextEngine dbContextEngine)
         {
-            ArgumentNullException.ThrowIfNull(context);
+            ArgumentNullException.ThrowIfNull(dbContextEngine);
 
-            requests = context.GetOrAddItemsList<ExclusiveAccessHandler>(HandlerKey);
+            DbContextEngine = dbContextEngine;
+
+            requests = dbContextEngine.ExecutionContext.GetOrAddItemsList<ExclusiveAccessHandler>(HandlerKey);
 
             lock (((ICollection)requests).SyncRoot)
                 requests.Add(this);
@@ -46,9 +48,15 @@ namespace Etherna.MongODM.Core.Utility
                 requests.Remove(this);
         }
 
+        // Properties.
+        public IDbContextEngine DbContextEngine { get; }
+
         // Static methods.
-        public static bool IsExclusiveAccessAllowed(IExecutionContext context)
+        public static bool IsExclusiveAccessAllowed(IDbContextEngine dbContextEngine)
         {
+            ArgumentNullException.ThrowIfNull(dbContextEngine);
+
+            var context = dbContextEngine.ExecutionContext;
             if (context.Items is null)
                 throw new ExecutionContextNotFoundException();
 
@@ -56,8 +64,11 @@ namespace Etherna.MongODM.Core.Utility
             if (requests is null)
                 return false;
 
+            /* Exclusive access locks a single engine, while the execution context items are
+             * shared by every db context of the flow: an allowance opens only the engine
+             * that granted it. */
             lock (((ICollection)requests).SyncRoot)
-                return requests.Count != 0;
+                return requests.Any(handler => handler.DbContextEngine == dbContextEngine);
         }
     }
 }

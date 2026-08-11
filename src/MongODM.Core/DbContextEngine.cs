@@ -243,7 +243,7 @@ namespace Etherna.MongODM.Core
                 IsExclusiveReadEnabled = lockOnRead;
                 IsExclusiveWriteEnabled = true;
 
-                using var _ = new ExclusiveAccessHandler(ExecutionContext);
+                using var _ = new ExclusiveAccessHandler(this);
                 return await func().ConfigureAwait(false);
             }
             finally

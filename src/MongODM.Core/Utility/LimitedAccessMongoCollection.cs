@@ -1214,7 +1214,7 @@ namespace Etherna.MongODM.Core.Utility
         private protected void VerifyReadPermission()
         {
             if (dbContextEngine.IsExclusiveReadEnabled &&
-                !ExclusiveAccessHandler.IsExclusiveAccessAllowed(dbContextEngine.ExecutionContext))
+                !ExclusiveAccessHandler.IsExclusiveAccessAllowed(dbContextEngine))
                 throw new UnauthorizedAccessException("Read access is not allowed");
         }
 
@@ -1224,7 +1224,7 @@ namespace Etherna.MongODM.Core.Utility
                 throw new UnauthorizedAccessException("Collection is read only");
 
             if (dbContextEngine.IsExclusiveWriteEnabled &&
-                !ExclusiveAccessHandler.IsExclusiveAccessAllowed(dbContextEngine.ExecutionContext))
+                !ExclusiveAccessHandler.IsExclusiveAccessAllowed(dbContextEngine))
                 throw new UnauthorizedAccessException("Write access is not allowed");
         }
     }
