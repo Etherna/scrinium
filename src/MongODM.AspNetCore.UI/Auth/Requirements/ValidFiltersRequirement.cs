@@ -21,11 +21,19 @@ namespace Etherna.MongODM.AspNetCore.UI.Auth.Requirements
 {
     internal sealed class ValidFiltersRequirement : IAuthorizationRequirement
     {
+        // Constructor.
         public ValidFiltersRequirement(IEnumerable<IDashboardAuthFilter> filters)
         {
-            Filters = filters ?? throw new ArgumentNullException(nameof(filters));
+            ArgumentNullException.ThrowIfNull(filters);
+
+            Filters = [.. filters];
         }
 
-        public IEnumerable<IDashboardAuthFilter> Filters { get; }
+        // Properties.
+        /// <summary>
+        /// The filters authorizing an access to the dashboard, snapshot when the policy is built:
+        /// every request of the application resolves the same ones.
+        /// </summary>
+        public IReadOnlyList<IDashboardAuthFilter> Filters { get; }
     }
 }

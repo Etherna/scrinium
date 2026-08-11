@@ -24,6 +24,12 @@ namespace Etherna.MongODM.AspNetCore.UI
         /// Path or URL of the back link to the main application. Set null to hide the link.
         /// </summary>
         public string? AppPath { get; set; } = "/";
+        /// <summary>
+        /// Filters authorizing an access to the dashboard. Access is granted when every one of them
+        /// allows it, and denied by the first one denying it. An empty list leaves the dashboard
+        /// unrestricted: an application with no authorization of its own declares it emptying the
+        /// list, instead of configuring a filter allowing everyone.
+        /// </summary>
         public IEnumerable<IDashboardAuthFilter> AuthFilters { get; set; } = [new LocalRequestsOnlyAuthFilter()];
         public string BasePath { get; set; } = "MongODM";
     }
