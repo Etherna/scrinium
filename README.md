@@ -271,7 +271,9 @@ app.Run();
 Each db context is registered as a **scoped** instance attached to a **singleton** engine: process-wide
 state (registries, connections) lives on the engine, while the unit of work lives on the scope.
 
-The dashboard authorizes requests through `DashboardOptions.AuthFilters`. The default filter only
+The dashboard authorizes requests through `DashboardOptions.AuthFilters`, and grants access when every
+one of them allows: an empty filter list leaves it unrestricted, for an application with no
+authorization of its own. The default filter only
 accepts requests coming directly from the host running the application, and denies any request
 carrying forwarding headers: behind a reverse proxy the connection address identifies the proxy, not
 the client, so replace the default with a filter validating an authenticated principal.
