@@ -502,6 +502,129 @@ namespace Etherna.MongODM.Core
         }
 
         [Fact]
+        public async Task ExclusiveAccessAllowanceDoesNotOpenTheDatabaseOfOtherEngines()
+        {
+            /* The database a guarded collection hands out enforces the same scoping: with the
+             * reads left open, it is reachable, and its writes stay closed to the allowance of
+             * another engine. */
+
+            // Setup.
+            var otherDbContext = BuildDbContext(new DbContextOptions(), out var otherEngine);
+            var lockedEngineAcquired = new TaskCompletionSource();
+            var otherEngineVerified = new TaskCompletionSource();
+
+            async Task LockingFlow()
+            {
+                using var flowContext = AsyncLocalContext.Instance.InitAsyncLocalContext();
+
+                //lock the writes only, so the database stays readable
+                await dbContext.Engine.RunWithExclusiveAccessAsync(async () =>
+                {
+                    lockedEngineAcquired.SetResult();
+                    await otherEngineVerified.Task;
+                }, lockOnRead: false);
+            }
+            async Task OtherEngineFlow()
+            {
+                using var flowContext = AsyncLocalContext.Instance.InitAsyncLocalContext();
+
+                await lockedEngineAcquired.Task;
+                try
+                {
+                    await otherDbContext.Engine.RunWithExclusiveAccessAsync(() =>
+                        dbContext.FakeModels.AccessToCollectionAsync(async collection =>
+                        {
+                            //the allowance of the other engine doesn't open this database
+                            var database = collection.Database;
+                            await Assert.ThrowsAsync<UnauthorizedAccessException>(
+                                () => database.DropCollectionAsync("fakeModels"));
+                            await Assert.ThrowsAsync<UnauthorizedAccessException>(
+                                () => database.CreateCollectionAsync("denied"));
+                        }));
+                }
+                finally { otherEngineVerified.SetResult(); }
+            }
+
+            // Action and assert.
+            await Task.WhenAll(LockingFlow(), OtherEngineFlow());
+
+            (otherEngine as IDisposable)?.Dispose();
+        }
+
+        [Fact]
+        public async Task ExclusiveAccessAllowanceDoesNotOpenOtherEngines()
+        {
+            // Setup.
+            /* Every db context of a flow shares its execution context items, while exclusive
+             * access is a per engine lock: an allowance granted by one engine must not open
+             * another engine locked by someone else. */
+            var otherDbContext = BuildDbContext(new DbContextOptions(), out var otherEngine);
+            var lockedEngineAcquired = new TaskCompletionSource();
+            var otherEngineVerified = new TaskCompletionSource();
+
+            async Task LockingFlow()
+            {
+                using var flowContext = AsyncLocalContext.Instance.InitAsyncLocalContext();
+
+                await dbContext.Engine.RunWithExclusiveAccessAsync(async () =>
+                {
+                    lockedEngineAcquired.SetResult();
+                    await otherEngineVerified.Task;
+                });
+            }
+            async Task OtherEngineFlow()
+            {
+                using var flowContext = AsyncLocalContext.Instance.InitAsyncLocalContext();
+
+                await lockedEngineAcquired.Task;
+                try
+                {
+                    await otherDbContext.Engine.RunWithExclusiveAccessAsync(async () =>
+                    {
+                        //the allowance belongs to the other engine: the locked one stays closed
+                        await Assert.ThrowsAsync<UnauthorizedAccessException>(
+                            () => dbContext.FakeModels.CreateAsync(new FakeModel { Id = "lockedId" }));
+                        await Assert.ThrowsAsync<UnauthorizedAccessException>(
+                            () => dbContext.FakeModels.FindOneAsync("lockedId"));
+
+                        //the engine that granted the allowance keeps working
+                        await otherDbContext.FakeModels.CreateAsync(new FakeModel { Id = "otherId" });
+                    });
+                }
+                finally { otherEngineVerified.SetResult(); }
+            }
+
+            // Action and assert.
+            await Task.WhenAll(LockingFlow(), OtherEngineFlow());
+
+            (otherEngine as IDisposable)?.Dispose();
+        }
+
+        [Fact]
+        public async Task NestedExclusiveAccessAllowancesCoexist()
+        {
+            // Setup.
+            var otherDbContext = BuildDbContext(new DbContextOptions(), out var otherEngine);
+            using var contextHandler = AsyncLocalContext.Instance.InitAsyncLocalContext();
+
+            // Action and assert.
+            await dbContext.Engine.RunWithExclusiveAccessAsync(async () =>
+            {
+                await otherDbContext.Engine.RunWithExclusiveAccessAsync(async () =>
+                {
+                    //both engines are locked, and the flow holds an allowance of each one
+                    await dbContext.FakeModels.CreateAsync(new FakeModel { Id = "id" });
+                    await otherDbContext.FakeModels.CreateAsync(new FakeModel { Id = "otherId" });
+                });
+
+                //with the inner allowance disposed, the outer one still opens its own engine
+                await dbContext.FakeModels.FindOneAsync("id");
+            });
+
+            (otherEngine as IDisposable)?.Dispose();
+        }
+
+        [Fact]
         public async Task SeedIfNeededSkipsOnReadOnlyDbContext()
         {
             // Setup.
