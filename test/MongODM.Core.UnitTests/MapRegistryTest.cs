@@ -128,6 +128,17 @@ namespace Etherna.MongODM.Core
         {
             public string? Name { get; set; }
         }
+        public class TreeNodeModel
+        {
+            public IEnumerable<TreeNodeModel>? Children { get; set; }
+            public string? Name { get; set; }
+            public TreeNodeModel? Parent { get; set; }
+        }
+        public class TwinChildHostModel
+        {
+            public FirstModel? FirstChild { get; set; }
+            public FirstModel? SecondChild { get; set; }
+        }
         public class UntypedIdModel : IEntityModel<object>
         {
             public IDictionary<string, object>? ExtraElements { get; }
@@ -263,6 +274,41 @@ namespace Etherna.MongODM.Core
                 new KeyModel("keyVal"));
             bsonWriter.WriteEndDocument();
             Assert.Equal("keyVal", serializedDocument["key"].AsString);
+        }
+
+        [Fact]
+        public void FreezeBuildsChildMemberMapsForRepeatedEmbeddedModelMembers()
+        {
+            /* MODM-224: the member maps walk skips only the schemas already open on its own
+             * recursion path: a schema reached again on a sibling branch builds its child
+             * member maps once per branch. */
+
+            // Setup.
+            dbContextEngineMock.Setup(e => e.MapRegistry)
+                .Returns(mapRegistry);
+
+            mapRegistry.AddModelMap<FirstModel>("firstSchemaId");
+            mapRegistry.AddModelMap<TwinChildHostModel>("twinHostSchemaId", cm =>
+            {
+                cm.SetMemberSerializer(m => m.FirstChild!, new MappedSerializerAdapter<FirstModel>(dbContextEngineMock.Object));
+                cm.SetMemberSerializer(m => m.SecondChild!, new MappedSerializerAdapter<FirstModel>(dbContextEngineMock.Object));
+            });
+
+            // Action.
+            mapRegistry.Freeze();
+
+            // Assert.
+            string[] expectedMemberMapIds =
+            [
+                $"{nameof(TwinChildHostModel)};twinHostSchemaId;{nameof(TwinChildHostModel.FirstChild)}",
+                $"{nameof(TwinChildHostModel)};twinHostSchemaId;{nameof(TwinChildHostModel.FirstChild)}|{nameof(FirstModel)};firstSchemaId;{nameof(FirstModel.Name)}",
+                $"{nameof(TwinChildHostModel)};twinHostSchemaId;{nameof(TwinChildHostModel.SecondChild)}",
+                $"{nameof(TwinChildHostModel)};twinHostSchemaId;{nameof(TwinChildHostModel.SecondChild)}|{nameof(FirstModel)};firstSchemaId;{nameof(FirstModel.Name)}"
+            ];
+            var hostModelMap = mapRegistry.GetModelMap(typeof(TwinChildHostModel));
+            Assert.Equal(
+                expectedMemberMapIds,
+                hostModelMap.AllDescendingMemberMaps.Select(mm => mm.Id).Order(StringComparer.Ordinal));
         }
 
         [Fact]
@@ -628,6 +674,47 @@ namespace Etherna.MongODM.Core
         }
 
         [Fact]
+        public void FreezeSucceedsWithCyclicReferenceSummarySchemas()
+        {
+            /* MODM-224: a reference summary schema can reach itself through the reference
+             * members it denormalizes: the member maps walk stops when a schema repeats on
+             * its recursion path, instead of overflowing the stack at engine build. */
+
+            // Setup.
+            dbContextEngineMock.Setup(e => e.MapRegistry)
+                .Returns(mapRegistry);
+
+            BsonClassMap<ChildModel> childSummaryClassMap = null!;
+            var childRefSerializer = new ReferenceSerializer<ChildModel, string>(
+                dbContextEngineMock.Object,
+                config => config.AddModelMap<ChildModel>("childRefSchemaId", cm =>
+                {
+                    childSummaryClassMap = cm;
+                    cm.MapMember(c => c.Name);
+                }));
+            //close the cycle: the summary schema references its model through the same serializer
+            childSummaryClassMap.MapMember(c => c.Parent).SetSerializer(childRefSerializer);
+
+            mapRegistry.AddModelMap<EntityChildHostModel>("hostSchemaId", cm =>
+                cm.SetMemberSerializer(m => m.Child!, childRefSerializer));
+
+            // Action.
+            mapRegistry.Freeze();
+
+            // Assert.
+            string[] expectedMemberMapIds =
+            [
+                $"{nameof(EntityChildHostModel)};hostSchemaId;{nameof(EntityChildHostModel.Child)}",
+                $"{nameof(EntityChildHostModel)};hostSchemaId;{nameof(EntityChildHostModel.Child)}|{nameof(ChildModel)};childRefSchemaId;{nameof(ChildModel.Name)}",
+                $"{nameof(EntityChildHostModel)};hostSchemaId;{nameof(EntityChildHostModel.Child)}|{nameof(ChildModel)};childRefSchemaId;{nameof(ChildModel.Parent)}"
+            ];
+            var hostModelMap = mapRegistry.GetModelMap(typeof(EntityChildHostModel));
+            Assert.Equal(
+                expectedMemberMapIds,
+                hostModelMap.AllDescendingMemberMaps.Select(mm => mm.Id).Order(StringComparer.Ordinal));
+        }
+
+        [Fact]
         public void FreezeSucceedsWithEmbeddedPlainModelMember()
         {
             /* Only entity models can't embed: models without identity keep serializing
@@ -707,6 +794,42 @@ namespace Etherna.MongODM.Core
 
             // Assert.
             Assert.True(mapRegistry.IsFrozen);
+        }
+
+        [Fact]
+        public void FreezeSucceedsWithSelfNestingModelMembers()
+        {
+            /* MODM-224: a mapped type reachable from itself through its member serializers
+             * is a legal non entity configuration: the member maps walk stops when a schema
+             * repeats on its recursion path, building each member map path once instead of
+             * overflowing the stack at engine build. */
+
+            // Setup.
+            dbContextEngineMock.Setup(e => e.MapRegistry)
+                .Returns(mapRegistry);
+
+            mapRegistry.AddModelMap<TreeNodeModel>("treeNodeSchemaId", cm =>
+            {
+                cm.MapMember(m => m.Name);
+                cm.SetMemberSerializer(m => m.Children!, new EnumerableSerializer<TreeNodeModel>(
+                    new MappedSerializerAdapter<TreeNodeModel>(dbContextEngineMock.Object)));
+                cm.SetMemberSerializer(m => m.Parent!, new MappedSerializerAdapter<TreeNodeModel>(dbContextEngineMock.Object));
+            });
+
+            // Action.
+            mapRegistry.Freeze();
+
+            // Assert.
+            string[] expectedMemberMapIds =
+            [
+                $"{nameof(TreeNodeModel)};treeNodeSchemaId;{nameof(TreeNodeModel.Children)}",
+                $"{nameof(TreeNodeModel)};treeNodeSchemaId;{nameof(TreeNodeModel.Name)}",
+                $"{nameof(TreeNodeModel)};treeNodeSchemaId;{nameof(TreeNodeModel.Parent)}"
+            ];
+            var treeNodeModelMap = mapRegistry.GetModelMap(typeof(TreeNodeModel));
+            Assert.Equal(
+                expectedMemberMapIds,
+                treeNodeModelMap.AllDescendingMemberMaps.Select(mm => mm.Id).Order(StringComparer.Ordinal));
         }
 
         [Fact]
