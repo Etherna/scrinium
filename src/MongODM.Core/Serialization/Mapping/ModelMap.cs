@@ -112,9 +112,10 @@ namespace Etherna.MongODM.Core.Serialization.Mapping
         {
             foreach (var schema in SchemasById.Values)
             {
+                HashSet<IModelMapSchema> visitedSchemas = [schema];
                 foreach (var bsonMemberMap in schema.AllMemberMaps)
                 {
-                    var memberMap = BuildMemberMap(bsonMemberMap, schema, null);
+                    var memberMap = BuildMemberMap(bsonMemberMap, schema, null, visitedSchemas);
                     _definedMemberMaps.Add(memberMap);
                     ((ModelMapSchema)schema).AddGeneratedMemberMap(memberMap);
                 }
@@ -163,10 +164,16 @@ namespace Etherna.MongODM.Core.Serialization.Mapping
         }
 
         // Helpers.
+        /* The visited schemas set carries the model map schemas open on the current
+         * recursion path, root schema included. A model graph cycle (e.g. a self nesting
+         * value object, or a reference summary schema denormalizing a reference to its own
+         * model) reaches a schema already on the path: descending into it again would
+         * recurse without end, so the walk skips it, building each member map path once. */
         private static MemberMap BuildMemberMap(
             BsonMemberMap bsonMemberMap,
             IModelMapSchema modelMapSchema,
-            IMemberMap? parentMemberMap)
+            IMemberMap? parentMemberMap,
+            HashSet<IModelMapSchema> visitedSchemas)
         {
             var memberMap = new MemberMap(bsonMemberMap, modelMapSchema, parentMemberMap);
 
@@ -191,15 +198,21 @@ namespace Etherna.MongODM.Core.Serialization.Mapping
                     {
                         foreach (var schema in modelMap.SchemasById.Values)
                         {
+                            //skip schemas already on the recursion path, closing a model graph cycle
+                            if (!visitedSchemas.Add(schema))
+                                continue;
+
                             schema.Freeze();
 
                             // Recursion on child member maps.
                             foreach (var childBsonMemberMap in schema.AllMemberMaps)
                             {
-                                var childMemberMap = BuildMemberMap(childBsonMemberMap, schema, memberMap);
+                                var childMemberMap = BuildMemberMap(childBsonMemberMap, schema, memberMap, visitedSchemas);
                                 memberMap.AddChildMemberMap(childMemberMap);
                                 ((ModelMapSchema)schema).AddGeneratedMemberMap(childMemberMap);
                             }
+
+                            visitedSchemas.Remove(schema);
                         }
                     }
                 }

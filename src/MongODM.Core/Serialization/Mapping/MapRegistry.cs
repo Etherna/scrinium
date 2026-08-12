@@ -565,8 +565,8 @@ namespace Etherna.MongODM.Core.Serialization.Mapping
          * on the member or mapped for the type, never enters the document serialization
          * pipeline, and opts out for value-object-like models.
          * The exploration runs on the schema class maps, before member maps
-         * initialization: building the member maps of an entity model embedding itself
-         * would recurse without end. */
+         * initialization: an invalid configuration fails with its detailed violations
+         * before any member map is built and registered. */
         private void ValidateEntityModelMembers()
         {
             List<string> violations = [];
