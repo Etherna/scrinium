@@ -271,6 +271,9 @@ app.Run();
 Each db context is registered as a **scoped** instance attached to a **singleton** engine: process-wide
 state (registries, connections) lives on the engine, while the unit of work lives on the scope.
 
+The connection string of a db context declares the database name as its path segment
+(`mongodb://localhost:27017/mydb`): one without it is rejected at startup.
+
 The dashboard authorizes requests through `DashboardOptions.AuthFilters`, and grants access when every
 one of them allows: an empty filter list leaves it unrestricted, for an application with no
 authorization of its own. The default filter only
