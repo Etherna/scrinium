@@ -261,6 +261,9 @@ namespace Etherna.MongODM.Core.Serialization.Mapping
             // Link model maps with their base map.
             LinkBaseModelMaps();
 
+            // Verify that discriminators identify a single model type.
+            ValidateDiscriminators();
+
             // Freeze, register serializers and compile registers.
             foreach (var map in _maps.Values)
             {
@@ -555,6 +558,47 @@ namespace Etherna.MongODM.Core.Serialization.Mapping
                     typeof(MappedSerializerAdapter<>).MakeGenericType(modelType))
                     throw;
             }
+        }
+
+        /* A document carries the discriminator of the concrete model type that wrote it,
+         * and reads resolve the type back from it: a discriminator declared by more than
+         * one model type resolves multiple candidates, and the read fails as ambiguous as
+         * soon as the nominal type of the deserializing member is satisfied by more than
+         * one of them (any object shaped member is). Discriminators default to the simple
+         * type name, so two model types with the same name in different namespaces collide
+         * on it: verify that every discriminator identifies a single model type.
+         * Only concrete types write their discriminator into documents: an abstract type
+         * is never the concrete type of a serialized instance, so a discriminator shared
+         * by abstract types alone is never written, nor looked up, and stays valid (an
+         * application base class homonym of a library one is a common configuration). */
+        private void ValidateDiscriminators()
+        {
+            Dictionary<string, HashSet<Type>> modelTypesByDiscriminator = [];
+            foreach (var modelMap in _maps.Values.OfType<IModelMap>())
+            {
+                foreach (var schema in modelMap.SchemasById.Values)
+                {
+                    if (!modelTypesByDiscriminator.TryGetValue(schema.Discriminator, out var modelTypes))
+                    {
+                        modelTypes = [];
+                        modelTypesByDiscriminator.Add(schema.Discriminator, modelTypes);
+                    }
+                    modelTypes.Add(schema.ModelType);
+                }
+            }
+
+            List<string> violations = [];
+            foreach (var (discriminator, modelTypes) in modelTypesByDiscriminator)
+                if (modelTypes.Count > 1 && modelTypes.Any(modelType => !modelType.IsAbstract))
+                    violations.Add($"discriminator \"{discriminator}\" is used by model types {string.Join(", ", modelTypes.Select(modelType => modelType.FullName))}");
+
+            if (violations.Count > 0)
+                throw new MongodmDuplicateDiscriminatorException(
+                    $"DbContext {dbContextEngine.DbContextType.Name} has model types sharing a document discriminator: " +
+                    string.Join("; ", violations) +
+                    ". Documents written with a shared discriminator can't resolve their model type at read: " +
+                    "set a distinct discriminator on the colliding model map schemas with " +
+                    $"{nameof(BsonClassMap)}.{nameof(BsonClassMap.SetDiscriminator)}");
         }
 
         /* Entity models are always referenced by other documents: serializing one as a
