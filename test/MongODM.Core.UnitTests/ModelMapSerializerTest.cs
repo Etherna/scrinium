@@ -27,6 +27,7 @@ using Etherna.MongODM.Core.Serialization.Mapping;
 using Etherna.MongODM.Core.Serialization.Modifiers;
 using Etherna.MongODM.Core.Serialization.Serializers;
 using Etherna.MongODM.Core.Utility;
+using Microsoft.Extensions.Logging;
 using Moq;
 using System;
 using System.Collections.Generic;
@@ -81,6 +82,7 @@ namespace Etherna.MongODM.Core
         // Fields.
         private readonly Mock<IDbContextEngine> dbContextEngineMock = new();
         private readonly Mock<IDiscriminatorRegistry> discriminatorRegistryMock = new();
+        private readonly Mock<ILogger> loggerMock = new();
         private readonly Mock<IModelMap> modelMapMock = new();
         private readonly ModelMapSchemaIdOptions modelMapSchemaIdOptions = new();
         private readonly Mock<IMapRegistry> mapRegistryMock = new();
@@ -92,10 +94,15 @@ namespace Etherna.MongODM.Core
             discriminatorRegistryMock.Setup(r => r.LookupDiscriminatorConvention(It.IsAny<Type>()))
                 .Returns(() => new HierarchicalProxyTolerantDiscriminatorConvention(dbContextEngineMock.Object, "_t"));
 
+            loggerMock.Setup(l => l.IsEnabled(It.IsAny<LogLevel>()))
+                .Returns(true);
+
             dbContextEngineMock.Setup(c => c.DiscriminatorRegistry)
                 .Returns(() => discriminatorRegistryMock.Object);
             dbContextEngineMock.Setup(c => c.ExecutionContext)
                 .Returns(AsyncLocalContext.Instance);
+            dbContextEngineMock.Setup(c => c.Logger)
+                .Returns(() => loggerMock.Object);
             dbContextEngineMock.Setup(c => c.ProxyGenerator.IsProxyType(It.IsAny<Type>()))
                 .Returns(true);
             dbContextEngineMock.Setup(c => c.ProxyGenerator.PurgeProxyType(It.IsAny<Type>()))
@@ -291,6 +298,8 @@ namespace Etherna.MongODM.Core
             Assert.Equal("idVal", result.Id);
             Assert.Equal("ok", result.StringProp);
             Assert.Equal(42, result.IntegerProp);
+            //a configured fallback is the declared handling of unrecognized ids: nothing to report
+            VerifyUnrecognizedSchemaIdWarnings(Times.Never());
         }
 
         [Fact]
@@ -326,6 +335,8 @@ namespace Etherna.MongODM.Core
 
             // Assert.
             Assert.Same(fallbackModel, result);
+            //a configured fallback is the declared handling of unrecognized ids: nothing to report
+            VerifyUnrecognizedSchemaIdWarnings(Times.Never());
         }
 
         [Fact]
@@ -466,6 +477,8 @@ namespace Etherna.MongODM.Core
             Assert.Equal("idVal", result.Id);
             Assert.Equal("ok", result.StringProp);
             Assert.Equal(42, result.IntegerProp);
+            //a document selecting a registered schema is the versioned schemas behavior: nothing to report
+            VerifyUnrecognizedSchemaIdWarnings(Times.Never());
         }
 
         [Fact]
@@ -509,6 +522,44 @@ namespace Etherna.MongODM.Core
             // Assert.
             Assert.Same(loadedModel, result);
             dbContextMock.Verify(c => c.RegisterLoadedModel(It.IsAny<object>(), It.IsAny<IEntityModel>()), Times.Never());
+        }
+
+        [Fact]
+        public void DeserializeWarnsOnceOnUnrecognizedSchemaId()
+        {
+            /* MODM-237: the schema id is document content, so a document can select which
+             * schema, and which model fix, deserialize it. An id matching no registered schema,
+             * with no fallback configured, degrades to a read with the active schema: report it
+             * once per model type and id, instead of degrading silently. */
+
+            // Setup.
+            var document = new BsonDocument(new BsonElement[]
+            {
+                new("_s", new BsonString("unknownSchemaId")),
+                new("_id", new BsonString("idVal")),
+                new("StringProp", new BsonString("ok"))
+            } as IEnumerable<BsonElement>);
+            var classMap = new BsonClassMap<FakeModel>(cm => cm.AutoMap());
+            classMap.Freeze();
+            var serializer = new ModelMapSerializer<FakeModel>(dbContextEngineMock.Object);
+
+            modelMapMock.Setup(m => m.SchemasById)
+                .Returns(new Dictionary<string, IModelMapSchema>());
+            modelMapMock.Setup(s => s.ActiveSchema.Serializer)
+                .Returns(classMap.ToSerializer());
+            modelMapMock.Setup(s => s.ActiveSchema.FixDeserializedModelAsync(It.IsAny<object>()))
+                .Returns<object>(Task.FromResult);
+
+            // Action.
+            //read documents carrying the same unrecognized id twice
+            for (var i = 0; i < 2; i++)
+                serializer.Deserialize(
+                    BsonDeserializationContext.CreateRoot(new BsonDocumentReader(document)),
+                    new BsonDeserializationArgs { NominalType = typeof(FakeModel) });
+
+            // Assert.
+            //the warning names the model type and the unrecognized id, and reports only once
+            VerifyUnrecognizedSchemaIdWarnings(Times.Once(), nameof(FakeModel), "unknownSchemaId");
         }
 
         [Fact]
@@ -755,5 +806,16 @@ namespace Etherna.MongODM.Core
             bsonClassMapSerializer.SetDocumentId(expectedModel, id);
             Assert.Equal(expectedModel, model, new FakeModelComparer());
         }
+
+        // Helpers.
+        private void VerifyUnrecognizedSchemaIdWarnings(Times times, params string[] expectedMessageContents) =>
+            loggerMock.Verify(l => l.Log(
+                    LogLevel.Warning,
+                    It.Is<EventId>(id => id.Name == nameof(Extensions.LoggerExtensions.ModelMapSerializerUnrecognizedSchemaId)),
+                    It.Is<It.IsAnyType>((state, _) => expectedMessageContents.All(
+                        content => state.ToString()!.Contains(content, StringComparison.Ordinal))),
+                    It.IsAny<Exception>(),
+                    It.IsAny<Func<It.IsAnyType, Exception?, string>>()),
+                times);
     }
 }

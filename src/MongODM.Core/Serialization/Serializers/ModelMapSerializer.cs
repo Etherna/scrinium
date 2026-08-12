@@ -18,6 +18,7 @@ using Etherna.MongoDB.Bson.Serialization;
 using Etherna.MongoDB.Bson.Serialization.Conventions;
 using Etherna.MongoDB.Bson.Serialization.Serializers;
 using Etherna.MongODM.Core.Domain.Models;
+using Etherna.MongODM.Core.Extensions;
 using Etherna.MongODM.Core.ProxyModels;
 using Etherna.MongODM.Core.Serialization.Mapping;
 using Etherna.MongODM.Core.Utility;
@@ -33,8 +34,18 @@ namespace Etherna.MongODM.Core.Serialization.Serializers
         IBsonIdProvider,
         IModelMapsHandlingSerializer
     {
+        // Consts.
+        /// <summary>
+        /// Maximum number of distinct unrecognized model map schema ids reported by a model map
+        /// serializer. Schema ids come from documents, so the already reported ones can't be
+        /// remembered without a bound.
+        /// </summary>
+        public const int MaxWarnedUnrecognizedSchemaIds = 100;
+
         // Fields.
         private IDiscriminatorConvention _discriminatorConvention = null!;
+
+        private readonly HashSet<(Type ModelType, string? SchemaId)> warnedUnrecognizedSchemaIds = [];
 
         // Properties.
         public BsonClassMapSerializer<TModel> DefaultBsonClassMapSerializer =>
@@ -105,6 +116,19 @@ namespace Etherna.MongODM.Core.Serialization.Serializers
             //else, deserialize wih current active model map schema
             else
             {
+                /* The schema id is document content: an id matching no registered schema, with
+                 * no fallback declared for it, means the document was written by something this
+                 * db context doesn't know, and the active schema is reading a shape it was never
+                 * meant to read. Report it once per model type and id, so the degradation
+                 * doesn't stay silent, up to the reported ids bound. */
+                bool firstOccurrence;
+                lock (warnedUnrecognizedSchemaIds)
+                    firstOccurrence = warnedUnrecognizedSchemaIds.Count < MaxWarnedUnrecognizedSchemaIds &&
+                                      warnedUnrecognizedSchemaIds.Add((actualType, schemaId));
+                if (firstOccurrence)
+                    dbContextEngine.Logger.ModelMapSerializerUnrecognizedSchemaId(
+                        dbContextEngine.Options.DbName, actualType.Name, schemaId);
+
                 var task = DeserializeModelMapSchemaHelperAsync(actualTypeModelMap.ActiveSchema, localContext, args);
                 task.Wait();
                 model = task.Result;

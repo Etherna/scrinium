@@ -20,6 +20,7 @@ using Etherna.MongODM.Core.ProxyModels;
 using Etherna.MongODM.Core.Serialization.Mapping;
 using Etherna.MongODM.Core.Serialization.Modifiers;
 using Etherna.MongODM.Core.Utility;
+using Microsoft.Extensions.Logging;
 using System;
 using System.Threading;
 using System.Threading.Tasks;
@@ -99,6 +100,12 @@ namespace Etherna.MongODM.Core
         /// Implementations must be thread safe.
         /// </summary>
         bool? IsSeededCache { get; set; }
+
+        /// <summary>
+        /// Logger of the db context, available also to the engine level components built
+        /// outside the dependency injection container, like serializers.
+        /// </summary>
+        ILogger Logger { get; }
 
         /// <summary>
         /// Registry for model serialization and maps information.
