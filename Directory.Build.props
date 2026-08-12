@@ -1,7 +1,14 @@
 <Project>
   <PropertyGroup>
-    <!-- Audit only direct dependencies, not transitive ones -->
-    <NuGetAuditMode>direct</NuGetAuditMode>
+    <!-- Audit direct and transitive dependencies: the packages of this graph prone to receive
+         advisories (the official driver stack pulled by Hangfire.Mongo, the Microsoft.Extensions
+         floor of Hangfire.NetCore) are all transitive. Explicit, to not depend on the SDK default.
+         The audit codes stay warnings under the projects TreatWarningsAsErrors: an advisory is
+         published on a schedule nobody controls, and breaking every build over it would also block
+         the update fixing it. They are reported by the restore of any build, and by the vulnerable
+         packages report of `dotnet list package`. -->
+    <NuGetAuditMode>all</NuGetAuditMode>
+    <WarningsNotAsErrors>$(WarningsNotAsErrors);NU1901;NU1902;NU1903;NU1904</WarningsNotAsErrors>
 
     <!-- GitVersion.MsBuild writes and reads its version file at a per project path shared by every
          build instance of a multi targeting project: parallel target framework inner builds race on
