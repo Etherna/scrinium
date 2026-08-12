@@ -89,6 +89,20 @@ namespace Etherna.MongODM.Core
             public ChildModel? Child { get; set; }
             public IEnumerable<ChildModel>? Children { get; set; }
         }
+        /* The two areas host model types with the same simple name, standing for types
+         * declared with the same name in different namespaces: their default discriminator
+         * is the simple type name, so they share it. */
+        public static class FirstArea
+        {
+            public abstract class HomonymBaseModel
+            {
+                public string? Code { get; set; }
+            }
+            public class HomonymModel
+            {
+                public string? Name { get; set; }
+            }
+        }
         public class FirstModel
         {
             public string? Name { get; set; }
@@ -123,6 +137,17 @@ namespace Etherna.MongODM.Core
         public class PlainChildHostModel
         {
             public FirstModel? Child { get; set; }
+        }
+        public static class SecondArea
+        {
+            public abstract class HomonymBaseModel
+            {
+                public string? Code { get; set; }
+            }
+            public class HomonymModel
+            {
+                public string? Name { get; set; }
+            }
         }
         public class SecondModel
         {
@@ -438,6 +463,53 @@ namespace Etherna.MongODM.Core
         }
 
         [Fact]
+        public void FreezeFailsWithDiscriminatorSharedByConcreteAndAbstractModelTypes()
+        {
+            /* MODM-238: a concrete model type writes its discriminator into its documents,
+             * and any other model type declaring the same value stays a candidate at read,
+             * abstract ones included. */
+
+            // Setup.
+            mapRegistry.AddModelMap<FirstArea.HomonymBaseModel>("firstBase");
+            mapRegistry.AddModelMap<FirstModel>("first", cm =>
+            {
+                cm.AutoMap();
+                cm.SetDiscriminator(nameof(FirstArea.HomonymBaseModel));
+            });
+
+            // Action.
+            var exception = Assert.Throws<MongodmDuplicateDiscriminatorException>(() => mapRegistry.Freeze());
+
+            // Assert.
+            Assert.Contains($"\"{nameof(FirstArea.HomonymBaseModel)}\"", exception.Message, StringComparison.Ordinal);
+            Assert.Contains(typeof(FirstArea.HomonymBaseModel).FullName!, exception.Message, StringComparison.Ordinal);
+            Assert.Contains(typeof(FirstModel).FullName!, exception.Message, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void FreezeFailsWithDiscriminatorSharedByModelTypes()
+        {
+            /* MODM-238: discriminators default to the simple type name, so two model types
+             * with the same name in different namespaces write the same value into their
+             * documents. Reads of a member whose nominal type both types satisfy (any
+             * object shaped member) would resolve an ambiguous model type: the collision
+             * fails the engine build, naming both types and the way out. */
+
+            // Setup.
+            mapRegistry.AddModelMap<FirstArea.HomonymModel>("firstHomonym");
+            mapRegistry.AddModelMap<SecondArea.HomonymModel>("secondHomonym");
+
+            // Action.
+            var exception = Assert.Throws<MongodmDuplicateDiscriminatorException>(() => mapRegistry.Freeze());
+
+            // Assert.
+            Assert.Contains($"\"{nameof(FirstArea.HomonymModel)}\"", exception.Message, StringComparison.Ordinal);
+            Assert.Contains(typeof(FirstArea.HomonymModel).FullName!, exception.Message, StringComparison.Ordinal);
+            Assert.Contains(typeof(SecondArea.HomonymModel).FullName!, exception.Message, StringComparison.Ordinal);
+            Assert.Contains(nameof(BsonClassMap.SetDiscriminator), exception.Message, StringComparison.Ordinal);
+        }
+
+        [Fact]
         public void FreezeFailsWithDuplicateActiveAndSecondarySchemaIdsAcrossModelMaps()
         {
             // Setup.
@@ -640,6 +712,27 @@ namespace Etherna.MongODM.Core
         }
 
         [Fact]
+        public void FreezeSucceedsWithAbstractModelTypesSharingDiscriminator()
+        {
+            /* MODM-238: an abstract model type is never the concrete type of a serialized
+             * instance, so its discriminator is never written into a document, nor looked
+             * up: base model types with the same simple name keep their defaults. */
+
+            // Setup.
+            mapRegistry.AddModelMap<FirstArea.HomonymBaseModel>("firstBase");
+            mapRegistry.AddModelMap<SecondArea.HomonymBaseModel>("secondBase");
+
+            // Action.
+            mapRegistry.Freeze();
+
+            // Assert.
+            Assert.True(mapRegistry.IsFrozen);
+            Assert.Equal(
+                mapRegistry.GetModelMap(typeof(FirstArea.HomonymBaseModel)).ActiveSchema.Discriminator,
+                mapRegistry.GetModelMap(typeof(SecondArea.HomonymBaseModel)).ActiveSchema.Discriminator);
+        }
+
+        [Fact]
         public void FreezeSucceedsWithBsonValueMember()
         {
             /* The driver BsonValue serializer reports itself as its own array item
@@ -744,6 +837,31 @@ namespace Etherna.MongODM.Core
             mapRegistry.AddCustomSerializerMap<ChildModel>(new ChildModelSerializer());
             mapRegistry.AddModelMap<EntityChildHostModel>("hostSchemaId", cm =>
                 cm.SetMemberSerializer(m => m.Child!, new MappedSerializerAdapter<ChildModel>(dbContextEngineMock.Object)));
+
+            // Action.
+            mapRegistry.Freeze();
+
+            // Assert.
+            Assert.True(mapRegistry.IsFrozen);
+        }
+
+        [Fact]
+        public void FreezeSucceedsWithExplicitDiscriminatorsOnHomonymModelTypes()
+        {
+            /* MODM-238: model types with the same simple name coexist by declaring
+             * distinct discriminators, the way out of the default collision. */
+
+            // Setup.
+            mapRegistry.AddModelMap<FirstArea.HomonymModel>("firstHomonym", cm =>
+            {
+                cm.AutoMap();
+                cm.SetDiscriminator("firstHomonymModel");
+            });
+            mapRegistry.AddModelMap<SecondArea.HomonymModel>("secondHomonym", cm =>
+            {
+                cm.AutoMap();
+                cm.SetDiscriminator("secondHomonymModel");
+            });
 
             // Action.
             mapRegistry.Freeze();
