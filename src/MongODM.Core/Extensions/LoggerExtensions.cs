@@ -117,6 +117,30 @@ namespace Etherna.MongODM.Core.Extensions
                 new EventId(4, nameof(DiscriminatorRegistryInitialized)),
                 "DiscriminatorRegistry of DbContext {DbName} initialized");
 
+        private static readonly Action<ILogger, string, string, string, Exception> _repositoryCreatedDocument =
+            LoggerMessage.Define<string, string, string>(
+                LogLevel.Debug,
+                new EventId(14, nameof(RepositoryCreatedDocument)),
+                "Repository {RepositoryName} of DbContext {DbName} created document with Id: {ModelId}");
+
+        private static readonly Action<ILogger, string, string, IEnumerable<string>, Exception> _repositoryCreatedDocuments =
+            LoggerMessage.Define<string, string, IEnumerable<string>>(
+                LogLevel.Debug,
+                new EventId(13, nameof(RepositoryCreatedDocuments)),
+                "Repository {RepositoryName} of DbContext {DbName} created multiple documents with Ids: {ModelsId}");
+
+        private static readonly Action<ILogger, string, string, string, Exception> _repositoryDeletedDocument =
+            LoggerMessage.Define<string, string, string>(
+                LogLevel.Debug,
+                new EventId(15, nameof(RepositoryDeletedDocument)),
+                "Repository {RepositoryName} of DbContext {DbName} deleted document with Id: {ModelId}");
+
+        private static readonly Action<ILogger, string, string, string, Exception> _repositoryFoundDocument =
+            LoggerMessage.Define<string, string, string>(
+                LogLevel.Debug,
+                new EventId(16, nameof(RepositoryFoundDocument)),
+                "Repository {RepositoryName} of DbContext {DbName} found document with Id: {ModelId}");
+
         private static readonly Action<ILogger, string, string, Exception> _repositoryInitialized =
             LoggerMessage.Define<string, string>(
                 LogLevel.Debug,
@@ -128,6 +152,18 @@ namespace Etherna.MongODM.Core.Extensions
                 LogLevel.Debug,
                 new EventId(5, nameof(RepositoryRegistryInitialized)),
                 "RepositoryRegistry of DbContext {DbName} initialized");
+
+        private static readonly Action<ILogger, string, string, string, Exception> _repositoryReplacedDocument =
+            LoggerMessage.Define<string, string, string>(
+                LogLevel.Debug,
+                new EventId(17, nameof(RepositoryReplacedDocument)),
+                "Repository {RepositoryName} of DbContext {DbName} replaced document with Id: {ModelId}");
+
+        private static readonly Action<ILogger, string, string, string, Exception> _repositorySavedModelChanges =
+            LoggerMessage.Define<string, string, string>(
+                LogLevel.Debug,
+                new EventId(23, nameof(RepositorySavedModelChanges)),
+                "Repository {RepositoryName} of DbContext {DbName} saved changed members of document with Id: {ModelId}");
 
         private static readonly Action<ILogger, string, string, string, string, Exception> _repositorySaveFellBackToDocumentReplace =
             LoggerMessage.Define<string, string, string, string>(
@@ -146,6 +182,18 @@ namespace Etherna.MongODM.Core.Extensions
                 LogLevel.Trace,
                 new EventId(36, nameof(RepositoryUpsertedDocument)),
                 "Repository {RepositoryName} of DbContext {DbName} upserted document, inserted: {Inserted}");
+
+        private static readonly Action<ILogger, Type, string, string, Exception> _updateDocDependenciesTaskEnded =
+            LoggerMessage.Define<Type, string, string>(
+                LogLevel.Debug,
+                new EventId(20, nameof(UpdateDocDependenciesTaskEnded)),
+                "UpdateDocDependenciesTask ended on DbContext {DbContextType} with reference repository {ReferenceRepositoryName} to model Id {ModelId}");
+
+        private static readonly Action<ILogger, Type, string, string, IEnumerable<string>, Exception> _updateDocDependenciesTaskStarted =
+            LoggerMessage.Define<Type, string, string, IEnumerable<string>>(
+                LogLevel.Debug,
+                new EventId(19, nameof(UpdateDocDependenciesTaskStarted)),
+                "UpdateDocDependenciesTask started on DbContext {DbContextType} with reference repository {ReferenceRepositoryName}, searching for model Id {ModelId} on Id's member maps: {IdMemberMapIdentifiers}");
 
         private static readonly Action<ILogger, string, Exception> _schemaRegistryInitialized =
             LoggerMessage.Define<string>(
@@ -220,24 +268,6 @@ namespace Etherna.MongODM.Core.Extensions
                 new EventId(49, nameof(RepositoryCountedDocumentsBySchemaId)),
                 "Repository {RepositoryName} of DbContext {DbName} counted documents by schema id, found {SchemaIdsCount} schema ids");
 
-        private static readonly Action<ILogger, string, string, string, Exception> _repositoryCreatedDocument =
-            LoggerMessage.Define<string, string, string>(
-                LogLevel.Information,
-                new EventId(14, nameof(RepositoryCreatedDocument)),
-                "Repository {RepositoryName} of DbContext {DbName} created document with Id: {ModelId}");
-
-        private static readonly Action<ILogger, string, string, IEnumerable<string>, Exception> _repositoryCreatedDocuments =
-            LoggerMessage.Define<string, string, IEnumerable<string>>(
-                LogLevel.Information,
-                new EventId(13, nameof(RepositoryCreatedDocuments)),
-                "Repository {RepositoryName} of DbContext {DbName} created multiple documents with Ids: {ModelsId}");
-
-        private static readonly Action<ILogger, string, string, string, Exception> _repositoryDeletedDocument =
-            LoggerMessage.Define<string, string, string>(
-                LogLevel.Information,
-                new EventId(15, nameof(RepositoryDeletedDocument)),
-                "Repository {RepositoryName} of DbContext {DbName} deleted document with Id: {ModelId}");
-
         private static readonly Action<ILogger, string, string, long, Exception> _repositoryDeletedDocuments =
             LoggerMessage.Define<string, string, long>(
                 LogLevel.Information,
@@ -250,41 +280,11 @@ namespace Etherna.MongODM.Core.Extensions
                 new EventId(33, nameof(RepositoryFoundAndUpdatedDocument)),
                 "Repository {RepositoryName} of DbContext {DbName} executed find and update on a document, matched: {Matched}");
 
-        private static readonly Action<ILogger, string, string, string, Exception> _repositoryFoundDocument =
-            LoggerMessage.Define<string, string, string>(
-                LogLevel.Information,
-                new EventId(16, nameof(RepositoryFoundDocument)),
-                "Repository {RepositoryName} of DbContext {DbName} found document with Id: {ModelId}");
-
         private static readonly Action<ILogger, string, string, Exception> _repositoryQueriedCollection =
             LoggerMessage.Define<string, string>(
                 LogLevel.Information,
                 new EventId(18, nameof(RepositoryQueriedCollection)),
                 "Repository {RepositoryName} of DbContext {DbName} queried collection");
-
-        private static readonly Action<ILogger, string, string, string, Exception> _repositoryReplacedDocument =
-            LoggerMessage.Define<string, string, string>(
-                LogLevel.Information,
-                new EventId(17, nameof(RepositoryReplacedDocument)),
-                "Repository {RepositoryName} of DbContext {DbName} replaced document with Id: {ModelId}");
-
-        private static readonly Action<ILogger, string, string, string, Exception> _repositorySavedModelChanges =
-            LoggerMessage.Define<string, string, string>(
-                LogLevel.Information,
-                new EventId(23, nameof(RepositorySavedModelChanges)),
-                "Repository {RepositoryName} of DbContext {DbName} saved changed members of document with Id: {ModelId}");
-
-        private static readonly Action<ILogger, Type, string, string, Exception> _updateDocDependenciesTaskEnded =
-            LoggerMessage.Define<Type, string, string>(
-                LogLevel.Information,
-                new EventId(20, nameof(UpdateDocDependenciesTaskEnded)),
-                "UpdateDocDependenciesTask ended on DbContext {DbContextType} with reference repository {ReferenceRepositoryName} to model Id {ModelId}");
-
-        private static readonly Action<ILogger, Type, string, string, IEnumerable<string>, Exception> _updateDocDependenciesTaskStarted =
-            LoggerMessage.Define<Type, string, string, IEnumerable<string>>(
-                LogLevel.Information,
-                new EventId(19, nameof(UpdateDocDependenciesTaskStarted)),
-                "UpdateDocDependenciesTask started on DbContext {DbContextType} with reference repository {ReferenceRepositoryName}, searching for model Id {ModelId} on Id's member maps: {IdMemberMapIdentifiers}");
 
         //*** WARNING LOGS ***
         private static readonly Action<ILogger, string, string, string?, Exception> _dbContextImplicitLazyLoad =
