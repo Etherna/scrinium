@@ -12,10 +12,10 @@
 // You should have received a copy of the GNU Lesser General Public License along with MongODM.
 // If not, see <https://www.gnu.org/licenses/>.
 
+using Etherna.MongoDB.Driver;
 using Etherna.MongODM.Core.Migration;
 using System;
 using System.Collections.Generic;
-using System.Linq;
 
 namespace Etherna.MongODM.Core.Options
 {
@@ -28,8 +28,11 @@ namespace Etherna.MongODM.Core.Options
         public IEnumerable<Type> ChildDbContextTypes => _childDbContextTypes;
         public string ConnectionString { get; set; } = "mongodb://localhost/localDb";
         public string DbLockCollectionName { get; set; } = "_db_lock";
-        public string DbName => ConnectionString.Split('?')[0]
-                                                .Split('/').Last();
+        /* The error never reports the connection string: its user info section can carry
+         * credentials, and this value flows into log lines as a structured field. */
+        public string DbName => MongoUrl.Create(ConnectionString).DatabaseName ??
+            throw new InvalidOperationException(
+                "Connection string doesn't specify a database name. Declare it as its path segment, as in \"mongodb://localhost:27017/mydbname\"");
         public string DbOperationsCollectionName { get; set; } = "_db_ops";
         public bool EnableTransactionsWithReplicaSet { get; set; } = true;
         public string? Identifier { get; set; }

@@ -37,7 +37,12 @@ namespace Etherna.MongODM.Core.Options
         /// </summary>
         public string DbLockCollectionName { get; }
 
+        /// <summary>
+        /// The database name declared as path segment of <see cref="ConnectionString"/>.
+        /// A connection string without it is invalid: reading this property throws.
+        /// </summary>
         public string DbName { get; }
+
         public string DbOperationsCollectionName { get; }
 
         /// <summary>
