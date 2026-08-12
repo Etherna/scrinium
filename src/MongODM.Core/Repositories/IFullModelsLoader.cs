@@ -21,10 +21,10 @@ namespace Etherna.MongODM.Core.Repositories
 {
     /// <summary>
     /// Batch loading surface of the library repositories, consumed by the members preload:
-    /// load the full documents of the given models with a single query, by their ids. The
-    /// results merge in place into the scope loaded instances through the identity map:
-    /// summary models upgrade to full. Custom repository implementations without this
-    /// interface preload with per instance loads.
+    /// load the full documents of the given models by their ids, with one query per
+    /// bounded ids chunk. The results merge in place into the scope loaded instances
+    /// through the identity map: summary models upgrade to full. Custom repository
+    /// implementations without this interface preload with per instance loads.
     /// </summary>
     internal interface IFullModelsLoader
     {

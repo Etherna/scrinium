@@ -276,9 +276,10 @@ namespace Etherna.MongODM.Core
                 modelsToLoad.Add((model, referenceable.SourceRepository));
             }
 
-            /* One query per source repository: the loaded documents deserialize on this
-             * scope, merging in place into the summary instances through the identity map.
-             * Custom repository implementations without the batch surface load per instance. */
+            /* One batched load per source repository: the loaded documents deserialize on
+             * this scope, merging in place into the summary instances through the identity
+             * map. Custom repository implementations without the batch surface load per
+             * instance. */
             foreach (var repositoryGroup in modelsToLoad.GroupBy(pair => pair.Repository))
             {
                 if (repositoryGroup.Key is IFullModelsLoader fullModelsLoader)

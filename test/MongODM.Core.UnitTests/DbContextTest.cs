@@ -27,6 +27,8 @@ using Etherna.MongODM.Core.Serialization.Mapping;
 using Etherna.MongODM.Core.Utility;
 using Moq;
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Xunit;
@@ -431,6 +433,47 @@ namespace Etherna.MongODM.Core
             Assert.Contains(model, dbContext.ChangedModelsList);
         }
 
+        [Fact]
+        public async Task BatchPreloadChunksTheLoadQueries()
+        {
+            /* One summary more than a chunk: the batch preload must split the ids into a
+             * full chunk query and a remainder query, instead of a single unbounded $in
+             * filter growing with the caller batch size. */
+
+            // Setup.
+            using var contextHandler = AsyncLocalContext.Instance.InitAsyncLocalContext();
+
+            const int loadChunkSize = 1000; //keep aligned with the repository load chunk size
+            var models = Enumerable.Range(0, loadChunkSize + 1)
+                .Select(i =>
+                {
+                    var proxy = NewBoundProxy($"id{i}");
+                    ((IReferenceable)proxy).SetAsSummary([]);
+                    return proxy;
+                })
+                .ToArray();
+
+            List<FilterDefinition<FakeModel>> capturedFilters = [];
+            collectionMock.Setup(c => c.FindAsync(
+                    It.IsAny<FilterDefinition<FakeModel>>(),
+                    It.IsAny<FindOptions<FakeModel, FakeModel>>(),
+                    It.IsAny<CancellationToken>()))
+                .Callback<FilterDefinition<FakeModel>, FindOptions<FakeModel, FakeModel>, CancellationToken>(
+                    (filter, _, _) => capturedFilters.Add(filter))
+                .ReturnsAsync(NewEmptyCursor);
+
+            // Action.
+            await dbContext.LoadValuesAsync(models, m => m.StringProp);
+
+            // Assert.
+            //one query per ids chunk, together covering every model id
+            var queriedIdsGroups = capturedFilters.Select(RenderedInIds).ToArray();
+            Assert.Equal([loadChunkSize, 1], queriedIdsGroups.Select(ids => ids.Length));
+            Assert.Equal(
+                models.Select(m => m.Id).ToHashSet(),
+                queriedIdsGroups.SelectMany(ids => ids).ToHashSet());
+        }
+
         [Theory]
         [InlineData(false)]
         [InlineData(true)]
@@ -832,12 +875,35 @@ namespace Etherna.MongODM.Core
             return modelMock;
         }
 
+        private static IAsyncCursor<FakeModel> NewEmptyCursor()
+        {
+            var cursorMock = new Mock<IAsyncCursor<FakeModel>>();
+            cursorMock.Setup(c => c.MoveNextAsync(It.IsAny<CancellationToken>()))
+                .ReturnsAsync(false);
+            return cursorMock.Object;
+        }
+
         private static Mock<IRepository> NewSourceRepositoryMock()
         {
             var repositoryMock = new Mock<IRepository>();
             repositoryMock.Setup(r => r.ModelIdToString(It.IsAny<object>()))
                 .Returns("id");
             return repositoryMock;
+        }
+
+        private string[] RenderedInIds(FilterDefinition<FakeModel> filter)
+        {
+            /* Render against a frozen class map serializer of the model, resolving the id
+             * member to its element name like the collection query pipeline does. */
+            var classMap = new BsonClassMap<FakeModel>();
+            classMap.AutoMap();
+            classMap.Freeze();
+            var renderedFilter = filter.Render(new(
+                new BsonClassMapSerializer<FakeModel>(classMap),
+                engine.SerializerRegistry));
+            return renderedFilter["_id"]["$in"].AsBsonArray
+                .Select(id => id.AsString)
+                .ToArray();
         }
 
         private void SetReplicaSetTopology() =>

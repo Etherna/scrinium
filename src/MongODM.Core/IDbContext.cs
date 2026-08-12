@@ -167,8 +167,9 @@ namespace Etherna.MongODM.Core
 
         /// <summary>
         /// Ensure that the members are loaded on every model of the collection: the full
-        /// documents of the missing ones load with a single query per source repository,
-        /// merging in place. The batch replacement of per instance lazy loads.
+        /// documents of the missing ones load grouped per source repository, with one query
+        /// per bounded chunk of ids, merging in place. The batch replacement of per
+        /// instance lazy loads.
         /// </summary>
         /// <param name="models">The models to preload</param>
         /// <param name="members">The members to ensure, as direct member access expressions</param>
