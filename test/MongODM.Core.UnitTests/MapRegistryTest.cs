@@ -36,6 +36,30 @@ namespace Etherna.MongODM.Core
     public class MapRegistryTest
     {
         // Internal classes.
+        /* The id member is mapped by the model map of the level declaring it: the invalid
+         * id typed models declare their own id, keeping each violation on its model. */
+        public class BsonArrayIdModel : IEntityModel<BsonArray>
+        {
+            public IDictionary<string, object>? ExtraElements { get; }
+            public virtual BsonArray Id { get; set; } = null!;
+            public void DisposeForDelete() { }
+        }
+        public class BsonDocumentIdModel : IEntityModel<BsonDocument>
+        {
+            public IDictionary<string, object>? ExtraElements { get; }
+            public virtual BsonDocument Id { get; set; } = null!;
+            public void DisposeForDelete() { }
+        }
+        public class BsonValueIdModel : IEntityModel<BsonValue>
+        {
+            public IDictionary<string, object>? ExtraElements { get; }
+            public virtual BsonValue Id { get; set; } = null!;
+            public void DisposeForDelete() { }
+        }
+        public class BsonValueMemberModel
+        {
+            public BsonValue? Payload { get; set; }
+        }
         public class ChildModel : FakeEntityModelBase<string>
         {
             public virtual string? Name { get; set; }
@@ -49,6 +73,17 @@ namespace Etherna.MongODM.Core
             public override void Serialize(BsonSerializationContext context, BsonSerializationArgs args, ChildModel value) =>
                 context.Writer.WriteString(value.Id);
         }
+        public class CompositeIdModel : IEntityModel<CompositeKey>
+        {
+            public IDictionary<string, object>? ExtraElements { get; }
+            public virtual CompositeKey Id { get; set; } = null!;
+            public void DisposeForDelete() { }
+        }
+        public sealed class CompositeKey
+        {
+            public string? Area { get; set; }
+            public int Number { get; set; }
+        }
         public class EntityChildHostModel
         {
             public ChildModel? Child { get; set; }
@@ -57,6 +92,13 @@ namespace Etherna.MongODM.Core
         public class FirstModel
         {
             public string? Name { get; set; }
+        }
+        public interface IKeyModel;
+        public class InterfaceIdModel : IEntityModel<IKeyModel>
+        {
+            public IDictionary<string, object>? ExtraElements { get; }
+            public virtual IKeyModel Id { get; set; } = null!;
+            public void DisposeForDelete() { }
         }
         public sealed class KeyModel(string value)
         {
@@ -85,6 +127,12 @@ namespace Etherna.MongODM.Core
         public class SecondModel
         {
             public string? Name { get; set; }
+        }
+        public class UntypedIdModel : IEntityModel<object>
+        {
+            public IDictionary<string, object>? ExtraElements { get; }
+            public virtual object Id { get; set; } = null!;
+            public void DisposeForDelete() { }
         }
         public class WrongIdModel : FakeEntityModelBase<string>
         {
@@ -236,6 +284,111 @@ namespace Etherna.MongODM.Core
             Assert.Equal(
                 new[] { typeof(FakeModel), typeof(FakeEntityModelBase<string>), typeof(ModelBase) }.OrderBy(t => t.FullName),
                 mapRegistry.MapsByModelType.Keys.OrderBy(t => t.FullName));
+        }
+
+        /* MODM-222: an entity id is always a value. A composite id is addressed by no atomic
+         * key, and a document valued id is the only shape MongoDB reads as an operator
+         * expression instead of a value: a hostile {"$ne": null} would match an arbitrary
+         * document. Every id serializer declaring a document or an array representation is
+         * rejected at engine build. */
+        [Fact]
+        public void FreezeFailsWithArraySerializedIdMemberType()
+        {
+            // Setup.
+            mapRegistry.AddModelMap<BsonArrayIdModel>("bsonArrayIdSchemaId");
+
+            // Action.
+            var exception = Assert.Throws<MongodmInvalidIdMemberException>(() => mapRegistry.Freeze());
+
+            // Assert.
+            Assert.Contains("bsonArrayIdSchemaId", exception.Message, StringComparison.Ordinal);
+            Assert.Contains(nameof(BsonArrayIdModel), exception.Message, StringComparison.Ordinal);
+            Assert.Contains("must serialize to a value", exception.Message, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void FreezeFailsWithBsonDocumentIdMemberType()
+        {
+            // Setup.
+            mapRegistry.AddModelMap<BsonDocumentIdModel>("bsonDocumentIdSchemaId");
+
+            // Action.
+            var exception = Assert.Throws<MongodmInvalidIdMemberException>(() => mapRegistry.Freeze());
+
+            // Assert.
+            Assert.Contains("bsonDocumentIdSchemaId", exception.Message, StringComparison.Ordinal);
+            Assert.Contains(nameof(BsonDocumentIdModel), exception.Message, StringComparison.Ordinal);
+            Assert.Contains("must serialize to a value", exception.Message, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void FreezeFailsWithBsonValueIdMemberType()
+        {
+            // Setup.
+            mapRegistry.AddModelMap<BsonValueIdModel>("bsonValueIdSchemaId");
+
+            // Action.
+            var exception = Assert.Throws<MongodmInvalidIdMemberException>(() => mapRegistry.Freeze());
+
+            // Assert.
+            Assert.Contains("bsonValueIdSchemaId", exception.Message, StringComparison.Ordinal);
+            Assert.Contains(nameof(BsonValueIdModel), exception.Message, StringComparison.Ordinal);
+            Assert.Contains("must serialize to a value", exception.Message, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void FreezeFailsWithInterfaceIdMemberType()
+        {
+            /* An interface typed id serializes through the driver discriminated interface
+             * serializer, which declares a document representation: the id of the document
+             * is the discriminated implementation, not a value. */
+
+            // Setup.
+            mapRegistry.AddModelMap<InterfaceIdModel>("interfaceIdSchemaId");
+
+            // Action.
+            var exception = Assert.Throws<MongodmInvalidIdMemberException>(() => mapRegistry.Freeze());
+
+            // Assert.
+            Assert.Contains("interfaceIdSchemaId", exception.Message, StringComparison.Ordinal);
+            Assert.Contains(nameof(InterfaceIdModel), exception.Message, StringComparison.Ordinal);
+            Assert.Contains("must serialize to a value", exception.Message, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void FreezeFailsWithUntypedIdMemberType()
+        {
+            /* MODM-222: an object typed id doesn't commit to an id type. The values with
+             * no BSON type equivalent discriminate into a document, and the ones with it
+             * read back as the type of their BSON type — an enum id writes 1 and reads
+             * back an Int32 — while the typed entity id contract, the identity map keys
+             * and the references resolution all rely on the id value type. */
+
+            // Setup.
+            mapRegistry.AddModelMap<UntypedIdModel>("untypedIdSchemaId");
+
+            // Action.
+            var exception = Assert.Throws<MongodmInvalidIdMemberException>(() => mapRegistry.Freeze());
+
+            // Assert.
+            Assert.Contains("untypedIdSchemaId", exception.Message, StringComparison.Ordinal);
+            Assert.Contains(nameof(UntypedIdModel), exception.Message, StringComparison.Ordinal);
+            Assert.Contains("doesn't commit to an id type", exception.Message, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void FreezeFailsWithClassMappedIdMemberType()
+        {
+            // Setup.
+            mapRegistry.AddModelMap<CompositeIdModel>("compositeIdSchemaId");
+
+            // Action.
+            var exception = Assert.Throws<MongodmInvalidIdMemberException>(() => mapRegistry.Freeze());
+
+            // Assert.
+            Assert.Contains("compositeIdSchemaId", exception.Message, StringComparison.Ordinal);
+            Assert.Contains(nameof(CompositeIdModel), exception.Message, StringComparison.Ordinal);
+            Assert.Contains("must serialize to a value", exception.Message, StringComparison.Ordinal);
         }
 
         [Fact]
@@ -441,6 +594,23 @@ namespace Etherna.MongODM.Core
         }
 
         [Fact]
+        public void FreezeSucceedsWithBsonValueMember()
+        {
+            /* The driver BsonValue serializer reports itself as its own array item
+             * serializer: the freeze serializer explorations terminate on the cycle, and
+             * a non id BsonValue member stays valid. */
+
+            // Setup.
+            mapRegistry.AddModelMap<BsonValueMemberModel>("bsonValueMemberSchemaId");
+
+            // Action.
+            mapRegistry.Freeze();
+
+            // Assert.
+            Assert.True(mapRegistry.IsFrozen);
+        }
+
+        [Fact]
         public void FreezeSucceedsWithCustomSerializedEntityModelMember()
         {
             /* A custom serializer set on an entity model member never enters the document
@@ -555,6 +725,26 @@ namespace Etherna.MongODM.Core
             Assert.True(mapRegistry.IsFrozen);
             Assert.Equal("first", mapRegistry.GetActiveSchemaIdBsonElement(typeof(FirstModel)).Value.AsString);
             Assert.Equal("second", mapRegistry.GetActiveSchemaIdBsonElement(typeof(SecondModel)).Value.AsString);
+        }
+
+        [Fact]
+        public void FreezeSucceedsWithUntypedIdMemberMappingItsSerializer()
+        {
+            /* An application serializing its own id values through a custom serializer map
+             * for object declares how they serialize and deserialize: the id type commits
+             * to a representation, and the rendered shape stays verified by the id filters
+             * and by the create write. */
+
+            // Setup.
+            mapRegistry.AddCustomSerializerMap(new ObjectSerializer(
+                type => ObjectSerializer.DefaultAllowedTypes(type) || type == typeof(FirstModel)));
+            mapRegistry.AddModelMap<UntypedIdModel>("untypedIdSchemaId");
+
+            // Action.
+            mapRegistry.Freeze();
+
+            // Assert.
+            Assert.True(mapRegistry.IsFrozen);
         }
 
         // Helpers.

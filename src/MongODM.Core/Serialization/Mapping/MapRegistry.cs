@@ -584,8 +584,13 @@ namespace Etherna.MongODM.Core.Serialization.Mapping
                     foreach (var bsonMemberMap in schema.AllMemberMaps)
                     {
                         var serializer = bsonMemberMap.GetSerializer();
+                        HashSet<IBsonSerializer> visitedSerializers = [];
                         while (true)
                         {
+                            //terminate on serializer cycles (e.g. the driver BsonValue serializer descends to itself)
+                            if (!visitedSerializers.Add(serializer))
+                                break;
+
                             //unwrap the adapter binding a derived member type to its entity serializer
                             if (serializer is IEntityModelSerializerAdapter serializerAdapter)
                             {
@@ -659,7 +664,25 @@ namespace Etherna.MongODM.Core.Serialization.Mapping
          * entity id contract, while serialization addresses them through the mapped id
          * member: they must be the same member, or the two identities would diverge
          * silently. Verify that every mapped id member of an entity model type, reference
-         * configuration maps included, is the implicit implementation of the contract. */
+         * configuration maps included, is the implicit implementation of the contract.
+         * An entity id is also always a value, never a composite: repositories address a
+         * document by an atomic key, and a document valued id is the only shape MongoDB
+         * can read as an operator expression instead of a value (a filter value document
+         * whose first element name starts with "$"), so a caller sending the id
+         * {"$ne": null} would match, delete or overwrite an arbitrary document. Verify
+         * that no id member serializer declares a document or array representation: it
+         * rejects composite ids (class mapped, dictionary, interface, BsonDocument and
+         * BsonValue members) at engine build. The shapes a serializer doesn't declare — a
+         * custom serializer emitting a document — are refused when they render, by the id
+         * filters and by the create write.
+         * An id also commits to its type, which an object typed id doesn't: the driver
+         * object serializer writes the values with a BSON type equivalent as plain values
+         * and discriminates any other one into a document, and a value reads back as the
+         * type of its BSON type — an enum id writes 1 and reads back an Int32 — while the
+         * typed entity id contract, the identity map keys and the references resolution
+         * all rely on the id value type. Verify that no id member is typed object, unless
+         * the application maps its own serializer for it, declaring how its values
+         * serialize and deserialize. */
         private void ValidateIdMemberMaps()
         {
             foreach (var idMemberMap in _memberMapsById.Values.Where(mm => mm.IsIdMember))
@@ -686,6 +709,24 @@ namespace Etherna.MongODM.Core.Serialization.Mapping
                         $"{idMemberMap.BsonMemberMap.MemberInfo.Name} as its document id, but the id member of " +
                         $"an entity model must be the implicit implementation of " +
                         $"{nameof(IEntityModel<object>)}<TKey>.{nameof(IEntityModel<object>.Id)}");
+
+                if (idMemberMap.BsonMemberMap.GetSerializer() is IBsonDocumentSerializer or IBsonArraySerializer)
+                    throw new MongodmInvalidIdMemberException(
+                        $"Model map schema {idMemberMap.ModelMapSchema.Id} of type {modelType.Name} maps " +
+                        $"{idMemberMap.BsonMemberMap.MemberInfo.Name} of type " +
+                        $"{idMemberMap.BsonMemberMap.MemberType.Name} as its document id, but an entity id must " +
+                        "serialize to a value, and its serializer represents a composite. Serialize a composite id " +
+                        "into a value (a string, for instance), and map its components as members of the model to " +
+                        "query them");
+
+                if (idMemberMap.BsonMemberMap.MemberType == typeof(object) && !_maps.ContainsKey(typeof(object)))
+                    throw new MongodmInvalidIdMemberException(
+                        $"Model map schema {idMemberMap.ModelMapSchema.Id} of type {modelType.Name} maps " +
+                        $"{idMemberMap.BsonMemberMap.MemberInfo.Name} of type object as its document id, but an " +
+                        "object typed id doesn't commit to an id type: the values without a BSON type equivalent " +
+                        "serialize as discriminated documents, and the ones with it read back as the type of their " +
+                        "BSON type (an enum id reads back an Int32). Use a concrete id type, or map a custom " +
+                        "serializer for object");
             }
         }
 

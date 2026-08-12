@@ -16,7 +16,6 @@ using Etherna.MongoDB.Bson;
 using Etherna.MongoDB.Bson.IO;
 using Etherna.MongoDB.Bson.Serialization;
 using Etherna.MongoDB.Driver;
-using Etherna.MongoDB.Driver.Linq;
 using Etherna.MongODM.Core.Exceptions;
 using Etherna.MongODM.Core.FieldDefinition;
 using Etherna.MongODM.Core.Serialization.Mapping;
@@ -30,6 +29,7 @@ namespace Etherna.MongODM.Core.FilterDefinition
     public class MemberMapEqFilterDefinition<TDocument, TItem> : FilterDefinition<TDocument>
     {
         private const string ElemMatchCommand = "$elemMatch";
+        private const string EqCommand = "$eq";
 
         // Fields.
         private readonly IMemberMap memberMap;
@@ -58,12 +58,16 @@ namespace Etherna.MongODM.Core.FilterDefinition
                 _ => throw new MongodmElementPathRenderingException());
             var renderedField = memberMapFieldDefinition.Render(args);
             var segmentedField = renderedField.FieldName.Split('.');
-            var filterDocument = BuildBsonDocument(segmentedField, value, renderedField.ValueSerializer);
+            var filterDocument = BuildBsonDocument(segmentedField, value, renderedField.ValueSerializer, memberMap.IsIdMember);
             return filterDocument;
         }
 
         // Helpers.
-        private static BsonDocument BuildBsonDocument(IEnumerable<string> segmentedField, TItem value, IBsonSerializer<TItem> valueSerializer)
+        private static BsonDocument BuildBsonDocument(
+            IEnumerable<string> segmentedField,
+            TItem value,
+            IBsonSerializer<TItem> valueSerializer,
+            bool isIdMember)
         {
             // Recursion building elemMatch filters.
             var sb = new StringBuilder();
@@ -71,15 +75,15 @@ namespace Etherna.MongODM.Core.FilterDefinition
             {
                 if (fieldSegment == ElemMatchCommand)
                     return sb.Length == 0 ?
-                        new BsonDocument(ElemMatchCommand, BuildBsonDocument(segmentedField.Skip(i + 1), value, valueSerializer)) :
-                        new BsonDocument(sb.ToString(), new BsonDocument(ElemMatchCommand, BuildBsonDocument(segmentedField.Skip(i + 1), value, valueSerializer)));
+                        new BsonDocument(ElemMatchCommand, BuildBsonDocument(segmentedField.Skip(i + 1), value, valueSerializer, isIdMember)) :
+                        new BsonDocument(sb.ToString(), new BsonDocument(ElemMatchCommand, BuildBsonDocument(segmentedField.Skip(i + 1), value, valueSerializer, isIdMember)));
                 else
                     sb.Append((sb.Length == 0 ? "" : ".") + fieldSegment);
             }
 
             // Exit building eq filter.
-            var eqDocument = new BsonDocument();
-            using (var bsonWriter = new BsonDocumentWriter(eqDocument))
+            var valueDocument = new BsonDocument();
+            using (var bsonWriter = new BsonDocumentWriter(valueDocument))
             {
                 var context = BsonSerializationContext.CreateRoot(bsonWriter);
                 bsonWriter.WriteStartDocument();
@@ -87,7 +91,17 @@ namespace Etherna.MongODM.Core.FilterDefinition
                 valueSerializer.Serialize(context, value);
                 bsonWriter.WriteEndDocument();
             }
-            return eqDocument;
+
+            //an id member filters a document by its key, and an entity id is always a value
+            if (isIdMember)
+                IdFilterValueHelper.ThrowIfNotValueShaped(valueDocument.GetElement(0));
+
+            /* The comparison is explicit: MongoDB reads a filter value document whose first
+             * element name starts with "$" as an operator expression, while inside an $eq
+             * every value is compared literally. A serializer deriving element names from
+             * the serialized value can't turn the equality into another query, whatever the
+             * value it receives. */
+            return new BsonDocument(sb.ToString(), new BsonDocument(EqCommand, valueDocument[0]));
         }
     }
 }

@@ -28,6 +28,7 @@ namespace Etherna.MongODM.IntegrationTests
     {
         IRepository<Artifact, Fingerprint> Artifacts { get; }
         IRepository<Badge, int> Badges { get; }
+        IRepository<Locker, DialCode> Lockers { get; }
         IRepository<Seal, string> Seals { get; }
         IRepository<Ticket, Guid> Tickets { get; }
         IRepository<Voucher, ObjectId> Vouchers { get; }
@@ -36,7 +37,8 @@ namespace Etherna.MongODM.IntegrationTests
     /// <summary>
     /// A db context whose entities use ids of assorted non default types: a custom
     /// serialized value type on <see cref="Artifact"/> (MODM-176), int on
-    /// <see cref="Badge"/>, Guid on <see cref="Ticket"/>, native ObjectId on
+    /// <see cref="Badge"/>, a custom value type serialized as document on
+    /// <see cref="Locker"/> (MODM-222), Guid on <see cref="Ticket"/>, native ObjectId on
     /// <see cref="Voucher"/>, with the custom type also serialized as plain member by
     /// <see cref="Seal"/>.
     /// </summary>
@@ -58,6 +60,7 @@ namespace Etherna.MongODM.IntegrationTests
                 ]
             });
         public IRepository<Badge, int> Badges { get; } = new Repository<Badge, int>("badges");
+        public IRepository<Locker, DialCode> Lockers { get; } = new Repository<Locker, DialCode>("lockers");
         public IRepository<Seal, string> Seals { get; } = new Repository<Seal, string>(
             new RepositoryOptions<Seal>("seals")
             {
@@ -75,6 +78,6 @@ namespace Etherna.MongODM.IntegrationTests
 
         // Protected properties.
         protected override IEnumerable<IModelMapsCollector> ModelMapsCollectors =>
-            [new FingerprintMap(), new ArtifactMap(), new BadgeMap(), new SealMap(), new TicketMap(), new VoucherMap()];
+            [new FingerprintMap(), new DialCodeMap(), new ArtifactMap(), new BadgeMap(), new LockerMap(), new SealMap(), new TicketMap(), new VoucherMap()];
     }
 }

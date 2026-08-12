@@ -17,10 +17,12 @@ using System;
 namespace Etherna.MongODM.Core.Exceptions
 {
     /// <summary>
-    /// Thrown at engine build when a model map schema of an entity model type maps as its
-    /// document id a member that is not the implicit implementation of the entity id
-    /// contract: the typed id addressed by the framework and the persisted identity must
-    /// be the same member.
+    /// Thrown at engine build when a model map schema of an entity model type maps an
+    /// invalid document id member: a member that is not the implicit implementation of the
+    /// entity id contract (the typed id addressed by the framework and the persisted
+    /// identity must be the same member), or a member whose serializer represents a
+    /// composite (an entity id must serialize to a value, and a document valued id would
+    /// render inside the repository id filters as an operator expression).
     /// </summary>
     public class MongodmInvalidIdMemberException : Exception
     {
