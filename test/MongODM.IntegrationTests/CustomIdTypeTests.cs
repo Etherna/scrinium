@@ -117,6 +117,29 @@ namespace Etherna.MongODM.IntegrationTests
         }
 
         [Fact]
+        public async Task CreateRefusesADocumentSerializedId()
+        {
+            /* MODM-222: an entity id is always a value. A custom serializer emitting a
+             * document is invisible to the engine build, so the write refuses it: a
+             * document persisted with an id the id filters can't render couldn't be found,
+             * updated nor deleted afterwards. */
+
+            // Setup.
+            using var contextHandler = AsyncLocalContext.Instance.InitAsyncLocalContext();
+            var locker = new Locker(new DialCode("left", 7), "gym");
+
+            // Action.
+            var exception = await Assert.ThrowsAsync<FormatException>(() => dbContext.Lockers.CreateAsync(locker));
+
+            // Assert.
+            Assert.Contains("must serialize to a value", exception.Message, StringComparison.Ordinal);
+
+            //nothing written
+            var lockersCollection = dbContext.Engine.Database.GetCollection<BsonDocument>("lockers");
+            Assert.Equal(0, await lockersCollection.CountDocumentsAsync(Builders<BsonDocument>.Filter.Empty));
+        }
+
+        [Fact]
         public async Task CreateAndFindEntityByGeneratedGuidId()
         {
             // Setup.
@@ -224,6 +247,33 @@ namespace Etherna.MongODM.IntegrationTests
 
             // Assert.
             Assert.Equal("09f8e7", rawSeal[nameof(Seal.ArtifactFingerprint)].AsString);
+        }
+
+        [Fact]
+        public async Task OperatorShapedIdValueDoesntMatchAnyDocument()
+        {
+            /* MODM-222: an id value serialized to a document whose first element name
+             * starts with "$" would be read by MongoDB as an operator expression, so a
+             * caller sending {"$ne": null} as id would receive, delete or overwrite an
+             * arbitrary document. The id filters refuse to render it: FindOneAsync
+             * surfaces the FormatException, and TryFindOneAsync reads it like any other
+             * unparsable key, an id matching nothing. */
+
+            // Setup.
+            /* The document is written raw: MongODM refuses to persist a document valued
+             * id, and a document already on the collection must stay unreachable too. */
+            using var contextHandler = AsyncLocalContext.Instance.InitAsyncLocalContext();
+            var lockersCollection = dbContext.Engine.Database.GetCollection<BsonDocument>("lockers");
+            await lockersCollection.InsertOneAsync(new BsonDocument
+            {
+                ["_id"] = new BsonDocument("right", 3),
+                [nameof(Locker.Label)] = "pool"
+            });
+
+            // Action & Assert.
+            using var readContextHandler = AsyncLocalContext.Instance.InitAsyncLocalContext();
+            Assert.Null(await dbContext.Lockers.TryFindOneAsync(new DialCode("$ne", 0)));
+            await Assert.ThrowsAsync<FormatException>(() => dbContext.Lockers.FindOneAsync(new DialCode("$ne", 0)));
         }
 
         [Fact]

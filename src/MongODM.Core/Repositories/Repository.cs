@@ -20,6 +20,7 @@ using Etherna.MongoDB.Driver.Linq;
 using Etherna.MongODM.Core.Domain.Models;
 using Etherna.MongODM.Core.Exceptions;
 using Etherna.MongODM.Core.Extensions;
+using Etherna.MongODM.Core.FilterDefinition;
 using Etherna.MongODM.Core.ProxyModels;
 using Etherna.MongODM.Core.Utility;
 using Microsoft.Extensions.Logging;
@@ -587,7 +588,7 @@ namespace Etherna.MongODM.Core.Repositories
             /* The schema check lives in the update filter to be atomic with the update
              * itself: setting members serialized with the active schema into a document
              * shaped by an older schema would mix schemas into a broken document. */
-            var filter = Builders<TModel>.Filter.Eq(m => m.Id, castedModel.Id) &
+            var filter = new EntityIdEqFilterDefinition<TModel, TKey>(castedModel.Id) &
                 Builders<TModel>.Filter.Eq(
                     new StringFieldDefinition<TModel, string>(DbContext.Engine.Options.ModelMapSchemaId.ElementName),
                     activeSchema.Id);
@@ -1013,6 +1014,19 @@ namespace Etherna.MongODM.Core.Repositories
             return document["value"];
         }
 
+        /* A document written with an id that doesn't render as an addressable filter value
+         * couldn't be found, updated or deleted afterwards: build the id filter of the
+         * inserting model, refusing the write the same way every other operation refuses
+         * to address it, instead of persisting a document reachable only outside MongODM. */
+        private void ThrowIfIdIsNotAddressable(TModel model)
+        {
+            if (!DbContext.Engine.MapRegistry.TryGetMappedSerializer(typeof(TModel), out var modelSerializer))
+                return; //without a mapped serializer there is no id serialization to validate
+
+            _ = new EntityIdEqFilterDefinition<TModel, TKey>(model.Id).Render(
+                new RenderArgs<TModel>((IBsonSerializer<TModel>)modelSerializer, DbContext.Engine.SerializerRegistry));
+        }
+
         private static bool TryAssignModelId(IEntityModel model, IDbContextEngine engine)
         {
             /* Mirror the driver id assignment of the insert operations: read the id through
@@ -1056,10 +1070,21 @@ namespace Etherna.MongODM.Core.Repositories
 
         // Protected virtual methods.
         protected virtual Task CreateOnDBAsync(IEnumerable<TModel> models, CancellationToken cancellationToken) =>
-            AccessToCollectionAsync(collection => collection.InsertManyAsync(models, null, cancellationToken));
+            AccessToCollectionAsync(collection =>
+            {
+                foreach (var model in models)
+                    ThrowIfIdIsNotAddressable(model);
+
+                return collection.InsertManyAsync(models, null, cancellationToken);
+            });
 
         protected virtual Task CreateOnDBAsync(TModel model, CancellationToken cancellationToken) =>
-            AccessToCollectionAsync(collection => collection.InsertOneAsync(model, null, cancellationToken));
+            AccessToCollectionAsync(collection =>
+            {
+                ThrowIfIdIsNotAddressable(model);
+
+                return collection.InsertOneAsync(model, null, cancellationToken);
+            });
 
         protected virtual Task DeleteOnDBAsync(
             TModel model,
@@ -1069,7 +1094,7 @@ namespace Etherna.MongODM.Core.Repositories
             {
                 ArgumentNullException.ThrowIfNull(model);
 
-                var idFilter = Builders<TModel>.Filter.Eq(m => m.Id, model.Id);
+                var idFilter = new EntityIdEqFilterDefinition<TModel, TKey>(model.Id);
 
                 return collection.DeleteOneAsync(
                     additionalFilters.Length == 0 ?
@@ -1085,7 +1110,7 @@ namespace Etherna.MongODM.Core.Repositories
 
             try
             {
-                return await FindOneOnDBAsync(m => m.Id!.Equals(id), cancellationToken: cancellationToken).ConfigureAwait(false);
+                return await FindOneOnDBAsync(new EntityIdEqFilterDefinition<TModel, TKey>(id), cancellationToken).ConfigureAwait(false);
             }
             catch (MongodmEntityNotFoundException)
             {
@@ -1095,13 +1120,13 @@ namespace Etherna.MongODM.Core.Repositories
 
         // Helpers.
         private Task<TModel> FindOneOnDBAsync(
-            Expression<Func<TModel, bool>> predicate,
+            FilterDefinition<TModel> filter,
             CancellationToken cancellationToken = default) =>
             AccessToCollectionAsync(async collection =>
             {
-                ArgumentNullException.ThrowIfNull(predicate);
+                ArgumentNullException.ThrowIfNull(filter);
 
-                using var cursor = await collection.FindAsync(predicate, cancellationToken: cancellationToken).ConfigureAwait(false);
+                using var cursor = await collection.FindAsync(filter, cancellationToken: cancellationToken).ConfigureAwait(false);
                 var model = await cursor.FirstOrDefaultAsync(cancellationToken).ConfigureAwait(false);
 
                 if (model == null)
@@ -1126,11 +1151,12 @@ namespace Etherna.MongODM.Core.Repositories
             await AccessToCollectionAsync(async collection =>
             {
                 // Replace on db.
+                var idFilter = new EntityIdEqFilterDefinition<TModel, TKey>(model.Id);
                 ReplaceOneResult result;
                 if (session == null)
                 {
                     result = await collection.ReplaceOneAsync(
-                        Builders<TModel>.Filter.Eq(m => m.Id, model.Id),
+                        idFilter,
                         model,
                         cancellationToken: cancellationToken).ConfigureAwait(false);
                 }
@@ -1138,7 +1164,7 @@ namespace Etherna.MongODM.Core.Repositories
                 {
                     result = await collection.ReplaceOneAsync(
                         session,
-                        Builders<TModel>.Filter.Eq(m => m.Id, model.Id),
+                        idFilter,
                         model,
                         cancellationToken: cancellationToken).ConfigureAwait(false);
                 }

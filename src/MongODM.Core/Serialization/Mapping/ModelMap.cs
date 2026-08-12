@@ -172,10 +172,18 @@ namespace Etherna.MongODM.Core.Serialization.Mapping
 
             // Analize recursion on member.
             var memberSerializer = bsonMemberMap.GetSerializer();
+            HashSet<IBsonSerializer> visitedSerializers = [];
             bool iterateOnArrayItem;
             do
             {
                 iterateOnArrayItem = false;
+
+                // Terminate on serializer cycles.
+                /* Some serializers report themselves as their own array item serializer
+                 * (e.g. the driver BsonValue serializer): iterating on them would never
+                 * end. */
+                if (!visitedSerializers.Add(memberSerializer))
+                    break;
 
                 if (memberSerializer is IModelMapsHandlingSerializer modelMapsContainerSerializer)
                 {
