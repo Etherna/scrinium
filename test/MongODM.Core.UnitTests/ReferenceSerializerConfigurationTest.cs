@@ -20,8 +20,11 @@ using Etherna.MongODM.Core.Models;
 using Etherna.MongODM.Core.Options;
 using Etherna.MongODM.Core.Serialization.Mapping;
 using Etherna.MongODM.Core.Serialization.Serializers;
+using Microsoft.Extensions.Logging;
 using Moq;
 using System;
+using System.Globalization;
+using System.Linq;
 using System.Reflection;
 using Xunit;
 
@@ -31,10 +34,16 @@ namespace Etherna.MongODM.Core
     {
         // Fields.
         private readonly Mock<IDbContextEngine> dbContextEngineMock = new();
+        private readonly Mock<ILogger> loggerMock = new();
 
         // Constructor.
         public ReferenceSerializerConfigurationTest()
         {
+            loggerMock.Setup(l => l.IsEnabled(It.IsAny<LogLevel>()))
+                .Returns(true);
+
+            dbContextEngineMock.Setup(e => e.Logger)
+                .Returns(() => loggerMock.Object);
             dbContextEngineMock.Setup(e => e.MapRegistry)
                 .Returns(new MapRegistry());
             dbContextEngineMock.Setup(e => e.Options.ModelMapSchemaId)
@@ -85,6 +94,30 @@ namespace Etherna.MongODM.Core
         }
 
         [Fact]
+        public void GetSerializerBoundsReportedUnrecognizedSchemaIds()
+        {
+            /* MODM-237: schema ids come from documents, so remembering every reported one would
+             * let whoever writes the reference documents grow the reported ids set without any
+             * bound: the reports stop at the bound. */
+
+            // Setup.
+            var configuration = BuildConfiguration(config =>
+            {
+                config.AddModelMap<FakeEntityModelBase<string>>("baseSchemaId", mm => mm.MapIdMember(m => m.Id));
+                config.AddModelMap<FakeModel>("activeSchemaId", mm => mm.MapMember(m => m.StringProp));
+            });
+
+            // Action.
+            //resolve the serializer of documents carrying more distinct unrecognized ids than the bound
+            for (var i = 0; i < ReferenceSerializerConfiguration.MaxWarnedUnrecognizedSchemaIds * 2; i++)
+                configuration.GetSerializer(typeof(FakeModel), "unknownSchemaId" + i.ToString(CultureInfo.InvariantCulture));
+
+            // Assert.
+            VerifyUnrecognizedSchemaIdWarnings(
+                Times.Exactly(ReferenceSerializerConfiguration.MaxWarnedUnrecognizedSchemaIds));
+        }
+
+        [Fact]
         public void GetSerializerDeserializesEmptyModelWithUnknownSchemaIdAndMissingIdElement()
         {
             // Setup.
@@ -130,6 +163,8 @@ namespace Etherna.MongODM.Core
 
             Assert.Equal("idVal", model.Id);
             Assert.Equal("ok", model.StringProp);
+            //a configured fallback is the declared handling of unrecognized ids: nothing to report
+            VerifyUnrecognizedSchemaIdWarnings(Times.Never());
         }
 
         [Fact]
@@ -152,6 +187,8 @@ namespace Etherna.MongODM.Core
 
             // Assert.
             Assert.Same(fallbackSerializer, serializer);
+            //a configured fallback is the declared handling of unrecognized ids: nothing to report
+            VerifyUnrecognizedSchemaIdWarnings(Times.Never());
         }
 
         [Fact]
@@ -177,6 +214,8 @@ namespace Etherna.MongODM.Core
 
             Assert.Equal("idVal", model.Id);
             Assert.Equal(42, model.IntegerProp);
+            //a document selecting a registered schema is the versioned schemas behavior: nothing to report
+            VerifyUnrecognizedSchemaIdWarnings(Times.Never());
         }
 
         [Fact]
@@ -230,6 +269,33 @@ namespace Etherna.MongODM.Core
 
             Assert.Equal("idVal", model.Id);
             Assert.Null(model.StringProp);
+            //the id-only degradation of an unrecognized id is reported, also when the id is missing
+            VerifyUnrecognizedSchemaIdWarnings(Times.Once());
+        }
+
+        [Fact]
+        public void GetSerializerWarnsOnceOnUnrecognizedSchemaId()
+        {
+            /* MODM-237: the schema id is document content. An id matching no registered schema,
+             * with no fallback configured, degrades the read to the reference id alone, and every
+             * member access of the resulting summary lazy loads the whole origin document: report
+             * it once per model type and id, instead of amplifying reads silently. */
+
+            // Setup.
+            var configuration = BuildConfiguration(config =>
+            {
+                config.AddModelMap<FakeEntityModelBase<string>>("baseSchemaId", mm => mm.MapIdMember(m => m.Id));
+                config.AddModelMap<FakeModel>("activeSchemaId", mm => mm.MapMember(m => m.StringProp));
+            });
+
+            // Action.
+            //resolve the serializer of documents carrying the same unrecognized id twice
+            for (var i = 0; i < 2; i++)
+                configuration.GetSerializer(typeof(FakeModel), "unknownSchemaId");
+
+            // Assert.
+            //the warning names the model type and the unrecognized id, and reports only once
+            VerifyUnrecognizedSchemaIdWarnings(Times.Once(), nameof(FakeModel), "unknownSchemaId");
         }
 
         [Fact]
@@ -357,5 +423,15 @@ namespace Etherna.MongODM.Core
                 BsonDeserializationContext.CreateRoot(bsonReader),
                 new BsonDeserializationArgs { NominalType = typeof(FakeModel) });
         }
+
+        private void VerifyUnrecognizedSchemaIdWarnings(Times times, params string[] expectedMessageContents) =>
+            loggerMock.Verify(l => l.Log(
+                    LogLevel.Warning,
+                    It.Is<EventId>(id => id.Name == nameof(Extensions.LoggerExtensions.ReferenceSerializerUnrecognizedSchemaId)),
+                    It.Is<It.IsAnyType>((state, _) => expectedMessageContents.All(
+                        content => state.ToString()!.Contains(content, StringComparison.Ordinal))),
+                    It.IsAny<Exception>(),
+                    It.IsAny<Func<It.IsAnyType, Exception?, string>>()),
+                times);
     }
 }

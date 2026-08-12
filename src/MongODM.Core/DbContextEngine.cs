@@ -204,6 +204,7 @@ namespace Etherna.MongODM.Core
                 }
             }
         }
+        public ILogger Logger => logger;
         public IMapRegistry MapRegistry { get; private set; } = null!;
         public IDbContextOptions Options { get; private set; } = null!;
         public IProxyGenerator ProxyGenerator { get; private set; } = null!;

@@ -27,12 +27,21 @@ namespace Etherna.MongODM.Core.Serialization.Serializers
 {
     public class ReferenceSerializerConfiguration : FreezableConfig
     {
+        // Consts.
+        /// <summary>
+        /// Maximum number of distinct unrecognized model map schema ids reported by a reference
+        /// serializer configuration. Schema ids come from documents, so the already reported ones
+        /// can't be remembered without a bound.
+        /// </summary>
+        public const int MaxWarnedUnrecognizedSchemaIds = 100;
+
         // Fields.
         private readonly Dictionary<Type, IModelMap> _modelMaps = new();
 
         private readonly Dictionary<Type, BsonElement> activeSchemaIdBsonElement = new();
         private readonly IDbContextEngine dbContextEngine;
         private readonly Dictionary<Type, IBsonSerializer> defaultFallbackSerializers = [];
+        private readonly HashSet<(Type ModelType, string? SchemaId)> warnedUnrecognizedSchemaIds = [];
 
         // Constructor.
         internal ReferenceSerializerConfiguration(IDbContextEngine dbContextEngine)
@@ -101,6 +110,19 @@ namespace Etherna.MongODM.Core.Serialization.Serializers
                 return modelMap.FallbackSchema.Serializer;
 
             //else, deserialize only the reference id: any other member can lazy load from the origin document
+            /* The schema id is document content: an id matching no registered schema, with no
+             * fallback declared for it, degrades the read to the reference id alone, and every
+             * member access of the resulting summary then lazy loads the whole origin document.
+             * Report it once per model type and id, so the load amplification of an unexpected
+             * value doesn't stay silent, up to the reported ids bound. */
+            bool firstOccurrence;
+            lock (warnedUnrecognizedSchemaIds)
+                firstOccurrence = warnedUnrecognizedSchemaIds.Count < MaxWarnedUnrecognizedSchemaIds &&
+                                  warnedUnrecognizedSchemaIds.Add((modelType, modelMapSchemaId));
+            if (firstOccurrence)
+                dbContextEngine.Logger.ReferenceSerializerUnrecognizedSchemaId(
+                    dbContextEngine.Options.DbName, modelType.Name, modelMapSchemaId);
+
             return defaultFallbackSerializers[modelType];
         }
 

@@ -20,7 +20,7 @@ namespace Etherna.MongODM.Core.Extensions
 {
     /*
      * Always group similar log delegates by type, always use incremental event ids.
-     * Last event id is: 59
+     * Last event id is: 61
      */
     public static class LoggerExtensions
     {
@@ -341,6 +341,18 @@ namespace Etherna.MongODM.Core.Extensions
                 new EventId(44, nameof(DbContextReplacedOutdatedLoadedModel)),
                 "DbContext {DbName} replaced outdated loaded model with Id {ModelId}: its document changed type from {OutdatedModelType} to {CurrentModelType}");
 
+        private static readonly Action<ILogger, string, string, string?, Exception> _modelMapSerializerUnrecognizedSchemaId =
+            LoggerMessage.Define<string, string, string?>(
+                LogLevel.Warning,
+                new EventId(60, nameof(ModelMapSerializerUnrecognizedSchemaId)),
+                "ModelMapSerializer of DbContext {DbName} deserialized a document of model type {ModelType} with the active schema: its model map schema id {SchemaId} is not recognized, and no fallback is configured");
+
+        private static readonly Action<ILogger, string, string, string?, Exception> _referenceSerializerUnrecognizedSchemaId =
+            LoggerMessage.Define<string, string, string?>(
+                LogLevel.Warning,
+                new EventId(61, nameof(ReferenceSerializerUnrecognizedSchemaId)),
+                "ReferenceSerializer of DbContext {DbName} deserialized a reference document of model type {ModelType} reading only its id: its model map schema id {SchemaId} is not recognized, and no fallback is configured, so every other member lazy loads from the origin document");
+
         private static readonly Action<ILogger, Type, string, string, Exception> _updateDocDependenciesTaskSkippedOnDeletedModel =
             LoggerMessage.Define<Type, string, string>(
                 LogLevel.Warning,
@@ -461,6 +473,12 @@ namespace Etherna.MongODM.Core.Extensions
 
         public static void DiscriminatorRegistryInitialized(this ILogger logger, string dbName) =>
             _discriminatorRegistryInitialized(logger, dbName, null!);
+
+        public static void ModelMapSerializerUnrecognizedSchemaId(this ILogger logger, string dbName, string modelType, string? schemaId) =>
+            _modelMapSerializerUnrecognizedSchemaId(logger, dbName, modelType, schemaId, null!);
+
+        public static void ReferenceSerializerUnrecognizedSchemaId(this ILogger logger, string dbName, string modelType, string? schemaId) =>
+            _referenceSerializerUnrecognizedSchemaId(logger, dbName, modelType, schemaId, null!);
 
         public static void RepositoryAccessedCollection(this ILogger logger, string repositoryName, string dbName) =>
             _repositoryAccessedCollection(logger, repositoryName, dbName, null!);
