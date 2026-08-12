@@ -42,6 +42,10 @@ namespace Etherna.MongODM.Core.Repositories
     {
         // Consts.
         private const string IdElementName = "_id";
+        /* The driver and the server handle $in lists of some thousands of ids well:
+         * chunking bounds the query command size and the materialized result, whatever
+         * the caller batch size. */
+        private const int LoadFullModelsChunkSize = 1000;
         
         // Fields.
         private ILogger logger = null!;
@@ -888,12 +892,17 @@ namespace Etherna.MongODM.Core.Repositories
             if (ids.Length == 0)
                 return Task.CompletedTask;
 
-            /* Read the full documents in a single query: their deserialization runs on the
-             * current scope, merging into the loaded summary instances through the identity
-             * map. The materialized results are that merge, and don't need to be returned. */
+            /* Read the full documents with one query per ids chunk, keeping the $in filter
+             * and each materialized result bounded on any caller batch size. Their
+             * deserialization runs on the current scope, merging into the loaded summary
+             * instances through the identity map. The materialized results are that merge,
+             * and don't need to be returned. */
             return AccessToCollectionAsync(async collection =>
-                await collection.Find(Builders<TModel>.Filter.In(m => m.Id, ids))
-                                .ToListAsync(cancellationToken).ConfigureAwait(false));
+            {
+                foreach (var idsChunk in ids.Chunk(LoadFullModelsChunkSize))
+                    await collection.Find(Builders<TModel>.Filter.In(m => m.Id, idsChunk))
+                                    .ToListAsync(cancellationToken).ConfigureAwait(false);
+            });
         }
 
         // Helpers.

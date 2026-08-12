@@ -12,6 +12,7 @@
 // You should have received a copy of the GNU Lesser General Public License along with MongODM.
 // If not, see <https://www.gnu.org/licenses/>.
 
+using Etherna.MongoDB.Bson;
 using Etherna.MongODM.Core.ExecContext.AsyncLocal;
 using Etherna.MongODM.Core.ProxyModels;
 using Etherna.MongODM.IntegrationTests.Fixtures;
@@ -49,6 +50,48 @@ namespace Etherna.MongODM.IntegrationTests
         }
 
         // Tests.
+        [Fact]
+        public async Task BatchPreloadIssuesOneQueryPerIdsChunk()
+        {
+            /* The load queries of a batch preload bound their $in filter to a fixed ids
+             * chunk size: a batch larger than one chunk issues one find command per
+             * chunk, instead of a single query growing with the caller batch size. */
+
+            // Setup.
+            using var contextHandler = AsyncLocalContext.Instance.InitAsyncLocalContext();
+            const int loadChunkSize = 1000; //keep aligned with the repository load chunk size
+            var posts = Enumerable.Range(0, loadChunkSize + 2)
+                .Select(i => new Post($"title {i}", "content"))
+                .ToArray();
+            await dbContext.Posts.CreateAsync(posts);
+
+            var blog = new Blog("blog");
+            foreach (var post in posts)
+                blog.AddPost(post);
+            await dbContext.Blogs.CreateAsync(blog);
+
+            // Action.
+            //load on a new scope: the referenced posts are summaries to preload
+            using var readScope = fixture.ServiceProvider.CreateScope();
+            var readDbContext = readScope.ServiceProvider.GetRequiredService<ITestDbContext>();
+            using var readContextHandler = AsyncLocalContext.Instance.InitAsyncLocalContext();
+
+            var loadedBlog = await readDbContext.Blogs.FindOneAsync(blog.Id);
+            var loadedPosts = loadedBlog.Posts.ToArray();
+
+            var findCommandsBefore = await GetServerFindCommandCountAsync();
+            await readDbContext.LoadValuesAsync(loadedPosts, p => p.Title);
+            var findCommandsAfter = await GetServerFindCommandCountAsync();
+
+            // Assert.
+            //chunked queries, together loading every summary with the members merged in place
+            Assert.Equal(2, findCommandsAfter - findCommandsBefore);
+            Assert.All(loadedPosts, p => Assert.True(readDbContext.IsMemberLoaded(p, m => m.Title)));
+            Assert.Equal(
+                posts.Select(p => (p.Id, p.Title)).ToHashSet(),
+                loadedPosts.Select(p => (p.Id, p.Title)).ToHashSet());
+        }
+
         [Fact]
         public async Task BatchPreloadUpgradesTheSummaryReferences()
         {
@@ -119,6 +162,14 @@ namespace Etherna.MongODM.IntegrationTests
             // Assert.
             Assert.True(((IReferenceable)loadedPost).IsSummary);
             Assert.True(readDbContext.IsMemberLoaded(loadedPost, p => p.Id));
+        }
+
+        // Helpers.
+        private async Task<long> GetServerFindCommandCountAsync()
+        {
+            var serverStatus = await dbContext.Engine.Database.RunCommandAsync<BsonDocument>(
+                new BsonDocument("serverStatus", 1));
+            return serverStatus["metrics"]["commands"]["find"]["total"].ToInt64();
         }
     }
 }
