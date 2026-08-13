@@ -12,7 +12,6 @@
 // You should have received a copy of the GNU Lesser General Public License along with MongODM.
 // If not, see <https://www.gnu.org/licenses/>.
 
-using Etherna.MongoDB.Driver.Linq;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -38,14 +37,11 @@ namespace Etherna.MongODM.Core.Extensions
             Func<TSource, TKey> orderKeySelector,
             int page,
             int take)
-		{
-            if (page < 0)
-                throw new ArgumentOutOfRangeException(nameof(page), page, "Value can't be negative");
-            if (take < 1)
-                throw new ArgumentOutOfRangeException(nameof(take), take, "Value can't be less than 1");
+        {
+            var skip = ComputeSkip(page, take);
 
             return values.OrderBy(orderKeySelector)
-                         .Skip(page * take)
+                         .Skip(skip)
                          .Take(take);
         }
 
@@ -66,13 +62,10 @@ namespace Etherna.MongODM.Core.Extensions
             int page,
             int take)
         {
-            if (page < 0)
-                throw new ArgumentOutOfRangeException(nameof(page), page, "Value can't be negative");
-            if (take < 1)
-                throw new ArgumentOutOfRangeException(nameof(take), take, "Value can't be less than 1");
+            var skip = ComputeSkip(page, take);
 
             return values.OrderBy(orderKeySelector)
-                         .Skip(page * take)
+                         .Skip(skip)
                          .Take(take);
         }
 
@@ -93,13 +86,10 @@ namespace Etherna.MongODM.Core.Extensions
             int page,
             int take)
         {
-            if (page < 0)
-                throw new ArgumentOutOfRangeException(nameof(page), page, "Value can't be negative");
-            if (take < 1)
-                throw new ArgumentOutOfRangeException(nameof(take), take, "Value can't be less than 1");
+            var skip = ComputeSkip(page, take);
 
             return values.OrderByDescending(orderKeySelector)
-                         .Skip(page * take)
+                         .Skip(skip)
                          .Take(take);
         }
 
@@ -120,14 +110,37 @@ namespace Etherna.MongODM.Core.Extensions
             int page,
             int take)
         {
+            var skip = ComputeSkip(page, take);
+
+            return values.OrderByDescending(orderKeySelector)
+                         .Skip(skip)
+                         .Take(take);
+        }
+
+        // Helpers.
+        /// <summary>
+        /// Validate paging parameters, and compute the amount of elements to skip before the page
+        /// </summary>
+        /// <param name="page">Page to take</param>
+        /// <param name="take">Elements per page</param>
+        /// <returns>Elements to skip</returns>
+        /// <exception cref="ArgumentOutOfRangeException">Throw with invalid parameter values</exception>
+        private static int ComputeSkip(int page, int take)
+        {
             if (page < 0)
                 throw new ArgumentOutOfRangeException(nameof(page), page, "Value can't be negative");
             if (take < 1)
                 throw new ArgumentOutOfRangeException(nameof(take), take, "Value can't be less than 1");
 
-            return values.OrderByDescending(orderKeySelector)
-                         .Skip(page * take)
-                         .Take(take);
+            /* The elements to skip are the product of the paging parameters, overflowing int with
+             * large values: computed in long, an unreachable page fails as an argument error,
+             * instead of wrapping to a wrong or negative skip. */
+            var skip = (long)page * take;
+            if (skip > int.MaxValue)
+                throw new ArgumentOutOfRangeException(nameof(page), page,
+                    $"Value with {take} elements per page requires to skip {skip} elements, can't be more than {int.MaxValue}");
+
+            return (int)skip;
         }
     }
 }
