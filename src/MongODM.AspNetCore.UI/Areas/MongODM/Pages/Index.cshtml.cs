@@ -20,6 +20,7 @@ using Etherna.MongODM.Core.Options;
 using Etherna.MongODM.Core.Repositories;
 using Etherna.MongODM.Core.Serialization.Mapping;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc.Filters;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
@@ -40,6 +41,17 @@ namespace Etherna.MongODM.AspNetCore.UI.Areas.MongODM.Pages
         /// </summary>
         public const int MaxLockLeaseDurationMinutes = 24 * 60;
 
+        /* The dashboard is self contained: its style sheet and script are served with the page,
+         * and no other asset, inline code or external source takes part in it. */
+        private const string ContentSecurityPolicy =
+            "default-src 'none'; " +
+            "base-uri 'none'; " +
+            "connect-src 'self'; " +
+            "form-action 'none'; " +
+            "frame-ancestors 'none'; " +
+            "img-src 'self'; " +
+            "script-src 'self'; " +
+            "style-src 'self'";
         private const int HistoryLength = 5;
 
         // Fields.
@@ -201,6 +213,25 @@ namespace Etherna.MongODM.AspNetCore.UI.Areas.MongODM.Pages
             }
 
             return new JsonResult(statuses);
+        }
+
+        public override void OnPageHandlerExecuting(PageHandlerExecutingContext context)
+        {
+            ArgumentNullException.ThrowIfNull(context);
+
+            /* Every dashboard response reports the live state of a database, or starts a
+             * migration on it: none of them may be stored, or have its content type sniffed. */
+            var headers = Response.Headers;
+            headers.CacheControl = "no-store";
+            headers.XContentTypeOptions = "nosniff";
+
+            /* The page carries the controls changing the state of the database: it denies any
+             * framing of them, and any content source other than its own assets. */
+            if (context.HandlerMethod?.MethodInfo.Name == nameof(OnGet))
+            {
+                headers.ContentSecurityPolicy = ContentSecurityPolicy;
+                headers.XFrameOptions = "DENY";
+            }
         }
 
         public async Task<IActionResult> OnPostStartMigrationAsync(

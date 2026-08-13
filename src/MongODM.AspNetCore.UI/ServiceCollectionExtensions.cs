@@ -35,6 +35,13 @@ namespace Etherna.MongODM.AspNetCore.UI
 
             dashboardOptions ??= new DashboardOptions();
 
+            /* Normalize the base path, which replaces the area name as first route segment of
+             * every dashboard page: leading, trailing and repeated '/' would render routes
+             * carrying an empty segment, and every one of those values names the same path
+             * anyway. A value left empty mounts the dashboard on the application root. */
+            dashboardOptions.BasePath = string.Join('/', (dashboardOptions.BasePath ?? "").Split(
+                '/', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
+
             // Register options for consumption from dashboard pages.
             services.AddSingleton(dashboardOptions);
 

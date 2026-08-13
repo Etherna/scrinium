@@ -31,6 +31,12 @@ namespace Etherna.MongODM.AspNetCore.UI
         /// list, instead of configuring a filter allowing everyone.
         /// </summary>
         public IEnumerable<IDashboardAuthFilter> AuthFilters { get; set; } = [new LocalRequestsOnlyAuthFilter()];
+        /// <summary>
+        /// Route prefix of the dashboard pages. It replaces the area name as first route
+        /// segment, and is normalized at registration: leading, trailing and repeated '/' name
+        /// the same path. Left empty, it mounts the dashboard on the application root: what an
+        /// application dedicated to it wants, and a collision with the pages of any other.
+        /// </summary>
         public string BasePath { get; set; } = "MongODM";
     }
 }
