@@ -21,6 +21,7 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using System;
 
 namespace Etherna.MongODM.AspNetCoreSample
@@ -66,10 +67,15 @@ namespace Etherna.MongODM.AspNetCoreSample
 
             var app = builder.Build();
 
-            // Configure the HTTP request pipeline.
-            app.UseHttpsRedirection();
+            /* Configure the HTTP request pipeline. Exception messages can quote document
+             * content, so the developer exception page is served only in development,
+             * while any other environment gets the generic error page. */
+            if (app.Environment.IsDevelopment())
+                app.UseDeveloperExceptionPage();
+            else
+                app.UseExceptionHandler("/Error");
 
-            app.UseDeveloperExceptionPage();
+            app.UseHttpsRedirection();
 
             app.UseStaticFiles();
 
