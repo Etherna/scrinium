@@ -783,13 +783,37 @@ namespace Etherna.MongODM.Core.Repositories
                 }
 
                 // Update "update" definition with OnInsert instructions.
+                /* The on insert instructions set whole top level elements, so an updated field
+                 * inside one of them would make two operators write the same branch, and the
+                 * server refuses the update altogether ("Updating the path 'a.b' would create
+                 * a conflict at 'a'"): the updated fields are excluded by their first path
+                 * segment, the top level element containing them. */
                 var skipFieldsNames = updatedFields
                     .Select(f => f.Render(new((IBsonSerializer<TModel>)serializer, DbContext.Engine.SerializerRegistry)))
                     .Select(f => f.FieldName.Split('.').First())
                     .ToArray();
-                var onInsertUpdate = modelBsonDoc[0].AsBsonDocument.Elements
+                var onInsertElements = modelBsonDoc[0].AsBsonDocument.Elements
                     .Where(element => element.Name != IdElementName &&          //exclude ID
                                       !skipFieldsNames.Contains(element.Name))  //and fields to skip
+                    .ToArray();
+
+                /* The serialized element names compose the $setOnInsert field names verbatim,
+                 * and an update field name containing a '.' addresses a nested field: the same
+                 * model an insert would write with a literal dotted element, an upsert would
+                 * write nested, silently. There is no way to address a literal dotted field in
+                 * an update path, so the upsert refuses the model instead of writing another
+                 * document than the one it was given. */
+                foreach (var element in onInsertElements)
+                {
+                    if (element.Name.Contains('.', StringComparison.InvariantCulture))
+                        throw new InvalidOperationException(
+                            $"Can't upsert on collection \"{Name}\": the model of type {typeof(TModel).Name} " +
+                            $"serializes the element \"{element.Name}\", and an update field name containing " +
+                            "a '.' addresses a nested field, so the upsert would write a document different " +
+                            "from the one an insert writes");
+                }
+
+                var onInsertUpdate = onInsertElements
                     .Select(element => Builders<TModel>.Update.SetOnInsert(element.Name, element.Value));
                 var upsertUpdate = Builders<TModel>.Update.Combine(onInsertUpdate.Append(updateDefinition));
 

@@ -12,7 +12,9 @@
 // You should have received a copy of the GNU Lesser General Public License along with MongODM.
 // If not, see <https://www.gnu.org/licenses/>.
 
+using Etherna.MongoDB.Bson;
 using Etherna.MongoDB.Bson.Serialization;
+using Etherna.MongoDB.Bson.Serialization.Serializers;
 using Etherna.MongoDB.Driver;
 using Etherna.MongODM.Core.ExecContext;
 using Etherna.MongODM.Core.Models;
@@ -32,6 +34,28 @@ namespace Etherna.MongODM.Core.Repositories
 {
     public class RepositoryTest
     {
+        // Internal classes.
+        /// <summary>
+        /// A mapped custom serializer emitting the given element names, as a class map with an
+        /// own extra elements member does with the keys of its bag.
+        /// </summary>
+        public sealed class FakeElementNamesSerializer(params string[] elementNames)
+            : SerializerBase<FakeModel>
+        {
+            public override void Serialize(BsonSerializationContext context, BsonSerializationArgs args, FakeModel value)
+            {
+                ArgumentNullException.ThrowIfNull(context);
+
+                context.Writer.WriteStartDocument();
+                foreach (var elementName in elementNames)
+                {
+                    context.Writer.WriteName(elementName);
+                    context.Writer.WriteInt32(42);
+                }
+                context.Writer.WriteEndDocument();
+            }
+        }
+
         // Fields.
         private readonly Mock<IMongoCollection<FakeModel>> collectionMock = new();
         private readonly Mock<IDbContext> dbContextMock = new();
@@ -41,6 +65,7 @@ namespace Etherna.MongODM.Core.Repositories
         private readonly Mock<IMapRegistry> mapRegistryMock = new();
         private readonly Mock<IModelMap> modelMapMock = new();
         private readonly Mock<IDbContextOptions> optionsMock = new();
+        private readonly BsonSerializerRegistry serializerRegistry = new();
 
         // Constructor.
         public RepositoryTest()
@@ -72,11 +97,16 @@ namespace Etherna.MongODM.Core.Repositories
             collectionMock.Setup(c => c.Settings)
                 .Returns(new MongoCollectionSettings { SerializerRegistry = new BsonSerializerRegistry() });
 
+            //update definitions render against the engine registry
+            serializerRegistry.RegisterSerializationProvider(new BsonObjectModelSerializationProvider());
+            serializerRegistry.RegisterSerializationProvider(new PrimitiveSerializationProvider());
+
             executionContextMock.Setup(c => c.Items).Returns(executionContextItems);
             optionsMock.Setup(o => o.DbName).Returns("test-db");
             engineMock.Setup(e => e.ExecutionContext).Returns(executionContextMock.Object);
             engineMock.Setup(e => e.MapRegistry).Returns(mapRegistryMock.Object);
             engineMock.Setup(e => e.Options).Returns(optionsMock.Object);
+            engineMock.Setup(e => e.SerializerRegistry).Returns(serializerRegistry);
             engineMock.Setup(e => e.GetMongoCollection<FakeModel>(It.IsAny<string>(), It.IsAny<MongoCollectionSettings>(), It.IsAny<bool>()))
                 .Returns(collectionMock.Object);
             dbContextMock.Setup(c => c.Engine).Returns(engineMock.Object);
@@ -269,6 +299,88 @@ namespace Etherna.MongODM.Core.Repositories
             Assert.Empty(GetAmbientDbExecContextHandlers());
         }
 
+        [Fact]
+        public async Task UpsertComposesTheOnInsertFieldsFromTheSerializedModelElements()
+        {
+            // Setup.
+            var modelSerializer = new FakeElementNamesSerializer("_id", "IntegerProp", "StringProp");
+            mapRegistryMock.Setup(r => r.GetMappedSerializer(typeof(FakeModel)))
+                .Returns(modelSerializer);
+            var upsertUpdates = CaptureUpsertUpdates();
+            var repository = BuildRepository();
+
+            // Action.
+            await repository.UpsertIncrementAsync(
+                Builders<FakeModel>.Filter.Empty,
+                new StringFieldDefinition<FakeModel, int>("IntegerProp"),
+                1,
+                new FakeModel());
+
+            // Assert.
+            //the id and the incremented field stay out of the on insert instructions
+            Assert.Equal(
+                """{ "$setOnInsert" : { "StringProp" : 42 }, "$inc" : { "IntegerProp" : 1 } }""",
+                upsertUpdates.Single()
+                    .Render(new(modelSerializer, serializerRegistry))
+                    .ToJson());
+        }
+
+        [Fact]
+        public async Task UpsertRejectsAnOnInsertFieldNameNavigatingNestedDocuments()
+        {
+            /* The on insert field names come from the serialized model elements, and the
+             * driver doesn't validate them: a dotted name silently writes a nested field
+             * instead of the literal one. */
+
+            // Setup.
+            mapRegistryMock.Setup(r => r.GetMappedSerializer(typeof(FakeModel)))
+                .Returns(new FakeElementNamesSerializer("_id", "IntegerProp", "nested.field"));
+            var upsertUpdates = CaptureUpsertUpdates();
+            var repository = BuildRepository();
+
+            // Action.
+            var exception = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                repository.UpsertIncrementAsync(
+                    Builders<FakeModel>.Filter.Empty,
+                    new StringFieldDefinition<FakeModel, int>("IntegerProp"),
+                    1,
+                    new FakeModel()));
+
+            // Assert.
+            Assert.Contains("fakeModels", exception.Message, StringComparison.Ordinal);
+            Assert.Contains(nameof(FakeModel), exception.Message, StringComparison.Ordinal);
+            Assert.Contains("nested.field", exception.Message, StringComparison.Ordinal);
+            Assert.Empty(upsertUpdates);
+        }
+
+        [Fact]
+        public async Task UpsertKeepsAnOnInsertFieldNameStartingWithTheOperatorPrefix()
+        {
+            /* A '$' prefixed name inside a $setOnInsert isn't read as an operator: the server
+             * stores the field with that name, like an insert of the same model would. */
+
+            // Setup.
+            var modelSerializer = new FakeElementNamesSerializer("_id", "IntegerProp", "$where");
+            mapRegistryMock.Setup(r => r.GetMappedSerializer(typeof(FakeModel)))
+                .Returns(modelSerializer);
+            var upsertUpdates = CaptureUpsertUpdates();
+            var repository = BuildRepository();
+
+            // Action.
+            await repository.UpsertIncrementAsync(
+                Builders<FakeModel>.Filter.Empty,
+                new StringFieldDefinition<FakeModel, int>("IntegerProp"),
+                1,
+                new FakeModel());
+
+            // Assert.
+            Assert.Equal(
+                """{ "$setOnInsert" : { "$where" : 42 }, "$inc" : { "IntegerProp" : 1 } }""",
+                upsertUpdates.Single()
+                    .Render(new(modelSerializer, serializerRegistry))
+                    .ToJson());
+        }
+
         // Helpers.
         private Repository<FakeModel, string> BuildRepository(
             params (IndexKeysDefinition<FakeModel> keys, CreateIndexOptions<FakeModel> options)[] indexBuilders)
@@ -277,6 +389,23 @@ namespace Etherna.MongODM.Core.Repositories
                 new RepositoryOptions<FakeModel>("fakeModels") { IndexBuilders = indexBuilders });
             repository.Initialize(dbContextMock.Object, new Mock<ILogger>().Object);
             return repository;
+        }
+
+        private List<UpdateDefinition<FakeModel>> CaptureUpsertUpdates()
+        {
+            List<UpdateDefinition<FakeModel>> updates = [];
+            collectionMock.Setup(c => c.FindOneAndUpdateAsync(
+                    It.IsAny<FilterDefinition<FakeModel>>(),
+                    It.IsAny<UpdateDefinition<FakeModel>>(),
+                    It.IsAny<FindOneAndUpdateOptions<FakeModel, FakeModel>>(),
+                    It.IsAny<CancellationToken>()))
+                .Callback((
+                    FilterDefinition<FakeModel> _,
+                    UpdateDefinition<FakeModel> update,
+                    FindOneAndUpdateOptions<FakeModel, FakeModel> _,
+                    CancellationToken _) => updates.Add(update))
+                .ReturnsAsync((FakeModel)null!);
+            return updates;
         }
 
         private IEnumerable<DbExecutionContextHandler> GetAmbientDbExecContextHandlers() =>
