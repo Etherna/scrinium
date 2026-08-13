@@ -354,6 +354,9 @@
                 var errorsList = document.createElement('ul');
                 log.errors.forEach(function (error) {
                     var errorItem = document.createElement('li');
+                    /* The error message quotes the exception that failed the document, so it
+                     * can carry document content: it must keep landing on textContent, never
+                     * on innerHTML. */
                     errorItem.textContent = error.documentId + ' — ' + error.message;
                     errorsList.appendChild(errorItem);
                 });
