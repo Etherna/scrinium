@@ -18,6 +18,7 @@ using Etherna.MongODM.Core;
 using Etherna.MongODM.Core.Domain.Models;
 using Etherna.MongODM.Core.Options;
 using Etherna.MongODM.Core.Repositories;
+using Etherna.MongODM.Core.Serialization.Mapping;
 using Etherna.MongODM.Core.Utility;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
@@ -60,6 +61,7 @@ namespace Etherna.MongODM.AspNetCore.UI
         {
             var engineMock = new Mock<IDbContextEngine>();
             engineMock.Setup(engine => engine.Identifier).Returns(DbContextIdentifier);
+            engineMock.Setup(engine => engine.MapRegistry.MapsByModelType).Returns(new Dictionary<Type, IMap>());
             engineMock.Setup(engine => engine.Options).Returns(new DbContextOptions());
 
             var repositoryRegistryMock = new Mock<IRepositoryRegistry>();
@@ -100,6 +102,8 @@ namespace Etherna.MongODM.AspNetCore.UI
                 $"max=\"{IndexModel.MaxLockLeaseDurationMinutes}\"",
                 pageHtml,
                 StringComparison.Ordinal);
+            //what the lease duration is stays reachable, behind the info tip of the control
+            Assert.Contains("info-tip", pageHtml, StringComparison.Ordinal);
         }
 
         [Fact]

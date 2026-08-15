@@ -29,8 +29,9 @@ namespace Etherna.MongODM.AspNetCoreSample.Persistence
     public class ReadOnlySampleDbContext : DbContext, IReadOnlySampleDbContext
     {
         public IRepository<Cat, string> Cats { get; } = new Repository<Cat, string>("cats");
+        public IRepository<Person, string> Persons { get; } = new Repository<Person, string>("persons");
 
         protected override IEnumerable<IModelMapsCollector> ModelMapsCollectors =>
-            [new ModelBaseMap(), new CatMap()];
+            [new ModelBaseMap(), new CatMap(), new PersonMap()];
     }
 }

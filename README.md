@@ -107,7 +107,7 @@ Five NuGet packages are published, from the full stack down to the single compon
 | [**MongODM**](https://www.nuget.org/packages/MongODM/) | **Start here.** Meta package wiring the full default stack (ASP.NET Core + Hangfire) behind a single entry point, `AddMongODMWithHangfire`. | `MongODM.AspNetCore`, `MongODM.Hangfire` |
 | [**MongODM.Core**](https://www.nuget.org/packages/MongODM.Core/) | The framework itself: mapping, serialization, repositories, db contexts, migrations and tasks. Host-agnostic, always pulled in transitively. Reference it directly for a non-ASP.NET host, or to implement custom components. | — |
 | [**MongODM.AspNetCore**](https://www.nuget.org/packages/MongODM.AspNetCore/) | ASP.NET Core integration with a task runner **other than Hangfire**: the `AddMongODM` configuration builder, db context registration, execution context wiring. | `MongODM.Core` |
-| [**MongODM.AspNetCore.UI**](https://www.nuget.org/packages/MongODM.AspNetCore.UI/) | The optional admin dashboard, a Razor Pages area monitoring db contexts, their model schemas, and running migrations. | `MongODM.AspNetCore` |
+| [**MongODM.AspNetCore.UI**](https://www.nuget.org/packages/MongODM.AspNetCore.UI/) | The optional admin dashboard, a Razor Pages area monitoring db contexts, their model schemas, their document structures, and running migrations. | `MongODM.AspNetCore` |
 | [**MongODM.Hangfire**](https://www.nuget.org/packages/MongODM.Hangfire/) | Scheduling MongODM's maintenance tasks on Hangfire. Pair it with `MongODM.AspNetCore` when you compose the stack yourself. | `MongODM.Core` |
 
 ## Installation
@@ -344,6 +344,9 @@ Reading a `Cat` now gives its owner's name with no second query; reading any oth
 lazy-loads the full document from the person repository, or preload it explicitly with
 `IDbContext.LoadValuesAsync`. Rename that person and save: every cat document referencing them is
 updated in background. Link a person that was never persisted, and saving the cat creates them first.
+The admin dashboard renders the whole structure of the documents of each collection, one per registered
+schema, tagging the elements that carry such a summary and expanding the members denormalized into
+them: its document structures section tells how a document looks in the database.
 
 ## Documentation
 
@@ -352,8 +355,8 @@ first steps, startup and configuration, domain models and mapping, references an
 versioned schemas, migrations, transactions, the admin dashboard, and an exceptions reference.
 
 A full runnable app is in [`samples/AspNetCoreSample`](samples/AspNetCoreSample): the register of cats
-above, with a read-only db context, a secondary schema and a document migration to run from the
-dashboard.
+above, with their owners referenced, a read-only db context, a secondary schema and a document
+migration to run from the dashboard.
 
 Architecture diagrams under [`doc/`](doc) are maintained with [diagrams.net](https://www.diagrams.net/).
 

@@ -13,6 +13,8 @@
 // If not, see <https://www.gnu.org/licenses/>.
 
 using Etherna.MongoDB.Bson;
+using Etherna.MongoDB.Bson.Serialization;
+using Etherna.MongoDB.Bson.Serialization.Options;
 using Etherna.MongODM.Core;
 using Etherna.MongODM.Core.Domain.Models;
 using Etherna.MongODM.Core.Domain.Models.DbMigrationOpAgg;
@@ -27,6 +29,7 @@ using Microsoft.Extensions.Options;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text;
 using System.Threading.Tasks;
 
 namespace Etherna.MongODM.AspNetCore.UI.Areas.MongODM.Pages
@@ -73,6 +76,26 @@ namespace Etherna.MongODM.AspNetCore.UI.Areas.MongODM.Pages
         public IEnumerable<IDbContext> DbContexts { get; private set; } = null!;
 
         // Methods.
+        /// <summary>
+        /// Get the shape of the documents a collection can carry: one per model map schema of
+        /// the concrete model types stored there, with every sub-document expanded into its own
+        /// shapes, the summaries of the referenced documents included. It reads the maps alone,
+        /// without touching the database.
+        /// </summary>
+        /// <param name="repository">The collection repository</param>
+        /// <returns>The document shapes, by model type and schema</returns>
+        public static IEnumerable<DocumentShape> GetDocumentShapes(IRepository repository)
+        {
+            ArgumentNullException.ThrowIfNull(repository);
+
+            //the documents of a collection are shaped like any document declaring its model type
+            return ExploreModelMapShapes(
+                repository.ModelType,
+                repository.DbContext.Engine.MapRegistry,
+                repository.DbContext.RepositoryRegistry.Repositories.ToArray(),
+                []);
+        }
+
         /// <summary>
         /// Get the model map schemas that can stamp their id on the documents of a repository
         /// collection: those of the concrete model types assignable to the repository model
@@ -311,5 +334,155 @@ namespace Etherna.MongODM.AspNetCore.UI.Areas.MongODM.Pages
                 })
             })
         };
+
+        private static DocumentElement BuildDocumentElement(
+            IMemberMap memberMap,
+            IMapRegistry mapRegistry,
+            IRepository[] repositories,
+            HashSet<IModelMapSchema> exploringSchemas)
+        {
+            var (containerSuffix, itemSerializer) = ExploreContainers(memberMap);
+
+            /* Entity models can only be referenced, never embedded (the maps freeze refuses
+             * them): a sub-document shaped by an entity schema is the summary of a referenced
+             * document, shaped by the model maps of its reference serializer configuration.
+             * Any other sub-document takes the shapes registered for the type it carries, its
+             * derived ones included: a document element is written by the concrete type it
+             * receives, whatever the declared one. */
+            var isReference = memberMap.ChildMemberMaps.Any(childMemberMap => childMemberMap.ModelMapSchema.IsEntity);
+
+            DocumentShape[] shapes = [];
+            if (isReference)
+                shapes = memberMap.ChildMemberMaps
+                    .GroupBy(childMemberMap => childMemberMap.ModelMapSchema)
+                    .Where(schemaGroup => !schemaGroup.Key.ModelMap.ModelType.IsAbstract)
+                    .Select(schemaGroup => BuildDocumentShape(
+                        schemaGroup, schemaGroup.Key, mapRegistry, repositories, exploringSchemas))
+                    .ToArray();
+            else if (memberMap.ChildMemberMaps.Any()) //without sub-documents the element carries a value
+                shapes = ExploreModelMapShapes(itemSerializer.ValueType, mapRegistry, repositories, exploringSchemas);
+
+            return new DocumentElement(
+                containerSuffix: containerSuffix,
+                elementName: memberMap.BsonMemberMap.ElementName,
+                hasReferencedModelRepository: !isReference || memberMap.ChildMemberMaps
+                    .Select(childMemberMap => childMemberMap.ModelMapSchema.ModelMap.ModelType)
+                    .Distinct()
+                    .Where(modelType => !modelType.IsAbstract)
+                    .All(modelType => repositories.Any(repo => repo.ModelType.IsAssignableFrom(modelType))),
+                isReference: isReference,
+                isUpdatePropagated: !memberMap.ChildMemberMaps.Any(childMemberMap =>
+                    childMemberMap is { IsIdMember: true, ElementPathHasUndefinedDocumentElement: true }),
+                shapes: shapes,
+                typeName: RenderTypeName(itemSerializer.ValueType));
+        }
+
+        /* The elements are built in the order the schema writes them, base declared members
+         * first. The extra elements bag stays out: it carries no element of its own, it
+         * collects the ones no member maps.
+         * The schema joins the ones open on the exploration path while its elements build: a
+         * model graph cycle (a model nesting itself through the shapes of its derived types,
+         * or a summary denormalizing a reference to its own model) reaches a schema already
+         * open, and closes there — reported as a cycle, naming the shape it repeats — instead
+         * of nesting shapes until the stack ends. */
+        private static DocumentShape BuildDocumentShape(
+            IEnumerable<IMemberMap> memberMaps,
+            IModelMapSchema schema,
+            IMapRegistry mapRegistry,
+            IRepository[] repositories,
+            HashSet<IModelMapSchema> exploringSchemas)
+        {
+            if (!exploringSchemas.Add(schema))
+                return new DocumentShape(
+                    elements: [],
+                    isActiveSchema: schema.IsCurrentActive,
+                    isCycle: true,
+                    modelTypeName: schema.ModelType.Name,
+                    schemaId: schema.Id);
+
+            var elements = memberMaps
+                .Where(memberMap => memberMap.BsonMemberMap != schema.ExtraElementsMemberMap)
+                .Select(memberMap => BuildDocumentElement(memberMap, mapRegistry, repositories, exploringSchemas))
+                .ToArray();
+
+            exploringSchemas.Remove(schema);
+
+            return new DocumentShape(
+                elements: elements,
+                isActiveSchema: schema.IsCurrentActive,
+                isCycle: false,
+                modelTypeName: schema.ModelType.Name,
+                schemaId: schema.Id);
+        }
+
+        /* The containers a member wraps its items into, with the serializer of the item they
+         * carry: the same walk generating the internal element path of the member map.
+         * Serializers reporting themselves as their own item serializer (the driver BsonValue
+         * one) close the walk, instead of nesting containers without end. */
+        private static (string ContainerSuffix, IBsonSerializer ItemSerializer) ExploreContainers(IMemberMap memberMap)
+        {
+            var containerSuffix = new StringBuilder();
+            var serializer = memberMap.Serializer;
+            HashSet<IBsonSerializer> exploredSerializers = [];
+
+            while (exploredSerializers.Add(serializer))
+            {
+                /* Several serializers implement the container interfaces also when they can't
+                 * provide the required information: try with the dictionary value first, then
+                 * with the array item. */
+                if (serializer is IBsonDictionarySerializer dictionarySerializer)
+                {
+                    try
+                    {
+                        var isDocumentRepresentation =
+                            dictionarySerializer.DictionaryRepresentation == DictionaryRepresentation.Document;
+                        serializer = dictionarySerializer.ValueSerializer;
+                        containerSuffix.Append(isDocumentRepresentation ? "{}" : "[]");
+                        continue;
+                    }
+                    catch { }
+                }
+
+                if (serializer is IBsonArraySerializer arraySerializer &&
+                    arraySerializer.TryGetItemSerializationInfo(out var itemSerializationInfo))
+                {
+                    serializer = itemSerializationInfo.Serializer;
+                    containerSuffix.Append("[]");
+                    continue;
+                }
+
+                break;
+            }
+
+            return (containerSuffix.ToString(), serializer);
+        }
+
+        /* The shapes a document of a declared model type can take: the registered schemas of
+         * every concrete model type assignable to it, since a document is written by the
+         * concrete type it receives. Fallback schemas stay out, read only shapes never
+         * written. */
+        private static DocumentShape[] ExploreModelMapShapes(
+            Type modelType,
+            IMapRegistry mapRegistry,
+            IRepository[] repositories,
+            HashSet<IModelMapSchema> exploringSchemas) =>
+            mapRegistry.MapsByModelType.Values
+                .OfType<IModelMap>()
+                .Where(map => !map.ModelType.IsAbstract && modelType.IsAssignableFrom(map.ModelType))
+                .OrderBy(map => map.ModelType.Name, StringComparer.Ordinal)
+                .SelectMany(map => map.SecondarySchemas.Prepend(map.ActiveSchema))
+                .Select(schema => BuildDocumentShape(
+                    schema.ModelMap.DefinedMemberMaps.Where(memberMap => memberMap.ModelMapSchema == schema),
+                    schema,
+                    mapRegistry,
+                    repositories,
+                    exploringSchemas))
+                .ToArray();
+
+        private static string RenderTypeName(Type type) =>
+            type.IsGenericType ?
+                $"{type.Name[..type.Name.IndexOf('`', StringComparison.Ordinal)]}" +
+                $"<{string.Join(", ", type.GetGenericArguments().Select(RenderTypeName))}>" :
+                type.Name;
     }
 }

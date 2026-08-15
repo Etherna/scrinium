@@ -1,6 +1,7 @@
 @page
 @using Etherna.MongODM.AspNetCore.UI.Areas.MongODM.Pages
 @using Etherna.MongODM.Core.Utility
+@using Microsoft.AspNetCore.Mvc.Razor
 @model IndexModel
 @{
     ViewData["Title"] = "Db contexts";
@@ -8,6 +9,60 @@
 
 @* Antiforgery token, sent by mongodmDash.js as request header on every POST. *@
 @Html.AntiForgeryToken()
+
+@{
+    /* The explanations of what a section reports stay behind an info icon, revealed by
+       hovering or focusing it, instead of weighting the page with a paragraph each. */
+    void RenderInfoTip(Func<object, HelperResult> text)
+    {
+        <span class="info-tip" tabindex="0">
+            <span class="info-icon" aria-hidden="true">i</span>
+            <span class="info-text">@text(null!)</span>
+        </span>
+    }
+
+    // Render a document shape, expanding the sub-documents of its elements.
+    void RenderDocumentShape(DocumentShape shape, string schemaIdElementName)
+    {
+        <ul class="shape-tree">
+            <li>
+                <span class="shape-key">@schemaIdElementName</span>:
+                <span class="schema-id">@shape.SchemaId</span>
+                <span class="shape-type">@shape.ModelTypeName</span>
+                <span class="schema-tag @(shape.IsActiveSchema ? "current" : "deprecated")">
+                    @(shape.IsActiveSchema ? "current" : "deprecated")
+                </span>
+                @if (shape.IsCycle)
+                {
+                    <span class="shape-tag cycle" title="This shape repeats the one already expanded above: the documents nest it as deep as their data goes">cycle</span>
+                }
+            </li>
+            @foreach (var element in shape.Elements)
+            {
+                <li>
+                    <span class="shape-key">@element.ElementName</span><span class="shape-container">@element.ContainerSuffix</span>:
+                    <span class="shape-type">@element.TypeName</span>
+                    @if (element.IsReference)
+                    {
+                        <span class="shape-tag reference" title="This element carries the summary of a referenced document: the members below it are denormalized copies, rewritten when the referenced document changes them">reference</span>
+                        if (!element.HasReferencedModelRepository)
+                        {
+                            <span class="shape-tag external" title="No repository of this db context handles the referenced model: its documents are saved on the db context owning them, and their updates don't propagate to this summary">external</span>
+                        }
+                        if (!element.IsUpdatePropagated)
+                        {
+                            <span class="shape-tag not-propagated" title="The dependencies update task can't address this element with a filter, an unknown document key being in its path: an update of the referenced document skips it">not propagated</span>
+                        }
+                    }
+                    @foreach (var nestedShape in element.Shapes)
+                    {
+                        RenderDocumentShape(nestedShape, schemaIdElementName);
+                    }
+                </li>
+            }
+        </ul>
+    }
+}
 
 <div id="connection-banner" class="connection-banner" hidden>
     Connection to the server lost. Retrying&hellip;
@@ -47,20 +102,21 @@
 
                     <label class="migration-option">
                         Lock lease duration
+                        @{
+                            RenderInfoTip(@<text>
+                                How long this db context stays locked if this application instance dies before the
+                                migration finishes: until the lease expires, no instance can start a migration or a
+                                seeding of it. It also has to cover the delay before the background worker picks the
+                                job up, the only window nothing renews the lease. It does <strong>not</strong> have to
+                                cover the migration duration, however long it takes: the lease is renewed while the
+                                migration runs. Accepted up to @IndexModel.MaxLockLeaseDurationMinutes minutes.
+                            </text>);
+                        }
                         <input type="number" data-role="lock-lease-duration" disabled
                                min="1" max="@IndexModel.MaxLockLeaseDurationMinutes" step="1"
                                value="@((int)DbContextLock.DefaultLeaseDuration.TotalMinutes)" />
                         minutes
                     </label>
-
-                    <p class="muted">
-                        How long this db context stays locked if this application instance dies before the
-                        migration finishes: until the lease expires, no instance can start a migration or a
-                        seeding of it. It also has to cover the delay before the background worker picks the
-                        job up, the only window nothing renews the lease. It does <strong>not</strong> have to
-                        cover the migration duration, however long it takes: the lease is renewed while the
-                        migration runs. Accepted up to @IndexModel.MaxLockLeaseDurationMinutes minutes.
-                    </p>
                 </details>
 
                 <p class="action-feedback" data-role="feedback" hidden></p>
@@ -81,11 +137,16 @@
                 <summary>Model schemas</summary>
 
                 <p class="muted">
-                    Every document carries the id of the model map schema shaping it, in the
-                    <code>@context.Engine.Options.ModelMapSchemaId.ElementName</code> element. Counting the documents
-                    of each schema id scans the whole collection, so it runs only on request, one collection at a
-                    time: documents counted on a deprecated, unrecognized or missing schema id are the ones a
-                    migration has to rewrite.
+                    The model map schemas the documents of each collection can carry, and how many carry them.
+                    @{
+                        RenderInfoTip(@<text>
+                            Every document carries the id of the model map schema shaping it, in the
+                            <code>@context.Engine.Options.ModelMapSchemaId.ElementName</code> element. Counting the
+                            documents of each schema id scans the whole collection, so it runs only on request, one
+                            collection at a time: documents counted on a deprecated, unrecognized or missing schema
+                            id are the ones a migration has to rewrite.
+                        </text>);
+                    }
                 </p>
 
                 @foreach (var repository in context.RepositoryRegistry.Repositories.OrderBy(r => r.Name))
@@ -127,6 +188,55 @@
                                 }
                             </tbody>
                         </table>
+                    </div>
+                }
+            </details>
+
+            <details class="document-structures">
+                <summary>Document structures</summary>
+
+                <p class="muted">
+                    How the documents of each collection are shaped, one structure per registered model map schema.
+                    @{
+                        RenderInfoTip(@<text>
+                            The active schema writes the new documents, the deprecated ones shape those written by a
+                            previous version of the application, until a migration rewrites them. Elements carrying
+                            the summary of a referenced document are tagged, and expanded with the members
+                            denormalized into them: updating one of those members on the referenced document
+                            rewrites the summary, in every document carrying it. A sub-document is written by the
+                            concrete type its element receives, so an element declaring a type with derived ones
+                            renders a structure for each of them, and one repeating a structure already expanded
+                            above reports it as a cycle, nested as deep as the data goes. Documents also carry their
+                            type discriminator, when their concrete type differs from the declared one.
+                        </text>);
+                    }
+                </p>
+
+                @foreach (var repository in context.RepositoryRegistry.Repositories.OrderBy(r => r.Name))
+                {
+                    var shapes = IndexModel.GetDocumentShapes(repository).ToArray();
+                    <div class="structure-collection" data-repository="@repository.Name">
+                        <h4>@repository.Name</h4>
+
+                        @if (shapes.Length == 0)
+                        {
+                            <p class="muted">No storable model map registered</p>
+                        }
+
+                        @foreach (var shape in shapes)
+                        {
+                            <details class="document-shape" data-schema-id="@shape.SchemaId">
+                                <summary>
+                                    <span class="shape-type">@shape.ModelTypeName</span>
+                                    <span class="schema-id">@shape.SchemaId</span>
+                                    <span class="schema-tag @(shape.IsActiveSchema ? "current" : "deprecated")">
+                                        @(shape.IsActiveSchema ? "current" : "deprecated")
+                                    </span>
+                                </summary>
+
+                                @{ RenderDocumentShape(shape, context.Engine.Options.ModelMapSchemaId.ElementName); }
+                            </details>
+                        }
                     </div>
                 }
             </details>

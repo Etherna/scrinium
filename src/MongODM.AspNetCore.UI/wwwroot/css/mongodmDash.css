@@ -179,12 +179,6 @@ main.container {
   margin-top: 0.5rem;
 }
 
-.migration-advanced p {
-  font-size: 0.85rem;
-  margin: 0.5rem 0 0;
-  max-width: 60rem;
-}
-
 .dbcontext-card h3 {
   font-size: 0.95rem;
   margin: 0 0 0.5rem;
@@ -200,6 +194,67 @@ code {
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 0.85em;
   padding: 0.1rem 0.3rem;
+}
+
+/* Info tips
+-------------------------------------------------- */
+.info-tip {
+  color: var(--text-muted);
+  cursor: help;
+  display: inline-block;
+  position: relative;
+}
+
+.info-icon {
+  align-items: center;
+  border: 1px solid currentColor;
+  border-radius: 50%;
+  display: inline-flex;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.7rem;
+  font-weight: 700;
+  height: 1.05rem;
+  justify-content: center;
+  width: 1.05rem;
+}
+
+.info-tip:hover,
+.info-tip:focus {
+  color: var(--accent);
+}
+
+/* The explanation opens on hover, and on focus for the keyboard and the touch screens. It
+   stays clipped instead of removed while closed, so the assistive technologies keep reading
+   it whatever the pointer does. */
+.info-text {
+  background-color: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.12);
+  clip-path: inset(50%);
+  color: var(--text);
+  font-size: 0.85rem;
+  font-weight: 400;
+  height: 1px;
+  left: 0;
+  line-height: 1.45;
+  max-width: min(34rem, 85vw);
+  overflow: hidden;
+  padding: 0.6rem 0.8rem;
+  position: absolute;
+  text-transform: none;
+  top: 1.6rem;
+  width: 1px;
+  z-index: 10;
+}
+
+.info-tip:hover .info-text,
+.info-tip:focus .info-text,
+.info-tip:focus-within .info-text {
+  clip-path: none;
+  height: auto;
+  overflow: visible;
+  width: max-content;
 }
 
 /* Model schemas
@@ -280,7 +335,8 @@ code {
   word-break: break-all;
 }
 
-.schema-tag {
+.schema-tag,
+.shape-tag {
   font-size: 0.75rem;
   font-weight: 600;
   letter-spacing: 0.03em;
@@ -299,6 +355,76 @@ code {
 .schema-tag.missing,
 .schema-tag.unrecognized {
   color: var(--danger);
+}
+
+/* Document structures
+-------------------------------------------------- */
+.document-structures {
+  margin-top: 1.25rem;
+}
+
+.document-structures > summary {
+  cursor: pointer;
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+.structure-collection {
+  border-top: 1px solid var(--border);
+  padding-top: 0.75rem;
+  margin-top: 0.75rem;
+}
+
+.structure-collection h4 {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.95rem;
+  margin: 0 0 0.5rem;
+}
+
+.document-shape {
+  margin-bottom: 0.35rem;
+}
+
+.document-shape > summary {
+  cursor: pointer;
+  font-size: 0.9rem;
+}
+
+/* Document shape tree
+-------------------------------------------------- */
+.shape-tree {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.85rem;
+  list-style: none;
+  margin: 0.25rem 0;
+  padding-left: 1.25rem;
+}
+
+.shape-tree li {
+  padding: 0.05rem 0;
+}
+
+.shape-key {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.shape-container,
+.shape-type {
+  color: var(--text-muted);
+}
+
+.shape-tag.reference {
+  color: var(--info);
+}
+
+.shape-tag.cycle {
+  color: var(--neutral);
+}
+
+.shape-tag.external,
+.shape-tag.not-propagated {
+  color: var(--warning);
 }
 
 /* Status badge
