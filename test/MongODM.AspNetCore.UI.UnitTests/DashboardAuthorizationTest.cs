@@ -18,6 +18,7 @@ using Etherna.MongODM.Core;
 using Etherna.MongODM.Core.Domain.Models;
 using Etherna.MongODM.Core.Options;
 using Etherna.MongODM.Core.Repositories;
+using Etherna.MongODM.Core.Serialization.Mapping;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
@@ -76,6 +77,7 @@ namespace Etherna.MongODM.AspNetCore.UI
         {
             var engineMock = new Mock<IDbContextEngine>();
             engineMock.Setup(engine => engine.Identifier).Returns(DbContextIdentifier);
+            engineMock.Setup(engine => engine.MapRegistry.MapsByModelType).Returns(new Dictionary<Type, IMap>());
             engineMock.Setup(engine => engine.Options).Returns(new DbContextOptions());
 
             var repositoryRegistryMock = new Mock<IRepositoryRegistry>();

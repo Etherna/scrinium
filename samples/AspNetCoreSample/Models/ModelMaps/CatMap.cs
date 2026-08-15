@@ -13,6 +13,7 @@
 // If not, see <https://www.gnu.org/licenses/>.
 
 using Etherna.MongODM.Core;
+using Etherna.MongODM.Core.Extensions;
 using Etherna.MongODM.Core.Serialization;
 
 namespace Etherna.MongODM.AspNetCoreSample.Models.ModelMaps
@@ -26,11 +27,21 @@ namespace Etherna.MongODM.AspNetCoreSample.Models.ModelMaps
         // Methods.
         public void Register(IDbContextEngine dbContextEngine)
         {
+            var personSummarySerializer = PersonMap.SummarySerializer(dbContextEngine);
+
             // The secondary schema keeps loading the documents written before the active one.
             // Its documents count apart in the model schemas section of the admin dashboard,
             // and the db context migration rewrites them with the active schema.
-            dbContextEngine.MapRegistry.AddModelMap<Cat>(ActiveSchemaId)
-                .AddSecondarySchema(PreviousSchemaId);
+            dbContextEngine.MapRegistry.AddModelMap<Cat>(ActiveSchemaId, schema =>
+            {
+                schema.AutoMap();
+                schema.SetMemberSerializer(cat => cat.Owner!, personSummarySerializer);
+            })
+                .AddSecondarySchema(PreviousSchemaId, schema =>
+                {
+                    schema.AutoMap();
+                    schema.SetMemberSerializer(cat => cat.Owner!, personSummarySerializer);
+                });
         }
     }
 }
