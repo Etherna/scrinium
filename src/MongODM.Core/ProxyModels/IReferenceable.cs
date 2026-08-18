@@ -12,6 +12,7 @@
 // You should have received a copy of the GNU Lesser General Public License along with MongODM.
 // If not, see <https://www.gnu.org/licenses/>.
 
+using Etherna.MongODM.Core.Options;
 using Etherna.MongODM.Core.Repositories;
 using System.Collections.Generic;
 
@@ -24,6 +25,13 @@ namespace Etherna.MongODM.Core.ProxyModels
         /// True if current model is a summary refered model
         /// </summary>
 		bool IsSummary { get; }
+
+        /// <summary>
+        /// How this model reacts to a full load finding no origin document, declared by the
+        /// reference that deserialized it as a summary. A summary merged from a stricter
+        /// reference keeps the stricter mode.
+        /// </summary>
+        MissingOriginDocumentMode MissingOriginDocument { get; }
 
         /// <summary>
         /// Name list of current setted members
@@ -63,6 +71,9 @@ namespace Etherna.MongODM.Core.ProxyModels
         /// Set a list of member names as coming from summary loading
         /// </summary>
         /// <param name="summaryLoadedMemberNames">The member name list</param>
-        void SetAsSummary(IEnumerable<string> summaryLoadedMemberNames);
+        /// <param name="missingOriginDocument">How to react to a full load finding no origin document</param>
+        void SetAsSummary(
+            IEnumerable<string> summaryLoadedMemberNames,
+            MissingOriginDocumentMode missingOriginDocument);
     }
 }

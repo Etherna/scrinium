@@ -20,7 +20,7 @@ namespace Etherna.MongODM.Core.Extensions
 {
     /*
      * Always group similar log delegates by type, always use incremental event ids.
-     * Last event id is: 61
+     * Last event id is: 62
      */
     public static class LoggerExtensions
     {
@@ -305,6 +305,12 @@ namespace Etherna.MongODM.Core.Extensions
                 new EventId(53, nameof(DbContextLockReleaseFailed)),
                 "Db context lock {LockId} release failed for owner {OwnerId}: the lease will expire on its own");
 
+        private static readonly Action<ILogger, string, string, string, Exception> _dbContextMissingOriginDocument =
+            LoggerMessage.Define<string, string, string>(
+                LogLevel.Warning,
+                new EventId(62, nameof(DbContextMissingOriginDocument)),
+                "DbContext {DbName} found no origin document loading a summary model of type {ModelType} from repository {RepositoryName}: the referred document doesn't exist on its collection");
+
         private static readonly Action<ILogger, string, string, Exception> _dbMigrationCancelledWithoutLockClaim =
             LoggerMessage.Define<string, string>(
                 LogLevel.Warning,
@@ -401,6 +407,9 @@ namespace Etherna.MongODM.Core.Extensions
 
         public static void DbContextLockReleaseFailed(this ILogger logger, string lockId, string ownerId, Exception exception) =>
             _dbContextLockReleaseFailed(logger, lockId, ownerId, exception);
+
+        public static void DbContextMissingOriginDocument(this ILogger logger, string dbName, string modelType, string repositoryName) =>
+            _dbContextMissingOriginDocument(logger, dbName, modelType, repositoryName, null!);
 
         public static void DbContextRegisteredChangedModel(this ILogger logger, string dbName, string modelId, string repositoryName) =>
             _dbContextRegisteredChangedModel(logger, dbName, modelId, repositoryName, null!);

@@ -240,6 +240,81 @@ namespace Etherna.MongODM.IntegrationTests
         }
 
         [Fact]
+        public async Task MissingOriginDocumentDeniesTheLazyLoad()
+        {
+            /* A referred document deleted from its origin collection is an inconsistency of
+             * the database: the summary can't complete its members, and the reference denies
+             * the load by default, instead of silently reading default values. */
+
+            // Setup.
+            using var contextHandler = AsyncLocalContext.Instance.InitAsyncLocalContext();
+            var (blog, post) = await CreateBlogWithPostAsync();
+            await DeleteDocumentAsync(dbContext.Posts.Name, post.Id!);
+
+            using var readContextHandler = AsyncLocalContext.Instance.InitAsyncLocalContext();
+            var loadedBlog = await dbContext.Blogs.FindOneAsync(blog.Id);
+            var referencedPost = loadedBlog.LastPost!;
+
+            // Action and assert.
+            //the denormalized member reads from the summary, without any load
+            Assert.Equal("post title", referencedPost.Title);
+
+            var exception = Assert.Throws<MongodmMissingOriginDocumentException>(() => referencedPost.Content);
+            Assert.Contains(post.Id!, exception.Message, StringComparison.Ordinal);
+            Assert.Contains(nameof(Post), exception.Message, StringComparison.Ordinal);
+            Assert.Contains(dbContext.Posts.Name, exception.Message, StringComparison.Ordinal);
+
+            //the denied load keeps the summary state: the model still requires its origin document
+            Assert.True(((IReferenceable)referencedPost).IsSummary);
+        }
+
+        [Fact]
+        public async Task MissingOriginDocumentDeniesThePreload()
+        {
+            // Setup.
+            using var contextHandler = AsyncLocalContext.Instance.InitAsyncLocalContext();
+            var (blog, post) = await CreateBlogWithPostAsync();
+            await DeleteDocumentAsync(dbContext.Posts.Name, post.Id!);
+
+            using var readContextHandler = AsyncLocalContext.Instance.InitAsyncLocalContext();
+            var loadedBlog = await dbContext.Blogs.FindOneAsync(blog.Id);
+
+            // Action and assert.
+            //the explicit load reports the inconsistency where it happens, not at the first member read
+            var exception = await Assert.ThrowsAsync<MongodmMissingOriginDocumentException>(
+                () => dbContext.LoadValuesAsync(loadedBlog.LastPost!, p => p.Content));
+            Assert.Contains(post.Id!, exception.Message, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public async Task MissingOriginDocumentIsToleratedByALaxReference()
+        {
+            // Setup.
+            using var contextHandler = AsyncLocalContext.Instance.InitAsyncLocalContext();
+            var item = new Item("item name");
+            await dbContext.Items.CreateAsync(item);
+
+            var review = new Review("review text");
+            review.SetItem(item);
+            await dbContext.Reviews.CreateAsync(review);
+
+            await DeleteDocumentAsync(dbContext.Items.Name, item.Id!);
+
+            using var readContextHandler = AsyncLocalContext.Instance.InitAsyncLocalContext();
+            var loadedReview = await dbContext.Reviews.FindOneAsync(review.Id);
+            var referencedItem = loadedReview.Item!;
+
+            // Action.
+            var name = referencedItem.Name;
+
+            // Assert.
+            //the reference tolerates the missing document: nothing more to load, no exception
+            Assert.Null(name);
+            Assert.Equal(item.Id, referencedItem.Id);
+            Assert.False(((IReferenceable)referencedItem).IsSummary);
+        }
+
+        [Fact]
         public async Task PreviewAndCollectionReferencesShareTheSameInstance()
         {
             // Setup.
@@ -343,5 +418,11 @@ namespace Etherna.MongODM.IntegrationTests
 
             return (blog, post);
         }
+
+        /* Delete the document alone, without any unit of work bookkeeping: the referencing
+         * documents keep their summaries, dangling on a document that doesn't exist anymore. */
+        private Task DeleteDocumentAsync(string collectionName, string documentId) =>
+            dbContext.Engine.Database.GetCollection<BsonDocument>(collectionName)
+                .DeleteOneAsync(Builders<BsonDocument>.Filter.Eq("_id", ObjectId.Parse(documentId)));
     }
 }

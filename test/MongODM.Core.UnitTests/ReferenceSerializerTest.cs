@@ -303,6 +303,44 @@ namespace Etherna.MongODM.Core
             Assert.Equal("idVal", result.Id);
         }
 
+        [Theory]
+        [InlineData(null, MissingOriginDocumentMode.Throw)] //denied by default
+        [InlineData(MissingOriginDocumentMode.Silent, MissingOriginDocumentMode.Silent)]
+        [InlineData(MissingOriginDocumentMode.Warn, MissingOriginDocumentMode.Warn)]
+        public void DeserializeStampsSummariesWithTheConfiguredMissingOriginDocumentMode(
+            MissingOriginDocumentMode? configuredMode,
+            MissingOriginDocumentMode expectedMode)
+        {
+            /* The full load of a summary runs much later than its deserialization, on an
+             * instance knowing only its source repository: the mode declared by the reference
+             * travels with the summary it deserializes. */
+
+            // Setup.
+            var serializer = BuildSerializer(missingOriginDocument: configuredMode);
+            dbContextEngineMock.Setup(e => e.ProxyGenerator.CreateInstance(typeof(FakeModel), It.IsAny<object[]>()))
+                .Returns(new FakeModelProxy());
+            dbContextEngineMock.Setup(e => e.ProxyGenerator.IsProxyType(typeof(FakeModelProxy)))
+                .Returns(true);
+
+            var document = new BsonDocument
+            {
+                { "_s", "activeSchemaId" },
+                { "_id", "idVal" },
+                { "StringProp", "ok" }
+            };
+            var bsonReader = new BsonDocumentReader(document);
+
+            // Action.
+            var result = serializer.Deserialize(
+                BsonDeserializationContext.CreateRoot(bsonReader),
+                new BsonDeserializationArgs { NominalType = typeof(FakeModel) });
+
+            // Assert.
+            var referenceableResult = Assert.IsAssignableFrom<IReferenceable>(result);
+            Assert.True(referenceableResult.IsSummary);
+            Assert.Equal(expectedMode, referenceableResult.MissingOriginDocument);
+        }
+
         [Fact]
         public void DeserializeReturnsNullWithNullValue()
         {
@@ -477,9 +515,14 @@ namespace Etherna.MongODM.Core
         }
 
         // Helpers.
-        private ReferenceSerializer<FakeModel, string> BuildSerializer(Action<BsonClassMap<FakeModel>>? fakeModelInitializer = null) =>
+        private ReferenceSerializer<FakeModel, string> BuildSerializer(
+            Action<BsonClassMap<FakeModel>>? fakeModelInitializer = null,
+            MissingOriginDocumentMode? missingOriginDocument = null) =>
             new(dbContextEngineMock.Object, config =>
             {
+                if (missingOriginDocument.HasValue)
+                    config.MissingOriginDocument = missingOriginDocument.Value;
+
                 //the auto mapped ModelBase map carries the extra elements member, as in real configurations
                 config.AddModelMap<ModelBase>("modelBaseSchemaId");
                 config.AddModelMap<FakeEntityModelBase<string>>("baseSchemaId", mm => mm.MapIdMember(m => m.Id));

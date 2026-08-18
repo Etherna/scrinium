@@ -157,6 +157,60 @@ namespace Etherna.MongODM.Core
         }
 
         [Fact]
+        public void OnMissingOriginDocumentDeniesSummariesWithThrowMode()
+        {
+            // Setup.
+            var model = NewBoundProxy("id");
+            ((IReferenceable)model).SetAsSummary([], MissingOriginDocumentMode.Throw);
+
+            // Action and assert.
+            var exception = Assert.Throws<MongodmMissingOriginDocumentException>(
+                () => dbContext.OnMissingOriginDocument(model));
+            Assert.Contains(nameof(FakeModel), exception.Message, StringComparison.Ordinal);
+            Assert.Contains("id", exception.Message, StringComparison.Ordinal);
+            Assert.Contains(dbContext.FakeModels.Name, exception.Message, StringComparison.Ordinal);
+        }
+
+        [Theory]
+        [InlineData(MissingOriginDocumentMode.Silent)]
+        [InlineData(MissingOriginDocumentMode.Warn)]
+        public void OnMissingOriginDocumentToleratesSummariesWithNotThrowingModes(MissingOriginDocumentMode mode)
+        {
+            // Setup.
+            var model = NewBoundProxy("id");
+            ((IReferenceable)model).SetAsSummary([], mode);
+
+            // Action, asserting no throw.
+            dbContext.OnMissingOriginDocument(model);
+            dbContext.OnMissingOriginDocument(model); //repeated: warn dedups per scope
+        }
+
+        [Fact]
+        public async Task PreloadReportsMissingOriginDocuments()
+        {
+            /* A summary still requiring its members after the preload found no origin
+             * document: the explicit load reports the db inconsistency like an implicit one,
+             * instead of leaving the model summary until its first member read. */
+
+            // Setup.
+            using var contextHandler = AsyncLocalContext.Instance.InitAsyncLocalContext();
+
+            var model = NewBoundProxy("id");
+            ((IReferenceable)model).SetAsSummary([], MissingOriginDocumentMode.Throw);
+
+            collectionMock.Setup(c => c.FindAsync(
+                    It.IsAny<FilterDefinition<FakeModel>>(),
+                    It.IsAny<FindOptions<FakeModel, FakeModel>>(),
+                    It.IsAny<CancellationToken>()))
+                .ReturnsAsync(NewEmptyCursor);
+
+            // Action and assert.
+            var exception = await Assert.ThrowsAsync<MongodmMissingOriginDocumentException>(
+                () => dbContext.LoadValuesAsync(model, m => m.StringProp));
+            Assert.Contains("id", exception.Message, StringComparison.Ordinal);
+        }
+
+        [Fact]
         public async Task ExecuteInTransactionCommitsAndEnlistsOperations()
         {
             // Setup.
@@ -448,7 +502,8 @@ namespace Etherna.MongODM.Core
                 .Select(i =>
                 {
                     var proxy = NewBoundProxy($"id{i}");
-                    ((IReferenceable)proxy).SetAsSummary([]);
+                    //the mocked collection returns no document: the missing origin ones are not the object here
+                    ((IReferenceable)proxy).SetAsSummary([], MissingOriginDocumentMode.Silent);
                     return proxy;
                 })
                 .ToArray();
