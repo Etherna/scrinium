@@ -15,6 +15,7 @@
 using Etherna.MongODM.Core.Domain.Models;
 using Etherna.MongODM.Core.Exceptions;
 using Etherna.MongODM.Core.Models;
+using Etherna.MongODM.Core.Options;
 using Etherna.MongODM.Core.ProxyModels;
 using Etherna.MongODM.Core.Repositories;
 using Moq;
@@ -44,12 +45,50 @@ namespace Etherna.MongODM.Core
 
         // Tests.
         [Fact]
+        public void FullLoadDeniedForMissingOriginDocumentKeepsTheSummaryState()
+        {
+            // Setup.
+            repositoryMock.Setup(r => r.TryFindOneAsync("idVal", It.IsAny<CancellationToken>()))
+                .ReturnsAsync((object?)null);
+            dbContextMock.Setup(c => c.OnMissingOriginDocument(It.IsAny<IEntityModel>()))
+                .Throws(new MongodmMissingOriginDocumentException());
+
+            proxyModel.Id = "idVal";
+            ((IReferenceable)proxyModel).SetAsSummary([], MissingOriginDocumentMode.Throw);
+
+            // Action and assert.
+            Assert.Throws<MongodmMissingOriginDocumentException>(() => proxyModel.StringProp);
+            //the denied load never gave up the summary state: the model keeps requiring its origin document
+            Assert.True(((IReferenceable)proxyModel).IsSummary);
+        }
+
+        [Fact]
+        public void FullLoadWithoutOriginDocumentReportsToDbContext()
+        {
+            // Setup.
+            repositoryMock.Setup(r => r.TryFindOneAsync("idVal", It.IsAny<CancellationToken>()))
+                .ReturnsAsync((object?)null);
+
+            proxyModel.Id = "idVal";
+            ((IReferenceable)proxyModel).SetAsSummary([], MissingOriginDocumentMode.Silent);
+
+            // Action.
+            var value = proxyModel.StringProp;
+
+            // Assert.
+            //the db context reacts to the db inconsistency, tolerating it here: nothing to load anymore
+            dbContextMock.Verify(c => c.OnMissingOriginDocument(proxyModel), Times.Once());
+            Assert.Null(value);
+            Assert.False(((IReferenceable)proxyModel).IsSummary);
+        }
+
+        [Fact]
         public void GetOfLoadedMemberOnSummaryModelDoesntLoad()
         {
             // Setup.
             proxyModel.Id = "idVal";
             proxyModel.StringProp = "loaded";
-            ((IReferenceable)proxyModel).SetAsSummary(["StringProp"]);
+            ((IReferenceable)proxyModel).SetAsSummary(["StringProp"], MissingOriginDocumentMode.Throw);
 
             // Action.
             var value = proxyModel.StringProp;
@@ -76,7 +115,7 @@ namespace Etherna.MongODM.Core
                 .ReturnsAsync(fullModel);
 
             proxyModel.Id = "idVal";
-            ((IReferenceable)proxyModel).SetAsSummary([]);
+            ((IReferenceable)proxyModel).SetAsSummary([], MissingOriginDocumentMode.Throw);
 
             // Action.
             var value = proxyModel.StringProp;
@@ -105,7 +144,7 @@ namespace Etherna.MongODM.Core
         {
             // Setup.
             proxyModel.Id = "idVal";
-            ((IReferenceable)proxyModel).SetAsSummary([]);
+            ((IReferenceable)proxyModel).SetAsSummary([], MissingOriginDocumentMode.Throw);
 
             // Action.
             var id = proxyModel.Id;
@@ -140,7 +179,7 @@ namespace Etherna.MongODM.Core
             // Setup.
             proxyModel.Id = "idVal";
             proxyModel.StringProp = "current";
-            ((IReferenceable)proxyModel).SetAsSummary(["StringProp"]);
+            ((IReferenceable)proxyModel).SetAsSummary(["StringProp"], MissingOriginDocumentMode.Throw);
 
             // Action.
             ((IReferenceable)proxyModel).MergeFullModel(new object());
@@ -157,7 +196,7 @@ namespace Etherna.MongODM.Core
             // Setup.
             proxyModel.Id = "idVal";
             proxyModel.StringProp = "current";
-            ((IReferenceable)proxyModel).SetAsSummary(["StringProp"]);
+            ((IReferenceable)proxyModel).SetAsSummary(["StringProp"], MissingOriginDocumentMode.Throw);
 
             var otherSummaryModel = new FakeModelProxy
             {
@@ -165,7 +204,7 @@ namespace Etherna.MongODM.Core
                 IntegerProp = 42,
                 StringProp = "other"
             };
-            ((IReferenceable)otherSummaryModel).SetAsSummary(["IntegerProp", "StringProp"]);
+            ((IReferenceable)otherSummaryModel).SetAsSummary(["IntegerProp", "StringProp"], MissingOriginDocumentMode.Throw);
 
             // Action.
             ((IReferenceable)proxyModel).MergeSummaryModel(otherSummaryModel);
@@ -175,6 +214,33 @@ namespace Etherna.MongODM.Core
             Assert.Equal("current", proxyModel.StringProp);
             Assert.Equal(42, proxyModel.IntegerProp);
             Assert.True(((IReferenceable)proxyModel).IsSummary);
+        }
+
+        [Theory]
+        [InlineData(MissingOriginDocumentMode.Silent, MissingOriginDocumentMode.Warn, MissingOriginDocumentMode.Warn)]
+        [InlineData(MissingOriginDocumentMode.Throw, MissingOriginDocumentMode.Silent, MissingOriginDocumentMode.Throw)]
+        [InlineData(MissingOriginDocumentMode.Warn, MissingOriginDocumentMode.Throw, MissingOriginDocumentMode.Throw)]
+        public void MergeSummaryModelKeepsTheStrictestMissingOriginDocumentMode(
+            MissingOriginDocumentMode currentMode,
+            MissingOriginDocumentMode otherMode,
+            MissingOriginDocumentMode expectedMode)
+        {
+            /* One document materializes one single instance, whatever the references reaching
+             * it: the modes they declare can differ, and the instance keeps the strictest. */
+
+            // Setup.
+            proxyModel.Id = "idVal";
+            ((IReferenceable)proxyModel).SetAsSummary([], currentMode);
+
+            var otherSummaryModel = new FakeModelProxy { Id = "idVal" };
+            ((IProxyModel)otherSummaryModel).BindProxy(dbContextMock.Object, repositoryMock.Object);
+            ((IReferenceable)otherSummaryModel).SetAsSummary([], otherMode);
+
+            // Action.
+            ((IReferenceable)proxyModel).MergeSummaryModel(otherSummaryModel);
+
+            // Assert.
+            Assert.Equal(expectedMode, ((IReferenceable)proxyModel).MissingOriginDocument);
         }
 
         [Fact]

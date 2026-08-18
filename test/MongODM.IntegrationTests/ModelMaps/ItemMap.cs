@@ -17,6 +17,7 @@ using Etherna.MongoDB.Bson.Serialization.Serializers;
 using Etherna.MongODM.Core;
 using Etherna.MongODM.Core.Domain.Models;
 using Etherna.MongODM.Core.Extensions;
+using Etherna.MongODM.Core.Options;
 using Etherna.MongODM.Core.Serialization;
 using Etherna.MongODM.Core.Serialization.Serializers;
 using Etherna.MongODM.IntegrationTests.Models;
@@ -41,11 +42,14 @@ namespace Etherna.MongODM.IntegrationTests.ModelMaps
         }
 
         /// <summary>
-        /// Minimal reference to the entity
+        /// Minimal reference to the entity, tolerating a missing origin document: an item can
+        /// be removed from the catalog, and its reviews keep referencing it
         /// </summary>
         public static ReferenceSerializer<Item, string> MinimalReferenceSerializer(IDbContextEngine dbContextEngine) =>
             ReferenceSerializer.Create(dbContextEngine, config =>
             {
+                config.MissingOriginDocument = MissingOriginDocumentMode.Warn;
+
                 config.AddModelMap<ModelBase>("28cf04b3-8593-42a6-ac8c-199c89721cff");
                 config.AddModelMap<EntityModelBase<string>>("3b30c7ce-c8c7-4c15-8e0a-0edd05b77573", mm =>
                 {

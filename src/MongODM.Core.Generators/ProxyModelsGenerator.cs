@@ -300,6 +300,8 @@ namespace Etherna.MongODM.Core.Generators
             b.AppendLine("        // Fields.");
             b.AppendLine("        private global::Etherna.MongODM.Core.IDbContext? proxyDbContext;");
             b.AppendLine("        private bool proxyIsSummary;");
+            b.AppendLine("        private global::Etherna.MongODM.Core.Options.MissingOriginDocumentMode proxyMissingOriginDocument =");
+            b.AppendLine("            global::Etherna.MongODM.Core.Options.MissingOriginDocumentMode.Throw;");
             b.AppendLine("        private global::System.Type? proxyOutdatedModelType;");
             b.AppendLine("        private readonly global::System.Collections.Generic.Dictionary<string, bool> proxySettedMemberNames = new(); //<memberName, isFromSummary>");
             b.AppendLine("        private global::Etherna.MongODM.Core.Repositories.IRepository proxySourceRepository = null!; //bound right after creation");
@@ -340,6 +342,8 @@ namespace Etherna.MongODM.Core.Generators
             //IProxyModel and IReferenceable properties
             b.AppendLine("        global::System.Type? global::Etherna.MongODM.Core.ProxyModels.IProxyModel.OutdatedModelType => proxyOutdatedModelType;");
             b.AppendLine("        bool global::Etherna.MongODM.Core.ProxyModels.IReferenceable.IsSummary => proxyIsSummary;");
+            b.AppendLine("        global::Etherna.MongODM.Core.Options.MissingOriginDocumentMode global::Etherna.MongODM.Core.ProxyModels.IReferenceable.MissingOriginDocument =>");
+            b.AppendLine("            proxyMissingOriginDocument;");
             b.AppendLine("        global::System.Collections.Generic.IEnumerable<string> global::Etherna.MongODM.Core.ProxyModels.IReferenceable.SettedMemberNames =>");
             b.AppendLine("            global::System.Linq.Enumerable.ToArray(proxySettedMemberNames.Keys);");
             b.AppendLine("        global::Etherna.MongODM.Core.Repositories.IRepository global::Etherna.MongODM.Core.ProxyModels.IReferenceable.SourceRepository => proxySourceRepository;");
@@ -394,6 +398,12 @@ namespace Etherna.MongODM.Core.Generators
             b.AppendLine($"                summaryModel is not {info.ModelFullName} typedSummaryModel)");
             b.AppendLine("                return;");
             b.AppendLine();
+            b.AppendLine("            /* One document materializes one single instance, whatever the references reaching");
+            b.AppendLine("             * it: an instance reached also by a stricter reference keeps its stricter");
+            b.AppendLine("             * reaction to a missing origin document. */");
+            b.AppendLine("            if (summaryReferenceable.MissingOriginDocument > proxyMissingOriginDocument)");
+            b.AppendLine("                proxyMissingOriginDocument = summaryReferenceable.MissingOriginDocument;");
+            b.AppendLine();
             b.AppendLine("            /* Merging two summaries is additive only: copy just the members that the current");
             b.AppendLine("             * model doesn't have at all. Suppress change tracking on the merge: the copied");
             b.AppendLine("             * members are loaded data, not changes to persist. */");
@@ -413,9 +423,12 @@ namespace Etherna.MongODM.Core.Generators
             b.AppendLine("            }");
             b.AppendLine("        }");
             b.AppendLine();
-            b.AppendLine("        void global::Etherna.MongODM.Core.ProxyModels.IReferenceable.SetAsSummary(global::System.Collections.Generic.IEnumerable<string> summaryLoadedMemberNames)");
+            b.AppendLine("        void global::Etherna.MongODM.Core.ProxyModels.IReferenceable.SetAsSummary(");
+            b.AppendLine("            global::System.Collections.Generic.IEnumerable<string> summaryLoadedMemberNames,");
+            b.AppendLine("            global::Etherna.MongODM.Core.Options.MissingOriginDocumentMode missingOriginDocument)");
             b.AppendLine("        {");
             b.AppendLine("            proxyIsSummary = true;");
+            b.AppendLine("            proxyMissingOriginDocument = missingOriginDocument;");
             b.AppendLine("            foreach (var memberName in summaryLoadedMemberNames)");
             b.AppendLine("                proxySettedMemberNames[memberName] = true;");
             b.AppendLine("        }");
@@ -520,7 +533,13 @@ namespace Etherna.MongODM.Core.Generators
             b.AppendLine($"            if (task.Result is {info.ModelFullName} typedResult)");
             b.AppendLine("                MergeProxyFullModel(typedResult);");
             b.AppendLine("            else if (task.Result is null)");
-            b.AppendLine("                MergeProxyFullModel(null); //document not found: nothing to load, give up the summary state");
+            b.AppendLine("            {");
+            b.AppendLine("                /* The origin document doesn't exist anymore: react to the db inconsistency,");
+            b.AppendLine("                 * honoring the mode of the reference that deserialized this summary. Tolerating");
+            b.AppendLine("                 * it, there is nothing to load, and the model gives up the summary state. */");
+            b.AppendLine("                proxySourceRepository.DbContext.OnMissingOriginDocument(this);");
+            b.AppendLine("                MergeProxyFullModel(null);");
+            b.AppendLine("            }");
             b.AppendLine("            //else: document of another type of the hierarchy, this instance is outdated");
             b.AppendLine("        }");
             b.AppendLine();

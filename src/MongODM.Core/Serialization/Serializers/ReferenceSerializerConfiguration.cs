@@ -15,6 +15,7 @@
 using Etherna.MongoDB.Bson;
 using Etherna.MongoDB.Bson.Serialization;
 using Etherna.MongODM.Core.Extensions;
+using Etherna.MongODM.Core.Options;
 using Etherna.MongODM.Core.Serialization.Mapping;
 using Etherna.MongODM.Core.Utility;
 using System;
@@ -36,6 +37,7 @@ namespace Etherna.MongODM.Core.Serialization.Serializers
         public const int MaxWarnedUnrecognizedSchemaIds = 100;
 
         // Fields.
+        private MissingOriginDocumentMode _missingOriginDocument = MissingOriginDocumentMode.Throw;
         private readonly Dictionary<Type, IModelMap> _modelMaps = new();
 
         private readonly Dictionary<Type, BsonElement> activeSchemaIdBsonElement = new();
@@ -50,6 +52,19 @@ namespace Etherna.MongODM.Core.Serialization.Serializers
         }
 
         // Properties.
+        /// <summary>
+        /// How the summary models deserialized by this reference react to a full load finding
+        /// no origin document, because the referred document doesn't exist anymore on the
+        /// origin collection. Denied by default: an inconsistency of the database would
+        /// otherwise degrade the summary into a model carrying its not loaded members at their
+        /// default values, without any report.
+        /// </summary>
+        public MissingOriginDocumentMode MissingOriginDocument
+        {
+            get => _missingOriginDocument;
+            set => ExecuteConfigAction(() => _missingOriginDocument = value);
+        }
+
         public IReadOnlyDictionary<Type, IModelMap> ModelMaps => _modelMaps;
 
         // Methods.

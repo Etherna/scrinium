@@ -64,6 +64,7 @@ namespace Etherna.MongODM.Core
         //the transient models scopes open on the flow, collecting the models entering while they run
         private readonly List<TransientModelsScope> transientModelsScopes = [];
         private readonly HashSet<(Type ModelType, string? MemberName)> warnedImplicitLazyLoads = [];
+        private readonly HashSet<(Type ModelType, IRepository SourceRepository)> warnedMissingOriginDocuments = [];
 
         // Initializer.
         public void AttachToEngine(
@@ -260,20 +261,27 @@ namespace Etherna.MongODM.Core
 
             /* Select the summary models still missing some requested member. The members are
              * only the no-op precondition: any load is always of the whole document. */
-            List<(IEntityModel Model, IRepository Repository)> modelsToLoad = [];
+            List<(IEntityModel Model, IRepository Repository, object ModelId)> modelsToLoad = [];
             foreach (var model in models)
             {
                 if (model is not IReferenceable { IsSummary: true } referenceable)
                     continue;
 
+                var idMemberInfo = TryGetIdMemberInfo(model.GetType());
+
                 //the id member is definitionally present, so it never requires a load
                 var loadedMemberNames = referenceable.SettedMemberNames.ToHashSet(StringComparer.Ordinal);
                 if (memberNames.All(name =>
                         loadedMemberNames.Contains(name) ||
-                        TryGetIdMemberInfo(model.GetType())?.Name == name))
+                        idMemberInfo?.Name == name))
                     continue;
 
-                modelsToLoad.Add((model, referenceable.SourceRepository));
+                //a model without an id addresses no document to load
+                if (idMemberInfo is null ||
+                    ReflectionHelper.GetValue(model, idMemberInfo) is not { } modelId)
+                    continue;
+
+                modelsToLoad.Add((model, referenceable.SourceRepository, modelId));
             }
 
             /* One batched load per source repository: the loaded documents deserialize on
@@ -289,16 +297,19 @@ namespace Etherna.MongODM.Core
                 }
                 else
                 {
-                    foreach (var (model, repository) in repositoryGroup)
-                    {
-                        var modelId = TryGetIdMemberInfo(model.GetType()) is { } idMemberInfo
-                            ? ReflectionHelper.GetValue(model, idMemberInfo)
-                            : null;
-                        if (modelId is not null)
-                            await repository.TryFindOneAsync(modelId).ConfigureAwait(false);
-                    }
+                    foreach (var (_, repository, modelId) in repositoryGroup)
+                        await repository.TryFindOneAsync(modelId).ConfigureAwait(false);
                 }
             }
+
+            /* A model still summary after its load found no origin document: the loaded
+             * documents merge in place through the identity map, so a completed load always
+             * clears the summary state. An instance invalidated by a document type change is
+             * outdated, not missing: its fresh instance replaced it as the loaded model. */
+            foreach (var (model, _, _) in modelsToLoad)
+                if (model is IReferenceable { IsSummary: true } &&
+                    model is not IProxyModel { OutdatedModelType: not null })
+                    OnMissingOriginDocument(model);
         }
 
         public void ClearChangeCandidate(IEntityModel model)
@@ -352,6 +363,43 @@ namespace Etherna.MongODM.Core
                     if (firstOccurrence)
                         logger.DbContextImplicitLazyLoad(engine.Options.DbName, modelType.Name, memberName);
                     break;
+            }
+        }
+
+        public void OnMissingOriginDocument(IEntityModel summaryModel)
+        {
+            ArgumentNullException.ThrowIfNull(summaryModel);
+
+            if (summaryModel is not IReferenceable referenceable)
+                return;
+
+            var modelType = engine.ProxyGenerator.PurgeProxyType(summaryModel.GetType());
+            var sourceRepository = referenceable.SourceRepository;
+
+            switch (referenceable.MissingOriginDocument)
+            {
+                case MissingOriginDocumentMode.Silent:
+                    break;
+
+                case MissingOriginDocumentMode.Warn:
+                    /* Report the model type and its source repository, without the document id:
+                     * an id can be a natural identifier, and this level is enabled by default. */
+                    bool firstOccurrence;
+                    lock (trackingLock)
+                        firstOccurrence = warnedMissingOriginDocuments.Add((modelType, sourceRepository));
+                    if (firstOccurrence)
+                        logger.DbContextMissingOriginDocument(engine.Options.DbName, modelType.Name, sourceRepository.Name);
+                    break;
+
+                default:
+                    var modelId = TryGetIdMemberInfo(summaryModel.GetType()) is { } idMemberInfo
+                        ? ReflectionHelper.GetValue(summaryModel, idMemberInfo)
+                        : null;
+                    throw new MongodmMissingOriginDocumentException(
+                        $"Summary model of type {modelType.Name} with id {modelId ?? "null"} has no origin document " +
+                        $"on repository {sourceRepository.Name}: the referred document doesn't exist on its collection, " +
+                        "and its members can't be loaded. Fix the db inconsistency, or configure the reference to " +
+                        "tolerate a missing origin document");
             }
         }
 

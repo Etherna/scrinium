@@ -202,6 +202,17 @@ namespace Etherna.MongODM.Core
         void OnImplicitLazyLoad(Type modelType, string? memberName);
 
         /// <summary>
+        /// React to a full load finding no origin document for a summary model, honoring the
+        /// <see cref="Options.MissingOriginDocumentMode"/> declared by the reference that
+        /// deserialized it: log a warning once per model type and source repository per scope,
+        /// stay silent, or report the db inconsistency throwing
+        /// <see cref="Exceptions.MongodmMissingOriginDocumentException"/>. Invoked by the proxy
+        /// models and by the explicit preloads.
+        /// </summary>
+        /// <param name="summaryModel">The summary model whose origin document is missing</param>
+        void OnMissingOriginDocument(IEntityModel summaryModel);
+
+        /// <summary>
         /// Register a model instance as the loaded one for its document on this db context
         /// instance. Following loads of the same document will return the same instance.
         /// </summary>

@@ -246,7 +246,7 @@ namespace Etherna.MongODM.Core.Serialization.Serializers
                 if (dbContextEngine.SerializerModifierAccessor.IsReadOnlyReferencedIdEnabled)
                 {
                     ((IReferenceable)model).ClearSettedMembers();
-                    ((IReferenceable)model).SetAsSummary([]);
+                    ((IReferenceable)model).SetAsSummary([], Configuration.MissingOriginDocument);
                 }
                 else
                 {
@@ -259,7 +259,7 @@ namespace Etherna.MongODM.Core.Serialization.Serializers
                         Configuration.TryGetSummaryLoadedMemberNames(actualType, schemaId, bsonDocument) ??
                         [.. ((IReferenceable)model).SettedMemberNames];
                     ((IReferenceable)model).ClearSettedMembers();
-                    ((IReferenceable)model).SetAsSummary(summaryMemberNames);
+                    ((IReferenceable)model).SetAsSummary(summaryMemberNames, Configuration.MissingOriginDocument);
                 }
 
                 // Deduplicate model instance on the db context owning the source repository.
