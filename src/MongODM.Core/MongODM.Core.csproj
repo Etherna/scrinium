@@ -38,12 +38,12 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Etherna.MongoDB.Driver" Version="3.10.2" />
+    <PackageReference Include="Etherna.MongoDB.Driver" Version="3.11.0" />
     <PackageReference Include="GitVersion.MsBuild" Version="6.8.2">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
-    <PackageReference Include="Microsoft.SourceLink.GitHub" Version="10.0.301">
+    <PackageReference Include="Microsoft.SourceLink.GitHub" Version="10.0.400">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
