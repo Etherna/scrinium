@@ -139,6 +139,103 @@ namespace Etherna.MongODM.AspNetCore.UI
             response.EnsureSuccessStatusCode();
         }
 
+        [Theory]
+        [InlineData("javascript:alert(1)", "javascript")]
+        [InlineData("JavaScript:alert(1)", "JavaScript")]
+        //spaces around the value don't hide a scheme, since browsers trim them from an href
+        [InlineData(" javascript:alert(1) ", "javascript")]
+        [InlineData("data:text/html,<script>alert(1)</script>", "data")]
+        [InlineData("vbscript:MsgBox", "vbscript")]
+        public void DashboardRegistrationRefusesForeignAppPathSchemes(string appPath, string expectedScheme)
+        {
+            /* The back link target renders as the href of the dashboard back link: markup can't
+             * break out of the encoded attribute, but a URL scheme other than http/https would
+             * make the link run in the dashboard origin what the configuration carries. */
+
+            // Setup.
+            var dashboardOptions = new DashboardOptions { AppPath = appPath };
+
+            // Action.
+            var exception = Assert.Throws<ArgumentException>(
+                () => new ServiceCollection().AddMongODMAdminDashboard(dashboardOptions));
+
+            // Assert.
+            Assert.Equal("dashboardOptions", exception.ParamName);
+            Assert.Contains($"\"{expectedScheme}\"", exception.Message, StringComparison.Ordinal);
+            Assert.Contains("relative path", exception.Message, StringComparison.Ordinal);
+        }
+
+        [Theory]
+        [InlineData("java\tscript:alert(1)")]
+        [InlineData("\njavascript:alert(1)")]
+        [InlineData("javascript\r:alert(1)")]
+        public void DashboardRegistrationRefusesAppPathsWithControlCharacters(string appPath)
+        {
+            /* Browsers discard control characters when parsing an href, so a value carrying
+             * them could disguise a scheme the registration check would read apart. */
+
+            // Setup.
+            var dashboardOptions = new DashboardOptions { AppPath = appPath };
+
+            // Action.
+            var exception = Assert.Throws<ArgumentException>(
+                () => new ServiceCollection().AddMongODMAdminDashboard(dashboardOptions));
+
+            // Assert.
+            Assert.Equal("dashboardOptions", exception.ParamName);
+            Assert.Contains("control characters", exception.Message, StringComparison.Ordinal);
+        }
+
+        [Theory]
+        [InlineData("/")]
+        [InlineData("/admin/home")]
+        [InlineData("home/index")]
+        [InlineData("//example.com/app")]
+        [InlineData("http://example.com/app")]
+        [InlineData("HTTPS://example.com/app")]
+        //a colon after a slash is path content, not a scheme delimiter
+        [InlineData("/app:1/home")]
+        public async Task DashboardRegistrationKeepsLinkingValidAppPaths(string appPath)
+        {
+            // Setup.
+            using var host = await StartDashboardHostAsync(new DashboardOptions
+            {
+                AppPath = appPath,
+                AuthFilters = [new AllowAllAuthFilter()]
+            });
+            var client = host.GetTestClient();
+
+            // Action.
+            var response = await client.GetAsync(new Uri(PagePath, UriKind.Relative));
+
+            // Assert.
+            response.EnsureSuccessStatusCode();
+            var responseHtml = await response.Content.ReadAsStringAsync();
+            Assert.Contains($"class=\"back-link\" href=\"{appPath}\"", responseHtml, StringComparison.Ordinal);
+        }
+
+        [Theory]
+        [InlineData(null)]
+        [InlineData("")]
+        public async Task BackLinkStaysHiddenWithoutAppPath(string? appPath)
+        {
+            // Setup.
+            using var host = await StartDashboardHostAsync(new DashboardOptions
+            {
+                AppPath = appPath,
+                AuthFilters = [new AllowAllAuthFilter()]
+            });
+            var client = host.GetTestClient();
+
+            // Action.
+            var response = await client.GetAsync(new Uri(PagePath, UriKind.Relative));
+
+            // Assert.
+            response.EnsureSuccessStatusCode();
+            var responseHtml = await response.Content.ReadAsStringAsync();
+            Assert.DoesNotContain("back-link", responseHtml, StringComparison.Ordinal);
+        }
+
         [Fact]
         public async Task DocumentErrorMessagesAreEncodedAsData()
         {

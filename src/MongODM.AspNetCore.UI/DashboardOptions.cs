@@ -21,7 +21,9 @@ namespace Etherna.MongODM.AspNetCore.UI
     {
         // Properties.
         /// <summary>
-        /// Path or URL of the back link to the main application. Set null to hide the link.
+        /// Target of the back link to the main application: a relative path, or an absolute
+        /// http/https URL. Any other URL scheme is refused at registration, since the value
+        /// renders as the href of the link. Set null to hide the link.
         /// </summary>
         public string? AppPath { get; set; } = "/";
         /// <summary>
