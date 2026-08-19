@@ -43,7 +43,7 @@ namespace Etherna.MongODM.IntegrationTests.Fixtures
         }
 
         /// <summary>
-        /// The model ids of the pending dependencies update tasks.
+        /// The model ids of the pending dependencies propagation tasks.
         /// </summary>
         public IReadOnlyCollection<object> PendingModelIds
         {
@@ -80,6 +80,30 @@ namespace Etherna.MongODM.IntegrationTests.Fixtures
             {
                 using var scope = serviceProvider.CreateScope();
                 await task(scope.ServiceProvider);
+            }
+        }
+
+        public void RunDeleteDocDependenciesTask(
+            Type dbContextType,
+            string deletedRepositoryName,
+            object modelId,
+            IEnumerable<string> idMemberMapIdentifiers)
+        {
+            ArgumentNullException.ThrowIfNull(idMemberMapIdentifiers);
+
+            //materialize before deferred execution
+            var idMemberMapIdentifiersList = idMemberMapIdentifiers.ToArray();
+
+            lock (pendingTasks)
+            {
+                pendingModelIds.Add(modelId);
+                pendingTasks.Add(serviceProvider =>
+                    (Task)typeof(IDeleteDocDependenciesTask)
+                        .GetMethod(nameof(IDeleteDocDependenciesTask.RunAsync))!
+                        .MakeGenericMethod(dbContextType)
+                        .Invoke(
+                            serviceProvider.GetRequiredService<IDeleteDocDependenciesTask>(),
+                            [deletedRepositoryName, modelId, idMemberMapIdentifiersList])!);
             }
         }
 

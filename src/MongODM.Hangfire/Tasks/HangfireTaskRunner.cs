@@ -28,6 +28,19 @@ namespace Etherna.MongODM.HF.Tasks
         private MongODMOptions mongODMOptions = null!;
 
         // Methods.
+        public void RunDeleteDocDependenciesTask(
+            Type dbContextType,
+            string deletedRepositoryName,
+            object modelId,
+            IEnumerable<string> idMemberMapIdentifiers) =>
+            backgroundJobClient.Create<DeleteDocDependenciesTaskFacade>(
+                task => task.RunAsync(
+                    dbContextType,
+                    deletedRepositoryName,
+                    modelId,
+                    idMemberMapIdentifiers),
+                new EnqueuedState(mongODMOptions.DbMaintenanceQueueName));
+
         public void RunMigrateDbTask(Type dbContextType, string dbMigrationOpId) =>
             backgroundJobClient.Create<MigrateDbContextTaskFacade>(
                 task => task.RunAsync(dbContextType, dbMigrationOpId, null!),

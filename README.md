@@ -343,9 +343,13 @@ dbContextEngine.MapRegistry.AddModelMap<Cat>("cd37bafa-a36d-4b1f-815a-deb50c49d0
 Reading a `Cat` now gives its owner's name with no second query; reading any other member of the owner
 lazy-loads the full document from the person repository, or preload it explicitly with
 `IDbContext.LoadValuesAsync`. If that person's document is deleted while cats keep referencing them,
-the load has nothing to read: it throws `MongodmMissingOriginDocumentException`, reporting the database
-inconsistency instead of reading default values — set `config.MissingOriginDocument` on the reference
-to tolerate it, silently or logging a warning. Rename that person and save: every cat document referencing them is
+the load has nothing to read: by default it logs a warning and gives up the summary state, and the
+reference can declare otherwise with `config.MissingOriginDocument` — silent tolerance, or the strict
+`Throw` denying the load with `MongodmMissingOriginDocumentException`. Deleting a person **through
+their repository** doesn't leave that state behind anyway: by default the reference is removed from
+every cat in background — single members set to null, array items pulled — and the reference can
+declare otherwise with `config.OriginDelete`: cascade the delete to the referencing documents, or
+keep the reference dangling. Rename that person and save: every cat document referencing them is
 updated in background. Link a person that was never persisted, and saving the cat creates them first.
 The admin dashboard renders the whole structure of the documents of each collection, one per registered
 schema, tagging the elements that carry such a summary and expanding the members denormalized into

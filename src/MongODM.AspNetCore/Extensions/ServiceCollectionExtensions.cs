@@ -118,6 +118,7 @@ namespace Etherna.MongODM.AspNetCore.Extensions
             services.TryAddSingleton<ISerializerModifierAccessor, SerializerModifierAccessor>();
 
             //tasks
+            services.TryAddTransient<IDeleteDocDependenciesTask, DeleteDocDependenciesTask>();
             services.TryAddTransient<IMigrateDbContextTask, MigrateDbContextTask>();
             services.TryAddTransient<IUpdateDocDependenciesTask, UpdateDocDependenciesTask>();
 

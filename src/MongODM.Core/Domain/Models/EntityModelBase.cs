@@ -16,13 +16,7 @@ using System.Collections.Generic;
 
 namespace Etherna.MongODM.Core.Domain.Models
 {
-    public abstract class EntityModelBase : ModelBase, IEntityModel
-    {
-        // Dispose.
-        public virtual void DisposeForDelete() { }
-    }
-
-    public abstract class EntityModelBase<TKey> : EntityModelBase, IEntityModel<TKey>
+    public abstract class EntityModelBase<TKey> : ModelBase, IEntityModel<TKey>
     {
         // Properties.
         public virtual TKey Id { get; protected set; } = default!;

@@ -77,8 +77,8 @@
                                     <td>@cat.Name</td>
                                     <td>@cat.Birthday.ToString("yyyy-MM-dd")</td>
                                     @* The owner name is denormalized into the cat document: reading it
-                                       from the summary never loads the person document, and survives a
-                                       person deleted while cats keep referring them. *@
+                                       from the summary never loads the person document, also while a
+                                       deleted person still waits for the background reference removal. *@
                                     <td>
                                         @if (cat.Owner is not null)
                                         {

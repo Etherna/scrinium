@@ -17,7 +17,8 @@ namespace Etherna.MongODM.Core.Options
     /// <summary>
     /// How a summary model reacts to a full load finding no origin document, because the
     /// referred document doesn't exist anymore on the origin collection: an inconsistency of
-    /// the database, that only an exception makes observable. Declared per reference on
+    /// the database, or the transient state a domain delete opens until its background
+    /// propagation repairs the references. Declared per reference on
     /// <see cref="Serialization.Serializers.ReferenceSerializerConfiguration.MissingOriginDocument"/>,
     /// and carried by the summary models the reference deserializes.
     /// Values are ordered by strictness: a summary of the same document reached by more
@@ -30,12 +31,13 @@ namespace Etherna.MongODM.Core.Options
 
         /// <summary>
         /// Ignore the missing document, logging a warning once per model type and source
-        /// repository, per db context scope.
+        /// repository, per db context scope. The default: a domain delete legitimately opens
+        /// this state until its background propagation repairs the references.
         /// </summary>
         Warn = 1,
 
         /// <summary>
-        /// Deny the load, throwing <see cref="Exceptions.MongodmMissingOriginDocumentException"/>. The default.
+        /// Deny the load, throwing <see cref="Exceptions.MongodmMissingOriginDocumentException"/>.
         /// </summary>
         Throw = 2
     }

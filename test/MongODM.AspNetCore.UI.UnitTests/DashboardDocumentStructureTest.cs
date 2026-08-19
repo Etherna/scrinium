@@ -61,8 +61,6 @@ namespace Etherna.MongODM.AspNetCore.UI
         {
             public virtual IDictionary<string, object>? ExtraElements { get; protected set; }
             public virtual string Id { get; set; } = null!;
-
-            public void DisposeForDelete() { }
         }
         public class MetadataModel
         {

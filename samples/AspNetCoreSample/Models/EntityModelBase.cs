@@ -19,7 +19,5 @@ namespace Etherna.MongODM.AspNetCoreSample.Models
     public abstract class EntityModelBase<TKey> : ModelBase, IEntityModel<TKey>
     {
         public virtual TKey Id { get; protected set; } = default!;
-
-        public virtual void DisposeForDelete() { }
     }
 }

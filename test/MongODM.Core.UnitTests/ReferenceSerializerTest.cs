@@ -304,9 +304,9 @@ namespace Etherna.MongODM.Core
         }
 
         [Theory]
-        [InlineData(null, MissingOriginDocumentMode.Throw)] //denied by default
+        [InlineData(null, MissingOriginDocumentMode.Warn)] //warned by default
         [InlineData(MissingOriginDocumentMode.Silent, MissingOriginDocumentMode.Silent)]
-        [InlineData(MissingOriginDocumentMode.Warn, MissingOriginDocumentMode.Warn)]
+        [InlineData(MissingOriginDocumentMode.Throw, MissingOriginDocumentMode.Throw)]
         public void DeserializeStampsSummariesWithTheConfiguredMissingOriginDocumentMode(
             MissingOriginDocumentMode? configuredMode,
             MissingOriginDocumentMode expectedMode)

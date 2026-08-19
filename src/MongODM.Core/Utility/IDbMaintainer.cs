@@ -26,6 +26,16 @@ namespace Etherna.MongODM.Core.Utility
     {
         // Methods.
         /// <summary>
+        /// Method to invoke when a model is deleted through its repository, to propagate the
+        /// delete to the documents referencing it, applying the origin delete policy each
+        /// reference declares.
+        /// </summary>
+        /// <typeparam name="TKey">Deleted model Key type</typeparam>
+        /// <param name="deletedModel">The deleted model</param>
+        /// <param name="referenceRepository">The repository of the deleted model</param>
+        void OnDeletedModel<TKey>(IEntityModel deletedModel, IRepository referenceRepository);
+
+        /// <summary>
         /// Method to invoke when a tracked model is updated, to propagate its changes to the
         /// summaries of the documents referencing it.
         /// </summary>

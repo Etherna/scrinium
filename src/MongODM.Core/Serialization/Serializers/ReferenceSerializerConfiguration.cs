@@ -37,8 +37,9 @@ namespace Etherna.MongODM.Core.Serialization.Serializers
         public const int MaxWarnedUnrecognizedSchemaIds = 100;
 
         // Fields.
-        private MissingOriginDocumentMode _missingOriginDocument = MissingOriginDocumentMode.Throw;
+        private MissingOriginDocumentMode _missingOriginDocument = MissingOriginDocumentMode.Warn;
         private readonly Dictionary<Type, IModelMap> _modelMaps = new();
+        private OriginDeleteMode _originDelete = OriginDeleteMode.RemoveReference;
 
         private readonly Dictionary<Type, BsonElement> activeSchemaIdBsonElement = new();
         private readonly IDbContextEngine dbContextEngine;
@@ -55,9 +56,12 @@ namespace Etherna.MongODM.Core.Serialization.Serializers
         /// <summary>
         /// How the summary models deserialized by this reference react to a full load finding
         /// no origin document, because the referred document doesn't exist anymore on the
-        /// origin collection. Denied by default: an inconsistency of the database would
-        /// otherwise degrade the summary into a model carrying its not loaded members at their
-        /// default values, without any report.
+        /// origin collection. Warned by default: a domain delete legitimately opens this state
+        /// between the delete and its background propagation, so an exception can't be the
+        /// default reaction to a load inside that window; the warning still reports the
+        /// summaries degraded to their not loaded members at default values. Denial
+        /// (<see cref="MissingOriginDocumentMode.Throw"/>) stays the strict opt-in of the
+        /// references that must not tolerate the inconsistency.
         /// </summary>
         public MissingOriginDocumentMode MissingOriginDocument
         {
@@ -66,6 +70,21 @@ namespace Etherna.MongODM.Core.Serialization.Serializers
         }
 
         public IReadOnlyDictionary<Type, IModelMap> ModelMaps => _modelMaps;
+
+        /// <summary>
+        /// How the documents hosting this reference react when the referenced model is deleted
+        /// through its repository: the reference removed (the default, so a domain delete never
+        /// leaves it dangling), the referencing document deleted, or the reference kept,
+        /// propagated in background by the deletion propagation task. Only domain deletes
+        /// propagate — raw bulk deletes, deletes by other applications, and referencing
+        /// documents of another db context keep their references, found by the missing origin
+        /// references scan.
+        /// </summary>
+        public OriginDeleteMode OriginDelete
+        {
+            get => _originDelete;
+            set => ExecuteConfigAction(() => _originDelete = value);
+        }
 
         // Methods.
         public IReferenceModelMapBuilder<TModel> AddModelMap<TModel>(

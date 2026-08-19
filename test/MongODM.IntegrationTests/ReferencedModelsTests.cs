@@ -240,11 +240,43 @@ namespace Etherna.MongODM.IntegrationTests
         }
 
         [Fact]
+        public async Task MissingOriginDocumentDegradesTheSummaryByDefault()
+        {
+            /* Between a domain delete and its background propagation, the references to the
+             * deleted document legitimately dangle: by default a load finding no origin
+             * document logs a warning and gives up the summary state, reading the never
+             * loaded members at their default values, instead of failing that window with an
+             * exception. */
+
+            // Setup.
+            using var contextHandler = AsyncLocalContext.Instance.InitAsyncLocalContext();
+            var blog = new Blog("blog title");
+            await dbContext.Blogs.CreateAsync(blog);
+            var bookmark = new Bookmark("my bookmark", blog);
+            await dbContext.Bookmarks.CreateAsync(bookmark);
+            await DeleteDocumentAsync(dbContext.Blogs.Name, blog.Id!);
+
+            using var readContextHandler = AsyncLocalContext.Instance.InitAsyncLocalContext();
+            var loadedBookmark = await dbContext.Bookmarks.FindOneAsync(bookmark.Id);
+            var referencedBlog = loadedBookmark.Blog;
+
+            // Action and assert.
+            //the denormalized member reads from the summary, without any load
+            Assert.Equal("blog title", referencedBlog.Title);
+
+            //the load finding no origin document gives up the summary state, without throwing
+            var posts = referencedBlog.Posts;
+            Assert.Empty(posts);
+            Assert.False(((IReferenceable)referencedBlog).IsSummary);
+        }
+
+        [Fact]
         public async Task MissingOriginDocumentDeniesTheLazyLoad()
         {
             /* A referred document deleted from its origin collection is an inconsistency of
-             * the database: the summary can't complete its members, and the reference denies
-             * the load by default, instead of silently reading default values. */
+             * the database: the summary can't complete its members, and this reference
+             * declares the denial of the load, the strict opt-in of a reference that must
+             * not tolerate it. */
 
             // Setup.
             using var contextHandler = AsyncLocalContext.Instance.InitAsyncLocalContext();

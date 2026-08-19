@@ -1,24 +1,35 @@
-﻿// Copyright 2020-present Etherna SA
+// Copyright 2020-present Etherna SA
 // This file is part of MongODM.
-// 
+//
 // MongODM is free software: you can redistribute it and/or modify it under the terms of the
 // GNU Lesser General Public License as published by the Free Software Foundation,
 // either version 3 of the License, or (at your option) any later version.
-// 
+//
 // MongODM is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
 // without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 // See the GNU Lesser General Public License for more details.
-// 
+//
 // You should have received a copy of the GNU Lesser General Public License along with MongODM.
 // If not, see <https://www.gnu.org/licenses/>.
 
-namespace Etherna.MongODM.Core.Domain.Models
-{
-    public interface IEntityModel : IModel
-    { }
+using Etherna.MongODM.Core.Domain.Models;
 
-    public interface IEntityModel<TKey> : IEntityModel
+namespace Etherna.MongODM.IntegrationTests.Models
+{
+    /// <summary>
+    /// An entity living only while its subject royalty does: deleting a track cascades to
+    /// its royalties, and each royalty domain delete cascades here in turn.
+    /// </summary>
+    public class RoyaltyAudit : EntityModelBase<string>
     {
-        TKey Id { get; }
+        // Constructors.
+        public RoyaltyAudit(Royalty subject)
+        {
+            Subject = subject;
+        }
+        protected RoyaltyAudit() { }
+
+        // Properties.
+        public virtual Royalty? Subject { get; protected set; }
     }
 }

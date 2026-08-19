@@ -174,9 +174,10 @@ namespace Etherna.MongODM.IntegrationTests
         public async Task DeletedReferencedModelSkipsTheUpdateWithoutFailing()
         {
             /* A model deleted while its update task was pending has nothing to
-             * propagate: the task skips without failing, so the background executor
-             * doesn't retry forever a task that can never succeed. The referencing
-             * summaries keep their last denormalized values. */
+             * propagate: the update task skips without failing, so the background
+             * executor doesn't retry forever a task that can never succeed. The
+             * references then follow the origin delete policy: removed by default,
+             * by the delete propagation the domain delete enqueued. */
 
             // Setup.
             using var contextHandler = AsyncLocalContext.Instance.InitAsyncLocalContext();
@@ -188,7 +189,7 @@ namespace Etherna.MongODM.IntegrationTests
             blog.AddPost(post);
             await dbContext.Blogs.CreateAsync(blog);
 
-            // Action: update the referenced post, delete it, then execute the enqueued task.
+            // Action: update the referenced post, delete it, then execute the enqueued tasks.
             var loadedPost = await dbContext.Posts.FindOneAsync(post.Id);
             loadedPost.Title = "updated title";
             await dbContext.SaveChangesAsync();
@@ -197,10 +198,11 @@ namespace Etherna.MongODM.IntegrationTests
             await fixture.TaskRunner.ExecutePendingAsync(fixture.ServiceProvider);
 
             // Assert.
-            //the summary keeps the last denormalized value
+            //the update skipped, and the delete propagation removed the references
             var blogsCollection = dbContext.Engine.Database.GetCollection<BsonDocument>("blogs");
             var rawBlog = await blogsCollection.Find(IdFilter(blog.Id)).SingleAsync();
-            Assert.Equal("original title", rawBlog["LastPost"]["Title"].AsString);
+            Assert.Equal(BsonNull.Value, rawBlog["LastPost"]);
+            Assert.Empty(rawBlog["Posts"].AsBsonArray);
         }
 
         [Fact]

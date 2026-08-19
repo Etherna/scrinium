@@ -30,11 +30,16 @@ namespace Etherna.MongODM.IntegrationTests
         IRepository<Blog, string> Blogs { get; }
         IRepository<Bookmark, string> Bookmarks { get; }
         IRepository<Catalog, string> Catalogs { get; }
+        IRepository<Duet, string> Duets { get; }
         IRepository<Item, string> Items { get; }
         IRepository<Message, string> Messages { get; }
+        IRepository<Mixtape, string> Mixtapes { get; }
         IRepository<Post, string> Posts { get; }
         IRepository<Review, string> Reviews { get; }
+        IRepository<RoyaltyAudit, string> RoyaltyAudits { get; }
+        IRepository<Royalty, string> Royalties { get; }
         IRepository<TagBag, string> TagBags { get; }
+        IRepository<Track, string> Tracks { get; }
     }
 
     internal sealed class TestDbContext : DbContext, ITestDbContext
@@ -56,14 +61,19 @@ namespace Etherna.MongODM.IntegrationTests
             });
         public IRepository<Bookmark, string> Bookmarks { get; } = new Repository<Bookmark, string>("bookmarks");
         public IRepository<Catalog, string> Catalogs { get; } = new Repository<Catalog, string>("catalogs");
+        public IRepository<Duet, string> Duets { get; } = new Repository<Duet, string>("duets");
         public IRepository<Item, string> Items { get; } = new Repository<Item, string>("items");
         public IRepository<Message, string> Messages { get; } = new Repository<Message, string>("messages");
+        public IRepository<Mixtape, string> Mixtapes { get; } = new Repository<Mixtape, string>("mixtapes");
         public IRepository<Post, string> Posts { get; } = new Repository<Post, string>("posts");
         public IRepository<Review, string> Reviews { get; } = new Repository<Review, string>("reviews");
+        public IRepository<RoyaltyAudit, string> RoyaltyAudits { get; } = new Repository<RoyaltyAudit, string>("royaltyAudits");
+        public IRepository<Royalty, string> Royalties { get; } = new Repository<Royalty, string>("royalties");
         public IRepository<TagBag, string> TagBags { get; } = new Repository<TagBag, string>("tagBags");
+        public IRepository<Track, string> Tracks { get; } = new Repository<Track, string>("tracks");
 
         // Protected properties.
         protected override IEnumerable<IModelMapsCollector> ModelMapsCollectors =>
-            [new AccountMap(), new BlogMap(), new BookmarkMap(), new CatalogMap(), new ItemMap(), new MessageMap(), new PostMap(), new ReviewMap(), new TagBagMap()];
+            [new AccountMap(), new BlogMap(), new BookmarkMap(), new CatalogMap(), new DuetMap(), new ItemMap(), new MessageMap(), new MixtapeMap(), new PostMap(), new ReviewMap(), new RoyaltyAuditMap(), new RoyaltyMap(), new TagBagMap(), new TrackMap()];
     }
 }

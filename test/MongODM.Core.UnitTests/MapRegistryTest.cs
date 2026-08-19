@@ -42,19 +42,16 @@ namespace Etherna.MongODM.Core
         {
             public IDictionary<string, object>? ExtraElements { get; }
             public virtual BsonArray Id { get; set; } = null!;
-            public void DisposeForDelete() { }
         }
         public class BsonDocumentIdModel : IEntityModel<BsonDocument>
         {
             public IDictionary<string, object>? ExtraElements { get; }
             public virtual BsonDocument Id { get; set; } = null!;
-            public void DisposeForDelete() { }
         }
         public class BsonValueIdModel : IEntityModel<BsonValue>
         {
             public IDictionary<string, object>? ExtraElements { get; }
             public virtual BsonValue Id { get; set; } = null!;
-            public void DisposeForDelete() { }
         }
         public class BsonValueMemberModel
         {
@@ -77,7 +74,6 @@ namespace Etherna.MongODM.Core
         {
             public IDictionary<string, object>? ExtraElements { get; }
             public virtual CompositeKey Id { get; set; } = null!;
-            public void DisposeForDelete() { }
         }
         public sealed class CompositeKey
         {
@@ -112,7 +108,6 @@ namespace Etherna.MongODM.Core
         {
             public IDictionary<string, object>? ExtraElements { get; }
             public virtual IKeyModel Id { get; set; } = null!;
-            public void DisposeForDelete() { }
         }
         public sealed class KeyModel(string value)
         {
@@ -168,7 +163,6 @@ namespace Etherna.MongODM.Core
         {
             public IDictionary<string, object>? ExtraElements { get; }
             public virtual object Id { get; set; } = null!;
-            public void DisposeForDelete() { }
         }
         public class WrongIdModel : FakeEntityModelBase<string>
         {

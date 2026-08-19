@@ -126,9 +126,10 @@ namespace Etherna.MongODM.AspNetCoreSample.Pages
 
         public async Task<IActionResult> OnPostRemovePersonAsync(string id)
         {
-            /* Deleting a person doesn't touch the cats referring them: their documents keep
-             * the dangling summary, readable as the missing origin references that the admin
-             * dashboard finds and removes. */
+            /* Deleting a person removes in background the owner reference from every cat
+             * referring them, per the default origin delete policy of the reference. The
+             * missing origin references section of the admin dashboard covers the deletes
+             * MongODM doesn't see: raw bulk deletes, and deletes by other applications. */
             await sampleDbContext.Persons.DeleteAsync(id);
 
             return RedirectToPage();

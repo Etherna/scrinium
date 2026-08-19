@@ -32,9 +32,6 @@ namespace Etherna.MongODM.Core.FilterDefinition
             // Properties.
             public IDictionary<string, object>? ExtraElements { get; }
             public string[] Id { get; set; } = null!;
-
-            // Methods.
-            public void DisposeForDelete() { }
         }
         public sealed class DocumentKey(string name)
         {
@@ -45,9 +42,6 @@ namespace Etherna.MongODM.Core.FilterDefinition
             // Properties.
             public IDictionary<string, object>? ExtraElements { get; }
             public DocumentKey Id { get; set; } = null!;
-
-            // Methods.
-            public void DisposeForDelete() { }
         }
         /* A custom id serializer emitting a document whose first element name derives from
          * the id value: the serialized shape MODM-222 guards against, since a caller
@@ -76,9 +70,6 @@ namespace Etherna.MongODM.Core.FilterDefinition
             // Properties.
             public IDictionary<string, object>? ExtraElements { get; }
             public string Id { get; set; } = null!;
-
-            // Methods.
-            public void DisposeForDelete() { }
         }
 
         // Tests.

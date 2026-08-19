@@ -14,6 +14,7 @@
 
 using Etherna.MongODM.Core.Domain.Models;
 using Etherna.MongODM.Core.Extensions;
+using Etherna.MongODM.Core.Options;
 using Etherna.MongODM.Core.Repositories;
 using Etherna.MongODM.Core.Serialization.Mapping;
 using Etherna.MongODM.Core.Tasks;
@@ -49,6 +50,68 @@ namespace Etherna.MongODM.Core.Utility
         public bool IsInitialized { get; private set; }
 
         // Methods.
+        public void OnDeletedModel<TKey>(IEntityModel deletedModel, IRepository referenceRepository)
+        {
+            ArgumentNullException.ThrowIfNull(deletedModel);
+            ArgumentNullException.ThrowIfNull(referenceRepository);
+            if (deletedModel is not IEntityModel<TKey>)
+                throw new ArgumentException($"Model is not of type {nameof(IEntityModel<TKey>)}", nameof(deletedModel));
+
+            var deletedModelId = ((IEntityModel<TKey>)deletedModel).Id!;
+
+            // Skip the propagation on a dry run: simulated writes don't alter any document.
+            if (dbContextEngine.ExecutionContext.Items is not null &&
+                DryRunHandler.IsDryRunEnabled(dbContextEngine.ExecutionContext))
+            {
+                logger.DbMaintainerSkippedDependenciesDeleteOnDryRun(
+                    dbContextEngine.Options.DbName,
+                    deletedModelId.ToString()!);
+                return;
+            }
+
+            // Find the reference id member maps declaring a delete propagation policy on the model.
+            /*
+             * Candidates are the reference id members whose reference serializer declares an
+             * origin delete policy other than keeping the reference, can host the deleted model
+             * type, and resolves its source on the repository the model was deleted from:
+             * hierarchically dependent origin repositories can host the same model type, and a
+             * reference sourced elsewhere doesn't point at the deleted document.
+             * The registry is per engine, like the whole propagation: references hosted by the
+             * documents of another db context keep their references.
+             */
+            var deletedModelType = dbContextEngine.ProxyGenerator.PurgeProxyType(deletedModel.GetType());
+            var idMemberMapIds = dbContextEngine.MapRegistry.MemberMapsById.Values
+                .Where(memberMap => memberMap is { IsEntityReferenceMember: true, IsIdMember: true })
+                .Where(memberMap =>
+                    memberMap.TryFindHostingReferenceSerializer() is { } referenceSerializer &&
+                    referenceSerializer.Configuration.OriginDelete != OriginDeleteMode.KeepReference &&
+                    referenceSerializer.ReferenceModelType.IsAssignableFrom(deletedModelType) &&
+                    referenceSerializer.TryResolveSourceRepository(referenceRepository.DbContext) == referenceRepository)
+                .Select(memberMap => memberMap.Id)
+                .ToArray();
+
+            // Skip the enqueue without involved references: the task would have nothing to propagate.
+            if (idMemberMapIds.Length == 0)
+            {
+                logger.DbMaintainerSkippedDependenciesDeleteWithoutPolicies(
+                    dbContextEngine.Options.DbName,
+                    deletedModelId.ToString()!);
+                return;
+            }
+
+            taskRunner.RunDeleteDocDependenciesTask(
+                dbContextEngine.DbContextType,
+                referenceRepository.Name,
+                deletedModelId,
+                idMemberMapIds);
+
+            logger.DbMaintainerEnqueuedDependenciesDeleteTask(
+                dbContextEngine.Options.DbName,
+                deletedModelType,
+                deletedModelId.ToString()!,
+                idMemberMapIds.Length);
+        }
+
         /*
          * Maintain summary information from origin summary documents, pointing to updated referenced document.
          * 

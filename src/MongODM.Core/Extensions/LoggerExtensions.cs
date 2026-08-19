@@ -20,7 +20,7 @@ namespace Etherna.MongODM.Core.Extensions
 {
     /*
      * Always group similar log delegates by type, always use incremental event ids.
-     * Last event id is: 65
+     * Last event id is: 70
      */
     public static class LoggerExtensions
     {
@@ -81,6 +81,12 @@ namespace Etherna.MongODM.Core.Extensions
                 new EventId(30, nameof(DbContextUnregisteredLoadedModel)),
                 "DbContext {DbName} unregistered loaded model with Id {ModelId} of repository {RepositoryName}");
 
+        private static readonly Action<ILogger, string, Type, string, int, Exception> _dbMaintainerEnqueuedDependenciesDeleteTask =
+            LoggerMessage.Define<string, Type, string, int>(
+                LogLevel.Debug,
+                new EventId(66, nameof(DbMaintainerEnqueuedDependenciesDeleteTask)),
+                "DbContext {DbName} enqueued dependencies delete task for deleted model type {ModelType} with Id {ModelId}, involving {IdMemberMapsCount} id member maps");
+
         private static readonly Action<ILogger, string, Type, string, int, Exception> _dbMaintainerEnqueuedDependenciesUpdateTask =
             LoggerMessage.Define<string, Type, string, int>(
                 LogLevel.Trace,
@@ -92,6 +98,18 @@ namespace Etherna.MongODM.Core.Extensions
                 LogLevel.Debug,
                 new EventId(8, nameof(DbMaintainerInitialized)),
                 "DbMaintainer of DbContext {DbName} initialized");
+
+        private static readonly Action<ILogger, string, string, Exception> _dbMaintainerSkippedDependenciesDeleteOnDryRun =
+            LoggerMessage.Define<string, string>(
+                LogLevel.Debug,
+                new EventId(67, nameof(DbMaintainerSkippedDependenciesDeleteOnDryRun)),
+                "DbContext {DbName} skipped dependencies delete of deleted model with Id {ModelId} on dry run");
+
+        private static readonly Action<ILogger, string, string, Exception> _dbMaintainerSkippedDependenciesDeleteWithoutPolicies =
+            LoggerMessage.Define<string, string>(
+                LogLevel.Debug,
+                new EventId(68, nameof(DbMaintainerSkippedDependenciesDeleteWithoutPolicies)),
+                "DbContext {DbName} skipped dependencies delete of deleted model with Id {ModelId}: no reference declares an origin delete policy on it");
 
         private static readonly Action<ILogger, string, string, Exception> _dbMaintainerSkippedDependenciesUpdateOnDryRun =
             LoggerMessage.Define<string, string>(
@@ -110,6 +128,18 @@ namespace Etherna.MongODM.Core.Extensions
                 LogLevel.Debug,
                 new EventId(9, nameof(DbMigrationManagerInitialized)),
                 "DbMigrationManager of DbContext {DbName} initialized");
+
+        private static readonly Action<ILogger, Type, string, string, Exception> _deleteDocDependenciesTaskEnded =
+            LoggerMessage.Define<Type, string, string>(
+                LogLevel.Debug,
+                new EventId(70, nameof(DeleteDocDependenciesTaskEnded)),
+                "DeleteDocDependenciesTask ended on DbContext {DbContextType} with deleted repository {DeletedRepositoryName} to model Id {ModelId}");
+
+        private static readonly Action<ILogger, Type, string, string, IEnumerable<string>, Exception> _deleteDocDependenciesTaskStarted =
+            LoggerMessage.Define<Type, string, string, IEnumerable<string>>(
+                LogLevel.Debug,
+                new EventId(69, nameof(DeleteDocDependenciesTaskStarted)),
+                "DeleteDocDependenciesTask started on DbContext {DbContextType} with deleted repository {DeletedRepositoryName}, propagating deleted model Id {ModelId} on Id's member maps: {IdMemberMapIdentifiers}");
 
         private static readonly Action<ILogger, string, Exception> _discriminatorRegistryInitialized =
             LoggerMessage.Define<string>(
@@ -468,11 +498,20 @@ namespace Etherna.MongODM.Core.Extensions
         public static void DbContextUnregisteredLoadedModel(this ILogger logger, string dbName, string modelId, string repositoryName) =>
             _dbContextUnregisteredLoadedModel(logger, dbName, modelId, repositoryName, null!);
 
+        public static void DbMaintainerEnqueuedDependenciesDeleteTask(this ILogger logger, string dbName, Type modelType, string modelId, int idMemberMapsCount) =>
+            _dbMaintainerEnqueuedDependenciesDeleteTask(logger, dbName, modelType, modelId, idMemberMapsCount, null!);
+
         public static void DbMaintainerEnqueuedDependenciesUpdateTask(this ILogger logger, string dbName, Type modelType, string modelId, int idMemberMapsCount) =>
             _dbMaintainerEnqueuedDependenciesUpdateTask(logger, dbName, modelType, modelId, idMemberMapsCount, null!);
 
         public static void DbMaintainerInitialized(this ILogger logger, string dbName) =>
             _dbMaintainerInitialized(logger, dbName, null!);
+
+        public static void DbMaintainerSkippedDependenciesDeleteOnDryRun(this ILogger logger, string dbName, string modelId) =>
+            _dbMaintainerSkippedDependenciesDeleteOnDryRun(logger, dbName, modelId, null!);
+
+        public static void DbMaintainerSkippedDependenciesDeleteWithoutPolicies(this ILogger logger, string dbName, string modelId) =>
+            _dbMaintainerSkippedDependenciesDeleteWithoutPolicies(logger, dbName, modelId, null!);
 
         public static void DbMaintainerSkippedDependenciesUpdateOnDryRun(this ILogger logger, string dbName, string modelId) =>
             _dbMaintainerSkippedDependenciesUpdateOnDryRun(logger, dbName, modelId, null!);
@@ -497,6 +536,12 @@ namespace Etherna.MongODM.Core.Extensions
 
         public static void DbMigrationStartCleanupFailed(this ILogger logger, string dbMigrationOpId, string dbName, Exception exception) =>
             _dbMigrationStartCleanupFailed(logger, dbMigrationOpId, dbName, exception);
+
+        public static void DeleteDocDependenciesTaskEnded(this ILogger logger, Type dbContextType, string deletedRepositoryName, string modelId) =>
+            _deleteDocDependenciesTaskEnded(logger, dbContextType, deletedRepositoryName, modelId, null!);
+
+        public static void DeleteDocDependenciesTaskStarted(this ILogger logger, Type dbContextType, string deletedRepositoryName, string modelId, IEnumerable<string> idMemberMapIdentifiers) =>
+            _deleteDocDependenciesTaskStarted(logger, dbContextType, deletedRepositoryName, modelId, idMemberMapIdentifiers, null!);
 
         public static void DiscriminatorRegistryInitialized(this ILogger logger, string dbName) =>
             _discriminatorRegistryInitialized(logger, dbName, null!);

@@ -23,7 +23,6 @@ using Etherna.MongODM.Core.Extensions;
 using Etherna.MongODM.Core.FilterDefinition;
 using Etherna.MongODM.Core.ProxyModels;
 using Etherna.MongODM.Core.Serialization.Mapping;
-using Etherna.MongODM.Core.Serialization.Serializers;
 using Etherna.MongODM.Core.Utility;
 using Microsoft.Extensions.Logging;
 using System;
@@ -239,16 +238,15 @@ namespace Etherna.MongODM.Core.Repositories
         {
             ArgumentNullException.ThrowIfNull(model);
 
-            // Unlink dependent models.
-            model.DisposeForDelete();
-            await DbContext.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
-
             // Delete model.
             await DeleteOnDBAsync(model, additionalFilters ?? [], cancellationToken).ConfigureAwait(false);
 
             // Remove from pending changes and loaded models.
             DbContext.RemoveModelTracking(model);
             DbContext.UnregisterLoadedModel(model.Id!, model);
+
+            // Propagate the delete to the documents referencing the model.
+            DbContext.Engine.DbMaintainer.OnDeletedModel<TKey>(model, this);
 
             logger.RepositoryDeletedDocument(Name, DbContext.Engine.Options.DbName, model.Id!.ToString()!);
         }
@@ -1111,7 +1109,7 @@ namespace Etherna.MongODM.Core.Repositories
                     elementPath!,
                     [.. unwindPaths],
                     idMemberMap,
-                    TryResolveSourceRepository(idMemberMap)));
+                    idMemberMap.TryFindHostingReferenceSerializer()?.TryResolveSourceRepository(DbContext)));
             }
 
             // Merge the schemas sharing an id element path into one scan path.
@@ -1152,80 +1150,22 @@ namespace Etherna.MongODM.Core.Repositories
                 var representativeIdMemberMap = pathGroup
                     .OrderByDescending(entry => entry.IdMemberMap.IsGeneratedByActiveSchemas)
                     .First().IdMemberMap;
-                var referenceMemberMap = representativeIdMemberMap.ParentMemberMap!;
-
-                string? pullFieldPath = null;
-                string? pullIdElementPath = null;
-                string? setFieldPath = null;
-                string? arrayFilterIdPath = null;
-                if (referenceMemberMap.InternalElementPath.LastOrDefault() is ArrayElementRepresentation { ItemIndex: null })
+                var removalShape = ReferenceRemovalShape.TryCreate(representativeIdMemberMap);
+                if (removalShape is null)
                 {
-                    // The reference is an array item: removing it pulls it out of its array.
-                    /* The rendered path ends with the positional symbol of the array hosting
-                     * the items, that the $pull addresses as a whole: strip it, keeping the
-                     * "all positions" symbol on any outer array level. */
-                    var renderedPath = referenceMemberMap.RenderElementPath(
-                        referToFinalItem: true,
-                        _ => ".$[]",
-                        _ => throw new MongodmElementPathRenderingException("Can't render field with an unknown document key in path"));
-                    pullFieldPath = renderedPath[..^".$[]".Length];
-                    pullIdElementPath = representativeIdMemberMap.BsonMemberMap.ElementName;
-                }
-                else
-                {
-                    // The reference is a single valued element: removing it sets it to null.
-                    /* Mirror the dependencies update task rendering: every array level above
-                     * the reference addresses all its positions, except the last one, filtered
-                     * on the items nesting the missing origin id. */
-                    var lastUndefinedArrayElement = referenceMemberMap.MemberMapPath
-                        .SelectMany(memberMap => memberMap.InternalElementPath
-                            .OfType<ArrayElementRepresentation>()
-                            .Where(arrayElement => arrayElement.ItemIndex is null))
-                        .LastOrDefault();
-
-                    setFieldPath = referenceMemberMap.RenderElementPath(
-                        referToFinalItem: true,
-                        undefArrayElement =>
-                            undefArrayElement != lastUndefinedArrayElement ?
-                            ".$[]" :
-                            ".$[idfilter]",
-                        _ => throw new MongodmElementPathRenderingException("Can't render field with an unknown document key in path"));
-
-                    if (lastUndefinedArrayElement is not null)
-                        arrayFilterIdPath = $"idfilter{string.Join(".",
-                            representativeIdMemberMap.MemberMapPath
-                                .SkipWhile(memberMap => memberMap != lastUndefinedArrayElement.MemberMap)
-                                .Select(memberMap =>
-                                {
-                                    //if is the member map hosting the filtered array, render internal path only after it
-                                    var internalElementPathToRender = memberMap.InternalElementPath;
-                                    if (memberMap == lastUndefinedArrayElement.MemberMap)
-                                        internalElementPathToRender = internalElementPathToRender.Reverse()
-                                                                                                 .TakeWhile(element => element != lastUndefinedArrayElement)
-                                                                                                 .Reverse();
-
-                                    var renderedInternalElementPath = MemberMapRenderHelper.RenderInternalItemElementPath(
-                                        internalElementPathToRender,
-                                        _ => throw new MongodmElementPathRenderingException("Can't exist arrays with undefined index here"),
-                                        _ => throw new MongodmElementPathRenderingException("Can't render field with an unknown document key in path"));
-
-                                    return memberMap != lastUndefinedArrayElement.MemberMap ?
-                                        memberMap.BsonMemberMap.ElementName + renderedInternalElementPath :
-                                        renderedInternalElementPath;
-                                }))}";
+                    //the walk above already gated these path shapes: keep the report coherent anyway
+                    unverifiableElementPaths.Add(pathGroup.First().ElementPath);
+                    continue;
                 }
 
                 scanPaths.Add(new ReferenceScanPath(
-                    arrayFilterIdPath: arrayFilterIdPath,
                     elementPath: pathGroup.First().ElementPath,
                     idElementPath: pathGroup.Key,
                     originCollections: originRepositories
                         .Select(repository => repository.DbContext.Engine.GetMongoCollection<BsonDocument>(repository.Name, isReadOnly: true))
                         .ToArray(),
                     originRepositoryNames: originRepositories.Select(repository => repository.Name).ToArray(),
-                    pullFieldPath: pullFieldPath,
-                    pullIdElementPath: pullIdElementPath,
-                    setFieldPath: setFieldPath,
+                    removalShape: removalShape,
                     unwindPaths: unwindPaths));
             }
 
@@ -1446,53 +1386,6 @@ namespace Etherna.MongODM.Core.Repositories
             return true;
         }
 
-        private IRepository? TryResolveSourceRepository(IMemberMap idMemberMap)
-        {
-            /* The serializer hosting the reference sub-document is the parent member one,
-             * unwrapped from its container serializers like the internal element path walk
-             * does. Self reporting serializers close the walk, instead of looping. */
-            var serializer = idMemberMap.ParentMemberMap!.Serializer;
-            HashSet<IBsonSerializer> exploredSerializers = [];
-            while (exploredSerializers.Add(serializer))
-            {
-                if (serializer is IReferenceSerializer referenceSerializer)
-                {
-                    try
-                    {
-                        return referenceSerializer.SourceRepositorySelector?.Invoke(DbContext);
-                    }
-                    catch (InvalidOperationException)
-                    {
-                        /* A source declared on a db context not reachable from the current
-                         * scope: the path reports as unverifiable, instead of failing the
-                         * whole scan. */
-                        return null;
-                    }
-                }
-
-                if (serializer is IBsonDictionarySerializer dictionarySerializer)
-                {
-                    try
-                    {
-                        serializer = dictionarySerializer.ValueSerializer;
-                        continue;
-                    }
-                    catch { }
-                }
-
-                if (serializer is IBsonArraySerializer arraySerializer &&
-                    arraySerializer.TryGetItemSerializationInfo(out var itemSerializationInfo))
-                {
-                    serializer = itemSerializationInfo.Serializer;
-                    continue;
-                }
-
-                break;
-            }
-
-            return null;
-        }
-
         private BsonDocument? TrySerializeModelBsonDocument(TModel model)
         {
             //an unmapped model can't be serialized, so it can't be change tracked either.
@@ -1649,17 +1542,14 @@ namespace Etherna.MongODM.Core.Repositories
         /* One verifiable reference id element path of the collection documents, with
          * everything precomputed to scan and repair it: the unwinds and the id element path
          * reading the referenced ids, the origin collections verifying their existence, and
-         * the update shape removing a reference — pulled out of its array when the reference
-         * is an array item, set to null otherwise. */
+         * the removal shape repairing a reference — pulled out of its array when the
+         * reference is an array item, set to null otherwise. */
         private sealed class ReferenceScanPath(
-            string? arrayFilterIdPath,
             string elementPath,
             string idElementPath,
             IReadOnlyCollection<IMongoCollection<BsonDocument>> originCollections,
             IReadOnlyCollection<string> originRepositoryNames,
-            string? pullFieldPath,
-            string? pullIdElementPath,
-            string? setFieldPath,
+            ReferenceRemovalShape removalShape,
             IReadOnlyCollection<string> unwindPaths)
         {
             // Properties.
@@ -1672,22 +1562,12 @@ namespace Etherna.MongODM.Core.Repositories
             // Methods.
             public (UpdateDefinition<TModel> Update, UpdateOptions? Options) BuildRemoveReferenceUpdate(BsonValue missingOriginId)
             {
-                if (pullFieldPath is not null)
-                    return (
-                        new BsonDocument("$pull", new BsonDocument(
-                            pullFieldPath,
-                            new BsonDocument(pullIdElementPath!, new BsonDocument("$eq", missingOriginId)))),
-                        null);
-
+                var (update, arrayFilter) = removalShape.BuildUpdate(missingOriginId);
                 return (
-                    new BsonDocument("$set", new BsonDocument(setFieldPath!, BsonNull.Value)),
-                    arrayFilterIdPath is null ? null : new UpdateOptions
+                    update,
+                    arrayFilter is null ? null : new UpdateOptions
                     {
-                        ArrayFilters =
-                        [
-                            new BsonDocumentArrayFilterDefinition<BsonDocument>(
-                                new BsonDocument(arrayFilterIdPath, new BsonDocument("$eq", missingOriginId)))
-                        ]
+                        ArrayFilters = [new BsonDocumentArrayFilterDefinition<BsonDocument>(arrayFilter)]
                     });
             }
         }
