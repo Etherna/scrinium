@@ -29,6 +29,7 @@ namespace Etherna.MongODM.IntegrationTests
         IRepository<Post, string> ArchivedPosts { get; }
         IRepository<Blog, string> Blogs { get; }
         IRepository<Bookmark, string> Bookmarks { get; }
+        IRepository<Catalog, string> Catalogs { get; }
         IRepository<Item, string> Items { get; }
         IRepository<Message, string> Messages { get; }
         IRepository<Post, string> Posts { get; }
@@ -54,6 +55,7 @@ namespace Etherna.MongODM.IntegrationTests
                 ]
             });
         public IRepository<Bookmark, string> Bookmarks { get; } = new Repository<Bookmark, string>("bookmarks");
+        public IRepository<Catalog, string> Catalogs { get; } = new Repository<Catalog, string>("catalogs");
         public IRepository<Item, string> Items { get; } = new Repository<Item, string>("items");
         public IRepository<Message, string> Messages { get; } = new Repository<Message, string>("messages");
         public IRepository<Post, string> Posts { get; } = new Repository<Post, string>("posts");
@@ -62,6 +64,6 @@ namespace Etherna.MongODM.IntegrationTests
 
         // Protected properties.
         protected override IEnumerable<IModelMapsCollector> ModelMapsCollectors =>
-            [new AccountMap(), new BlogMap(), new BookmarkMap(), new ItemMap(), new MessageMap(), new PostMap(), new ReviewMap(), new TagBagMap()];
+            [new AccountMap(), new BlogMap(), new BookmarkMap(), new CatalogMap(), new ItemMap(), new MessageMap(), new PostMap(), new ReviewMap(), new TagBagMap()];
     }
 }

@@ -22,6 +22,8 @@ using Etherna.MongODM.Core.Exceptions;
 using Etherna.MongODM.Core.Extensions;
 using Etherna.MongODM.Core.FilterDefinition;
 using Etherna.MongODM.Core.ProxyModels;
+using Etherna.MongODM.Core.Serialization.Mapping;
+using Etherna.MongODM.Core.Serialization.Serializers;
 using Etherna.MongODM.Core.Utility;
 using Microsoft.Extensions.Logging;
 using System;
@@ -29,6 +31,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Linq.Expressions;
 using System.Reflection;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -46,6 +49,9 @@ namespace Etherna.MongODM.Core.Repositories
          * chunking bounds the query command size and the materialized result, whatever
          * the caller batch size. */
         private const int LoadFullModelsChunkSize = 1000;
+        /* The referenced ids of a missing origin references scan verify their existence
+         * with one $in read per chunk, bounded the same way. */
+        private const int ScanReferencedIdsChunkSize = 1000;
         
         // Fields.
         private ILogger logger = null!;
@@ -328,6 +334,50 @@ namespace Etherna.MongODM.Core.Repositories
             }
         }
 
+        public virtual Task<MissingOriginReferencesReport> FindMissingOriginReferencesAsync(
+            CancellationToken cancellationToken = default) =>
+            AccessToCollectionAsync(async collection =>
+            {
+                var (scanPaths, unverifiableElementPaths) = BuildReferenceScanPaths();
+
+                var pathReports = new List<MissingOriginReferencesPathReport>();
+                foreach (var scanPath in scanPaths)
+                {
+                    var missingOriginIdsCount = 0L;
+                    List<BsonValue> trackedMissingOriginIds = [];
+                    await ScanMissingOriginIdsAsync(collection, scanPath, missingOriginIds =>
+                    {
+                        missingOriginIdsCount += missingOriginIds.Count;
+                        trackedMissingOriginIds.AddRange(missingOriginIds.Take(
+                            MissingOriginReferencesPathReport.MaxTrackedMissingOriginIds - trackedMissingOriginIds.Count));
+                        return Task.CompletedTask;
+                    }, cancellationToken).ConfigureAwait(false);
+
+                    // Count the documents carrying a reference to a tracked missing origin id.
+                    /* The count addresses the tracked ids: when the tracking cap drops some
+                     * of them, it is a lower bound of the documents to repair. */
+                    var referencingDocumentsCount = 0L;
+                    if (trackedMissingOriginIds.Count > 0)
+                        referencingDocumentsCount = await collection.CountDocumentsAsync(
+                            new BsonDocument(scanPath.IdElementPath, new BsonDocument("$in", new BsonArray(trackedMissingOriginIds))),
+                            cancellationToken: cancellationToken).ConfigureAwait(false);
+
+                    pathReports.Add(new MissingOriginReferencesPathReport(
+                        scanPath.ElementPath,
+                        scanPath.OriginRepositoryNames,
+                        missingOriginIdsCount,
+                        trackedMissingOriginIds.Select(id => id.ToString()!).ToArray(),
+                        referencingDocumentsCount));
+                }
+
+                logger.RepositoryFoundMissingOriginReferences(
+                    Name,
+                    DbContext.Engine.Options.DbName,
+                    pathReports.Sum(pathReport => pathReport.MissingOriginIdsCount));
+
+                return new MissingOriginReferencesReport(pathReports, unverifiableElementPaths);
+            });
+
         public async Task<object> FindOneAsync(object id, CancellationToken cancellationToken = default) =>
             await FindOneAsync((TKey)id, cancellationToken).ConfigureAwait(false);
 
@@ -458,6 +508,64 @@ namespace Etherna.MongODM.Core.Repositories
                 totalModels,
                 page,
                 take);
+        }
+
+        public virtual Task<MissingOriginReferencesRemovalReport> RemoveMissingOriginReferencesAsync(
+            CancellationToken cancellationToken = default)
+        {
+            /* Fail fast on a read-only repository: every write on its collection is denied,
+             * so a removal could only fail at its first found missing origin reference. */
+            if (IsReadOnly)
+                throw new UnauthorizedAccessException(
+                    $"Can't remove missing origin references from collection \"{Name}\": the repository is read-only");
+
+            return AccessToCollectionAsync(async collection =>
+            {
+                var (scanPaths, unverifiableElementPaths) = BuildReferenceScanPaths();
+
+                var pathRemovals = new List<MissingOriginReferencesPathRemoval>();
+                foreach (var scanPath in scanPaths)
+                {
+                    var missingOriginIdsCount = 0L;
+                    var updatedDocumentsCount = 0L;
+                    await ScanMissingOriginIdsAsync(collection, scanPath, async missingOriginIds =>
+                    {
+                        /* Each update addresses the documents still carrying that missing
+                         * origin id at the path: a reference concurrently rewritten to
+                         * another document doesn't match anymore, and stays untouched. */
+                        foreach (var missingOriginId in missingOriginIds)
+                        {
+                            var (update, updateOptions) = scanPath.BuildRemoveReferenceUpdate(missingOriginId);
+                            var updateResult = await collection.UpdateManyAsync(
+                                new BsonDocument(scanPath.IdElementPath, new BsonDocument("$eq", missingOriginId)),
+                                update,
+                                updateOptions,
+                                cancellationToken).ConfigureAwait(false);
+
+                            updatedDocumentsCount += updateResult.ModifiedCount;
+                            logger.RepositoryRemovedMissingOriginReference(
+                                Name,
+                                DbContext.Engine.Options.DbName,
+                                scanPath.ElementPath,
+                                missingOriginId.ToString()!);
+                        }
+                        missingOriginIdsCount += missingOriginIds.Count;
+                    }, cancellationToken).ConfigureAwait(false);
+
+                    pathRemovals.Add(new MissingOriginReferencesPathRemoval(
+                        scanPath.ElementPath,
+                        missingOriginIdsCount,
+                        updatedDocumentsCount));
+                }
+
+                logger.RepositoryRemovedMissingOriginReferences(
+                    Name,
+                    DbContext.Engine.Options.DbName,
+                    pathRemovals.Sum(pathRemoval => pathRemoval.MissingOriginIdsCount),
+                    pathRemovals.Sum(pathRemoval => pathRemoval.UpdatedDocumentsCount));
+
+                return new MissingOriginReferencesRemovalReport(pathRemovals, unverifiableElementPaths);
+            });
         }
 
         public virtual Task ReplaceAsync(
@@ -930,6 +1038,200 @@ namespace Etherna.MongODM.Core.Repositories
         }
 
         // Helpers.
+        private (IReadOnlyCollection<ReferenceScanPath> ScanPaths, IReadOnlyCollection<string> UnverifiableElementPaths) BuildReferenceScanPaths()
+        {
+            /* The reference id member maps of every document the collection can store: those
+             * of the concrete model types assignable to the repository model type, from every
+             * registered schema — a reference written by a since deprecated schema still
+             * points to its origin document. */
+            var idMemberMaps = DbContext.Engine.MapRegistry.MapsByModelType.Values
+                .OfType<IModelMap>()
+                .Where(map => !map.ModelType.IsAbstract && typeof(TModel).IsAssignableFrom(map.ModelType))
+                .SelectMany(map => map.AllDescendingMemberMaps)
+                .Where(memberMap => memberMap is { IsEntityReferenceMember: true, IsIdMember: true });
+
+            var unverifiableElementPaths = new SortedSet<string>(StringComparer.Ordinal);
+            List<(string IdElementPath, string ElementPath, string[] UnwindPaths, IMemberMap IdMemberMap, IRepository? OriginRepository)> scanEntries = [];
+            foreach (var idMemberMap in idMemberMaps)
+            {
+                // Walk the element path, planning one unwind per array level.
+                /* The id element path is the dotted query path of the referenced ids, arrays
+                 * traversed implicitly; the aggregation reading them flattens each array level
+                 * with an unwind at its dotted prefix instead. The reference element path is
+                 * captured at the reference member's own element name, naming the path in the
+                 * reports. */
+                string? elementPath = null;
+                var idElementPath = new StringBuilder();
+                List<string> unwindPaths = [];
+                var isVerifiable = true;
+                foreach (var pathMemberMap in idMemberMap.MemberMapPath)
+                {
+                    if (idElementPath.Length > 0)
+                        idElementPath.Append('.');
+                    idElementPath.Append(pathMemberMap.BsonMemberMap.ElementName);
+                    if (pathMemberMap == idMemberMap.ParentMemberMap)
+                        elementPath = idElementPath.ToString();
+
+                    foreach (var element in pathMemberMap.InternalElementPath)
+                    {
+                        switch (element)
+                        {
+                            case ArrayElementRepresentation { ItemIndex: null }:
+                                unwindPaths.Add(idElementPath.ToString());
+                                break;
+                            case DocumentElementRepresentation { ElementName: { } documentElementName }:
+                                idElementPath.Append('.').Append(documentElementName);
+                                break;
+                            default:
+                                /* An unknown document key (a dictionary in document
+                                 * representation), and a fixed array position (the value slot
+                                 * of an ArrayOfArrays dictionary), can't be addressed by the
+                                 * aggregation reading the referenced ids. */
+                                isVerifiable = false;
+                                break;
+                        }
+                        if (!isVerifiable)
+                            break;
+                    }
+                    if (!isVerifiable)
+                        break;
+                }
+
+                if (!isVerifiable)
+                {
+                    unverifiableElementPaths.Add(idMemberMap.ParentMemberMap!.RenderElementPath(
+                        referToFinalItem: false,
+                        _ => "",
+                        _ => ".*"));
+                    continue;
+                }
+
+                scanEntries.Add((
+                    idElementPath.ToString(),
+                    elementPath!,
+                    [.. unwindPaths],
+                    idMemberMap,
+                    TryResolveSourceRepository(idMemberMap)));
+            }
+
+            // Merge the schemas sharing an id element path into one scan path.
+            var scanPaths = new List<ReferenceScanPath>();
+            foreach (var pathGroup in scanEntries
+                .GroupBy(entry => entry.IdElementPath, StringComparer.Ordinal)
+                .OrderBy(group => group.Key, StringComparer.Ordinal))
+            {
+                // A path whose origin repository doesn't resolve can't verify its ids.
+                var originRepositories = pathGroup
+                    .Select(entry => entry.OriginRepository)
+                    .OfType<IRepository>()
+                    .Distinct()
+                    .OrderBy(repository => repository.Name, StringComparer.Ordinal)
+                    .ToArray();
+                if (originRepositories.Length == 0)
+                {
+                    unverifiableElementPaths.Add(pathGroup.First().ElementPath);
+                    continue;
+                }
+
+                /* Schemas sharing the id element path can wrap different array levels around
+                 * it: an unwind passes a non array value through, so the merged plan takes the
+                 * highest repetitions count of each prefix, flattening every shape. The
+                 * prefixes nest along the path, so their length orders the stages. */
+                var unwindCountsByPrefix = new Dictionary<string, int>(StringComparer.Ordinal);
+                foreach (var (_, _, entryUnwindPaths, _, _) in pathGroup)
+                    foreach (var prefixGroup in entryUnwindPaths.GroupBy(path => path, StringComparer.Ordinal))
+                        unwindCountsByPrefix[prefixGroup.Key] = Math.Max(
+                            unwindCountsByPrefix.GetValueOrDefault(prefixGroup.Key, 0),
+                            prefixGroup.Count());
+                var unwindPaths = unwindCountsByPrefix
+                    .OrderBy(pair => pair.Key.Length)
+                    .SelectMany(pair => Enumerable.Repeat(pair.Key, pair.Value))
+                    .ToArray();
+
+                // The removal shape follows the active schemas when they generate the path.
+                var representativeIdMemberMap = pathGroup
+                    .OrderByDescending(entry => entry.IdMemberMap.IsGeneratedByActiveSchemas)
+                    .First().IdMemberMap;
+                var referenceMemberMap = representativeIdMemberMap.ParentMemberMap!;
+
+                string? pullFieldPath = null;
+                string? pullIdElementPath = null;
+                string? setFieldPath = null;
+                string? arrayFilterIdPath = null;
+                if (referenceMemberMap.InternalElementPath.LastOrDefault() is ArrayElementRepresentation { ItemIndex: null })
+                {
+                    // The reference is an array item: removing it pulls it out of its array.
+                    /* The rendered path ends with the positional symbol of the array hosting
+                     * the items, that the $pull addresses as a whole: strip it, keeping the
+                     * "all positions" symbol on any outer array level. */
+                    var renderedPath = referenceMemberMap.RenderElementPath(
+                        referToFinalItem: true,
+                        _ => ".$[]",
+                        _ => throw new MongodmElementPathRenderingException("Can't render field with an unknown document key in path"));
+                    pullFieldPath = renderedPath[..^".$[]".Length];
+                    pullIdElementPath = representativeIdMemberMap.BsonMemberMap.ElementName;
+                }
+                else
+                {
+                    // The reference is a single valued element: removing it sets it to null.
+                    /* Mirror the dependencies update task rendering: every array level above
+                     * the reference addresses all its positions, except the last one, filtered
+                     * on the items nesting the missing origin id. */
+                    var lastUndefinedArrayElement = referenceMemberMap.MemberMapPath
+                        .SelectMany(memberMap => memberMap.InternalElementPath
+                            .OfType<ArrayElementRepresentation>()
+                            .Where(arrayElement => arrayElement.ItemIndex is null))
+                        .LastOrDefault();
+
+                    setFieldPath = referenceMemberMap.RenderElementPath(
+                        referToFinalItem: true,
+                        undefArrayElement =>
+                            undefArrayElement != lastUndefinedArrayElement ?
+                            ".$[]" :
+                            ".$[idfilter]",
+                        _ => throw new MongodmElementPathRenderingException("Can't render field with an unknown document key in path"));
+
+                    if (lastUndefinedArrayElement is not null)
+                        arrayFilterIdPath = $"idfilter{string.Join(".",
+                            representativeIdMemberMap.MemberMapPath
+                                .SkipWhile(memberMap => memberMap != lastUndefinedArrayElement.MemberMap)
+                                .Select(memberMap =>
+                                {
+                                    //if is the member map hosting the filtered array, render internal path only after it
+                                    var internalElementPathToRender = memberMap.InternalElementPath;
+                                    if (memberMap == lastUndefinedArrayElement.MemberMap)
+                                        internalElementPathToRender = internalElementPathToRender.Reverse()
+                                                                                                 .TakeWhile(element => element != lastUndefinedArrayElement)
+                                                                                                 .Reverse();
+
+                                    var renderedInternalElementPath = MemberMapRenderHelper.RenderInternalItemElementPath(
+                                        internalElementPathToRender,
+                                        _ => throw new MongodmElementPathRenderingException("Can't exist arrays with undefined index here"),
+                                        _ => throw new MongodmElementPathRenderingException("Can't render field with an unknown document key in path"));
+
+                                    return memberMap != lastUndefinedArrayElement.MemberMap ?
+                                        memberMap.BsonMemberMap.ElementName + renderedInternalElementPath :
+                                        renderedInternalElementPath;
+                                }))}";
+                }
+
+                scanPaths.Add(new ReferenceScanPath(
+                    arrayFilterIdPath: arrayFilterIdPath,
+                    elementPath: pathGroup.First().ElementPath,
+                    idElementPath: pathGroup.Key,
+                    originCollections: originRepositories
+                        .Select(repository => repository.DbContext.Engine.GetMongoCollection<BsonDocument>(repository.Name, isReadOnly: true))
+                        .ToArray(),
+                    originRepositoryNames: originRepositories.Select(repository => repository.Name).ToArray(),
+                    pullFieldPath: pullFieldPath,
+                    pullIdElementPath: pullIdElementPath,
+                    setFieldPath: setFieldPath,
+                    unwindPaths: unwindPaths));
+            }
+
+            return (scanPaths, unverifiableElementPaths);
+        }
+
         private void CaptureCreatedModelsDocuments(IEnumerable<TModel> models)
         {
             //capture the model documents of the created models, so their later changes are saved.
@@ -1035,6 +1337,70 @@ namespace Etherna.MongODM.Core.Repositories
             }
         }
 
+        private static async Task ScanMissingOriginIdsAsync(
+            IMongoCollection<TModel> collection,
+            ReferenceScanPath scanPath,
+            Func<IReadOnlyCollection<BsonValue>, Task> onMissingOriginIdsAsync,
+            CancellationToken cancellationToken)
+        {
+            // Read the distinct referenced ids of the path server side.
+            /* One unwind per array level flattens the containers (a non array value passes
+             * through as a single item), so the group runs on scalar referenced ids and the
+             * cursor streams them without materializing the whole set; disk use is allowed,
+             * since the distinct ids of a large collection can exceed the memory limit of the
+             * group stage. Null ids group with the documents not carrying the path, dropped
+             * by the match: a null reference addresses no origin document. */
+            List<BsonDocument> stages = [];
+            stages.AddRange(scanPath.UnwindPaths.Select(unwindPath => new BsonDocument("$unwind", "$" + unwindPath)));
+            stages.Add(new BsonDocument("$group", new BsonDocument("_id", "$" + scanPath.IdElementPath)));
+            stages.Add(new BsonDocument("$match", new BsonDocument("_id", new BsonDocument("$ne", BsonNull.Value))));
+
+            var referencedIdsChunk = new List<BsonValue>(ScanReferencedIdsChunkSize);
+            using (var referencedIdsCursor = await collection.AggregateAsync(
+                PipelineDefinition<TModel, BsonDocument>.Create(stages),
+                new AggregateOptions { AllowDiskUse = true },
+                cancellationToken).ConfigureAwait(false))
+            {
+                while (await referencedIdsCursor.MoveNextAsync(cancellationToken).ConfigureAwait(false))
+                    foreach (var referencedIdGroup in referencedIdsCursor.Current)
+                    {
+                        referencedIdsChunk.Add(referencedIdGroup["_id"]);
+                        if (referencedIdsChunk.Count == ScanReferencedIdsChunkSize)
+                        {
+                            await ProcessReferencedIdsChunkAsync().ConfigureAwait(false);
+                            referencedIdsChunk.Clear();
+                        }
+                    }
+            }
+            if (referencedIdsChunk.Count > 0)
+                await ProcessReferencedIdsChunkAsync().ConfigureAwait(false);
+
+            async Task ProcessReferencedIdsChunkAsync()
+            {
+                // Verify the chunk with one $in read per origin collection.
+                /* An id found on any origin collection is not missing: with hierarchically
+                 * dependent origin repositories, the same path can source from more than one
+                 * collection. The ids are compared as stored, without deserializing them. */
+                HashSet<BsonValue> missingOriginIds = [.. referencedIdsChunk];
+                foreach (var originCollection in scanPath.OriginCollections)
+                {
+                    if (missingOriginIds.Count == 0)
+                        break;
+
+                    using var originIdsCursor = await originCollection.FindAsync(
+                        new BsonDocument(IdElementName, new BsonDocument("$in", new BsonArray(missingOriginIds))),
+                        new FindOptions<BsonDocument, BsonDocument> { Projection = new BsonDocument(IdElementName, 1) },
+                        cancellationToken).ConfigureAwait(false);
+                    while (await originIdsCursor.MoveNextAsync(cancellationToken).ConfigureAwait(false))
+                        foreach (var originDocument in originIdsCursor.Current)
+                            missingOriginIds.Remove(originDocument[IdElementName]);
+                }
+
+                if (missingOriginIds.Count > 0)
+                    await onMissingOriginIdsAsync(missingOriginIds).ConfigureAwait(false);
+            }
+        }
+
         private static BsonValue SerializeMemberValue(BsonMemberMap memberMap, object? memberValue)
         {
             var document = new BsonDocument();
@@ -1078,6 +1444,53 @@ namespace Etherna.MongODM.Core.Repositories
 
             idProvider.SetDocumentId(model, idGenerator.GenerateId(container: null!, document: model));
             return true;
+        }
+
+        private IRepository? TryResolveSourceRepository(IMemberMap idMemberMap)
+        {
+            /* The serializer hosting the reference sub-document is the parent member one,
+             * unwrapped from its container serializers like the internal element path walk
+             * does. Self reporting serializers close the walk, instead of looping. */
+            var serializer = idMemberMap.ParentMemberMap!.Serializer;
+            HashSet<IBsonSerializer> exploredSerializers = [];
+            while (exploredSerializers.Add(serializer))
+            {
+                if (serializer is IReferenceSerializer referenceSerializer)
+                {
+                    try
+                    {
+                        return referenceSerializer.SourceRepositorySelector?.Invoke(DbContext);
+                    }
+                    catch (InvalidOperationException)
+                    {
+                        /* A source declared on a db context not reachable from the current
+                         * scope: the path reports as unverifiable, instead of failing the
+                         * whole scan. */
+                        return null;
+                    }
+                }
+
+                if (serializer is IBsonDictionarySerializer dictionarySerializer)
+                {
+                    try
+                    {
+                        serializer = dictionarySerializer.ValueSerializer;
+                        continue;
+                    }
+                    catch { }
+                }
+
+                if (serializer is IBsonArraySerializer arraySerializer &&
+                    arraySerializer.TryGetItemSerializationInfo(out var itemSerializationInfo))
+                {
+                    serializer = itemSerializationInfo.Serializer;
+                    continue;
+                }
+
+                break;
+            }
+
+            return null;
         }
 
         private BsonDocument? TrySerializeModelBsonDocument(TModel model)
@@ -1230,6 +1643,53 @@ namespace Etherna.MongODM.Core.Repositories
 
                 logger.RepositoryReplacedDocument(Name, DbContext.Engine.Options.DbName, model.Id!.ToString()!);
             }).ConfigureAwait(false);
+        }
+
+        // Nested types.
+        /* One verifiable reference id element path of the collection documents, with
+         * everything precomputed to scan and repair it: the unwinds and the id element path
+         * reading the referenced ids, the origin collections verifying their existence, and
+         * the update shape removing a reference — pulled out of its array when the reference
+         * is an array item, set to null otherwise. */
+        private sealed class ReferenceScanPath(
+            string? arrayFilterIdPath,
+            string elementPath,
+            string idElementPath,
+            IReadOnlyCollection<IMongoCollection<BsonDocument>> originCollections,
+            IReadOnlyCollection<string> originRepositoryNames,
+            string? pullFieldPath,
+            string? pullIdElementPath,
+            string? setFieldPath,
+            IReadOnlyCollection<string> unwindPaths)
+        {
+            // Properties.
+            public string ElementPath { get; } = elementPath;
+            public string IdElementPath { get; } = idElementPath;
+            public IReadOnlyCollection<IMongoCollection<BsonDocument>> OriginCollections { get; } = originCollections;
+            public IReadOnlyCollection<string> OriginRepositoryNames { get; } = originRepositoryNames;
+            public IReadOnlyCollection<string> UnwindPaths { get; } = unwindPaths;
+
+            // Methods.
+            public (UpdateDefinition<TModel> Update, UpdateOptions? Options) BuildRemoveReferenceUpdate(BsonValue missingOriginId)
+            {
+                if (pullFieldPath is not null)
+                    return (
+                        new BsonDocument("$pull", new BsonDocument(
+                            pullFieldPath,
+                            new BsonDocument(pullIdElementPath!, new BsonDocument("$eq", missingOriginId)))),
+                        null);
+
+                return (
+                    new BsonDocument("$set", new BsonDocument(setFieldPath!, BsonNull.Value)),
+                    arrayFilterIdPath is null ? null : new UpdateOptions
+                    {
+                        ArrayFilters =
+                        [
+                            new BsonDocumentArrayFilterDefinition<BsonDocument>(
+                                new BsonDocument(arrayFilterIdPath, new BsonDocument("$eq", missingOriginId)))
+                        ]
+                    });
+            }
         }
     }
 }

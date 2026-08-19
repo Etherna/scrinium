@@ -107,7 +107,7 @@ Five NuGet packages are published, from the full stack down to the single compon
 | [**MongODM**](https://www.nuget.org/packages/MongODM/) | **Start here.** Meta package wiring the full default stack (ASP.NET Core + Hangfire) behind a single entry point, `AddMongODMWithHangfire`. | `MongODM.AspNetCore`, `MongODM.Hangfire` |
 | [**MongODM.Core**](https://www.nuget.org/packages/MongODM.Core/) | The framework itself: mapping, serialization, repositories, db contexts, migrations and tasks. Host-agnostic, always pulled in transitively. Reference it directly for a non-ASP.NET host, or to implement custom components. | — |
 | [**MongODM.AspNetCore**](https://www.nuget.org/packages/MongODM.AspNetCore/) | ASP.NET Core integration with a task runner **other than Hangfire**: the `AddMongODM` configuration builder, db context registration, execution context wiring. | `MongODM.Core` |
-| [**MongODM.AspNetCore.UI**](https://www.nuget.org/packages/MongODM.AspNetCore.UI/) | The optional admin dashboard, a Razor Pages area monitoring db contexts, their model schemas, their document structures, and running migrations. | `MongODM.AspNetCore` |
+| [**MongODM.AspNetCore.UI**](https://www.nuget.org/packages/MongODM.AspNetCore.UI/) | The optional admin dashboard, a Razor Pages area monitoring db contexts, their model schemas, their document structures, their missing origin references, and running migrations. | `MongODM.AspNetCore` |
 | [**MongODM.Hangfire**](https://www.nuget.org/packages/MongODM.Hangfire/) | Scheduling MongODM's maintenance tasks on Hangfire. Pair it with `MongODM.AspNetCore` when you compose the stack yourself. | `MongODM.Core` |
 
 ## Installation
@@ -349,7 +349,10 @@ to tolerate it, silently or logging a warning. Rename that person and save: ever
 updated in background. Link a person that was never persisted, and saving the cat creates them first.
 The admin dashboard renders the whole structure of the documents of each collection, one per registered
 schema, tagging the elements that carry such a summary and expanding the members denormalized into
-them: its document structures section tells how a document looks in the database.
+them: its document structures section tells how a document looks in the database. Its missing origin
+references section finds, collection by collection, the references whose origin document doesn't exist
+anymore, and can remove them: array items are pulled out of their arrays, single references are set to
+null.
 
 ## Documentation
 

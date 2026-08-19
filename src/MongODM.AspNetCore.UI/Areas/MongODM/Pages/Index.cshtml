@@ -240,6 +240,43 @@
                     </div>
                 }
             </details>
+
+            <details class="missing-origin-references">
+                <summary>Missing origin references</summary>
+
+                <p class="muted">
+                    The references of each collection whose origin document doesn't exist anymore, and their removal.
+                    @{
+                        RenderInfoTip(@<text>
+                            A reference carries the id of its origin document: when that document doesn't
+                            exist anymore on its collection, loading the reference finds nothing. The scan
+                            reads every referenced id of the collection and verifies it against the origin
+                            collection, so it runs only on request, one collection at a time. The removal
+                            scans again and repairs what it verifies: a reference hosted as an array item is
+                            pulled out of its array, any other one is set to null, reading as a null
+                            reference from then on. Reference paths the scan can't verify are listed apart,
+                            and stay untouched.
+                        </text>);
+                    }
+                </p>
+
+                @foreach (var repository in context.RepositoryRegistry.Repositories.OrderBy(r => r.Name))
+                {
+                    <div class="missing-origin-collection" data-repository="@repository.Name">
+                        <div class="missing-origin-collection-header">
+                            <h4>@repository.Name</h4>
+                            <button type="button" class="btn secondary" data-role="scan-references">Scan references</button>
+                            @if (!repository.IsReadOnly)
+                            {
+                                <button type="button" class="btn" data-role="remove-references" hidden>Remove references</button>
+                            }
+                        </div>
+
+                        <p class="muted" data-role="removal-outcome" hidden></p>
+                        <div data-role="scan-results"></div>
+                    </div>
+                }
+            </details>
         </section>
     }
 </div>

@@ -20,7 +20,7 @@ namespace Etherna.MongODM.Core.Extensions
 {
     /*
      * Always group similar log delegates by type, always use incremental event ids.
-     * Last event id is: 62
+     * Last event id is: 65
      */
     public static class LoggerExtensions
     {
@@ -153,6 +153,12 @@ namespace Etherna.MongODM.Core.Extensions
                 new EventId(5, nameof(RepositoryRegistryInitialized)),
                 "RepositoryRegistry of DbContext {DbName} initialized");
 
+        private static readonly Action<ILogger, string, string, string, string, Exception> _repositoryRemovedMissingOriginReference =
+            LoggerMessage.Define<string, string, string, string>(
+                LogLevel.Debug,
+                new EventId(64, nameof(RepositoryRemovedMissingOriginReference)),
+                "Repository {RepositoryName} of DbContext {DbName} removed the references to missing origin document {MissingOriginId} at path {ElementPath}");
+
         private static readonly Action<ILogger, string, string, string, Exception> _repositoryReplacedDocument =
             LoggerMessage.Define<string, string, string>(
                 LogLevel.Debug,
@@ -280,11 +286,23 @@ namespace Etherna.MongODM.Core.Extensions
                 new EventId(33, nameof(RepositoryFoundAndUpdatedDocument)),
                 "Repository {RepositoryName} of DbContext {DbName} executed find and update on a document, matched: {Matched}");
 
+        private static readonly Action<ILogger, string, string, long, Exception> _repositoryFoundMissingOriginReferences =
+            LoggerMessage.Define<string, string, long>(
+                LogLevel.Information,
+                new EventId(63, nameof(RepositoryFoundMissingOriginReferences)),
+                "Repository {RepositoryName} of DbContext {DbName} found {MissingOriginIdsCount} referenced ids with missing origin document");
+
         private static readonly Action<ILogger, string, string, Exception> _repositoryQueriedCollection =
             LoggerMessage.Define<string, string>(
                 LogLevel.Information,
                 new EventId(18, nameof(RepositoryQueriedCollection)),
                 "Repository {RepositoryName} of DbContext {DbName} queried collection");
+
+        private static readonly Action<ILogger, string, string, long, long, Exception> _repositoryRemovedMissingOriginReferences =
+            LoggerMessage.Define<string, string, long, long>(
+                LogLevel.Information,
+                new EventId(65, nameof(RepositoryRemovedMissingOriginReferences)),
+                "Repository {RepositoryName} of DbContext {DbName} removed the references to {MissingOriginIdsCount} missing origin documents, updating {UpdatedDocumentsCount} documents");
 
         //*** WARNING LOGS ***
         private static readonly Action<ILogger, string, string, string?, Exception> _dbContextImplicitLazyLoad =
@@ -519,6 +537,9 @@ namespace Etherna.MongODM.Core.Extensions
         public static void RepositoryFoundDocument(this ILogger logger, string repositoryName, string dbName, string modelId) =>
             _repositoryFoundDocument(logger, repositoryName, dbName, modelId, null!);
 
+        public static void RepositoryFoundMissingOriginReferences(this ILogger logger, string repositoryName, string dbName, long missingOriginIdsCount) =>
+            _repositoryFoundMissingOriginReferences(logger, repositoryName, dbName, missingOriginIdsCount, null!);
+
         public static void RepositoryInitialized(this ILogger logger, string repositoryName, string dbName) =>
             _repositoryInitialized(logger, repositoryName, dbName, null!);
 
@@ -527,6 +548,12 @@ namespace Etherna.MongODM.Core.Extensions
 
         public static void RepositoryRegistryInitialized(this ILogger logger, string dbName) =>
             _repositoryRegistryInitialized(logger, dbName, null!);
+
+        public static void RepositoryRemovedMissingOriginReference(this ILogger logger, string repositoryName, string dbName, string elementPath, string missingOriginId) =>
+            _repositoryRemovedMissingOriginReference(logger, repositoryName, dbName, missingOriginId, elementPath, null!);
+
+        public static void RepositoryRemovedMissingOriginReferences(this ILogger logger, string repositoryName, string dbName, long missingOriginIdsCount, long updatedDocumentsCount) =>
+            _repositoryRemovedMissingOriginReferences(logger, repositoryName, dbName, missingOriginIdsCount, updatedDocumentsCount, null!);
 
         public static void RepositoryReplacedDocument(this ILogger logger, string repositoryName, string dbName, string modelId) =>
             _repositoryReplacedDocument(logger, repositoryName, dbName, modelId, null!);

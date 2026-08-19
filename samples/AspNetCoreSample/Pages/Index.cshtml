@@ -1,45 +1,135 @@
-﻿@page
+@page
 @model IndexModel
 @{
     ViewData["Title"] = "Home page";
 }
 
-<div class="row">
+<div class="row g-4">
     <div class="col-md-4">
-        <form method="post">
-            <div class="form-group">
-                <label asp-for="Input.Name"></label>
-                <input asp-for="Input.Name" class="form-control" />
-                <span asp-validation-for="Input.Name" class="text-danger"></span>
+        <div class="card mb-4">
+            <div class="card-body">
+                <h4 class="card-title">New cat</h4>
+                <form method="post">
+                    <div class="mb-3">
+                        <label asp-for="Input.Name" class="form-label"></label>
+                        <input asp-for="Input.Name" class="form-control" />
+                        <span asp-validation-for="Input.Name" class="text-danger"></span>
+                    </div>
+                    <div class="mb-3">
+                        <label asp-for="Input.Birthday" class="form-label"></label>
+                        <input asp-for="Input.Birthday" class="form-control" />
+                        <span asp-validation-for="Input.Birthday" class="text-danger"></span>
+                    </div>
+                    <div class="mb-3">
+                        <label asp-for="Input.OwnerId" class="form-label"></label>
+                        <select asp-for="Input.OwnerId" class="form-select">
+                            <option value="">(no owner)</option>
+                            @foreach (var person in Model.Persons)
+                            {
+                                <option value="@person.Id">@person.Name</option>
+                            }
+                        </select>
+                        <span asp-validation-for="Input.OwnerId" class="text-danger"></span>
+                    </div>
+                    <button type="submit" class="btn btn-primary">Add cat</button>
+                </form>
             </div>
-            <div class="form-group">
-                <label asp-for="Input.Birthday"></label>
-                <input asp-for="Input.Birthday" class="form-control" />
-                <span asp-validation-for="Input.Birthday" class="text-danger"></span>
+        </div>
+
+        <div class="card">
+            <div class="card-body">
+                <h4 class="card-title">New person</h4>
+                <form method="post">
+                    <div class="mb-3">
+                        <label asp-for="NewPersonName" class="form-label"></label>
+                        <input asp-for="NewPersonName" class="form-control" />
+                        <span asp-validation-for="NewPersonName" class="text-danger"></span>
+                    </div>
+                    <button type="submit" class="btn btn-primary" asp-page-handler="AddPerson">Add person</button>
+                </form>
             </div>
-            <div class="form-group">
-                <button type="submit" class="btn btn-primary">Add cat</button>
-            </div>
-        </form>
+        </div>
     </div>
 
-    <div class="col-md-6 col-md-offset-2">
-        <section>
+    <div class="col-md-8">
+        <section class="mb-4">
             <h4>List of cats</h4>
-            <form method="post">
-                <div>
-                    @foreach (var cat in Model.Cats)
-                    {
-                        <p>
-                            <label asp-for="@cat.Name"></label>
-                            <input asp-for="@cat.Name" disabled />
-                            <label asp-for="@cat.Birthday"></label>
-                            <input asp-for="@cat.Birthday" type="date" disabled />
-                            <button type="submit" class="btn btn-link" asp-page-handler="Remove" asp-route-id="@cat.Id">X</button>
-                        </p>
-                    }
-                </div>
-            </form>
+            @if (Model.Cats.Count == 0)
+            {
+                <p class="text-muted">No cats yet.</p>
+            }
+            else
+            {
+                <form method="post">
+                    <table class="table table-striped align-middle">
+                        <thead>
+                            <tr>
+                                <th>Name</th>
+                                <th>Birthday</th>
+                                <th>Owner</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var cat in Model.Cats)
+                            {
+                                <tr>
+                                    <td>@cat.Name</td>
+                                    <td>@cat.Birthday.ToString("yyyy-MM-dd")</td>
+                                    @* The owner name is denormalized into the cat document: reading it
+                                       from the summary never loads the person document, and survives a
+                                       person deleted while cats keep referring them. *@
+                                    <td>
+                                        @if (cat.Owner is not null)
+                                        {
+                                            @cat.Owner.Name
+                                        }
+                                        else
+                                        {
+                                            <span class="text-muted">(none)</span>
+                                        }
+                                    </td>
+                                    <td class="text-end">
+                                        <button type="submit" class="btn btn-sm btn-outline-danger" asp-page-handler="Remove" asp-route-id="@cat.Id">Remove</button>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </form>
+            }
+        </section>
+
+        <section>
+            <h4>List of persons</h4>
+            @if (Model.Persons.Count == 0)
+            {
+                <p class="text-muted">No persons yet.</p>
+            }
+            else
+            {
+                <form method="post">
+                    <table class="table table-striped align-middle">
+                        <thead>
+                            <tr>
+                                <th>Name</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var person in Model.Persons)
+                            {
+                                <tr>
+                                    <td>@person.Name</td>
+                                    <td class="text-end">
+                                        <button type="submit" class="btn btn-sm btn-outline-danger" asp-page-handler="RemovePerson" asp-route-id="@person.Id">Remove</button>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </form>
+            }
         </section>
     </div>
 </div>

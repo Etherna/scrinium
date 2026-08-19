@@ -81,11 +81,38 @@ namespace Etherna.MongODM.Core.Repositories
         Task<long> EstimatedDocumentCountAsync(
             CancellationToken cancellationToken = default);
 
+        /// <summary>
+        /// Find the references of the collection documents pointing to missing origin
+        /// documents: for each reference element path, the distinct referenced ids are read
+        /// server side and verified against the origin repository of the reference, comparing
+        /// them as stored. The scan reads every referenced id of the collection, so it belongs
+        /// to on demand diagnostics; reference paths it can't verify report apart, and null
+        /// references are not reported, since they address no origin document.
+        /// </summary>
+        /// <param name="cancellationToken">Cancellation token</param>
+        /// <returns>One report per reference element path, with the unverifiable paths aside</returns>
+        Task<MissingOriginReferencesReport> FindMissingOriginReferencesAsync(
+            CancellationToken cancellationToken = default);
+
         Task<object> FindOneAsync(
             object id,
             CancellationToken cancellationToken = default);
 
         string ModelIdToString(object model);
+
+        /// <summary>
+        /// Remove from the collection documents the references pointing to missing origin
+        /// documents, scanning them like
+        /// <see cref="FindMissingOriginReferencesAsync(CancellationToken)"/> does: a reference
+        /// hosted as an array item is pulled out of its array, any other one is set to null,
+        /// deserializing like a null reference from then on. This is a raw bulk repair: it
+        /// writes server side without loading models, and the reference paths the scan can't
+        /// verify stay untouched, reported apart.
+        /// </summary>
+        /// <param name="cancellationToken">Cancellation token</param>
+        /// <returns>One removal per reference element path, with the unverifiable paths aside</returns>
+        Task<MissingOriginReferencesRemovalReport> RemoveMissingOriginReferencesAsync(
+            CancellationToken cancellationToken = default);
 
         Task ReplaceAsync(
             object model,

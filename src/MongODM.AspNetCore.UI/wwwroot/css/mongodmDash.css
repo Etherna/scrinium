@@ -427,6 +427,69 @@ code {
   color: var(--warning);
 }
 
+/* Missing origin references
+-------------------------------------------------- */
+.missing-origin-references {
+  margin-top: 1.25rem;
+}
+
+.missing-origin-references > summary {
+  cursor: pointer;
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+.missing-origin-collection {
+  border-top: 1px solid var(--border);
+  padding-top: 0.75rem;
+  margin-top: 0.75rem;
+}
+
+.missing-origin-collection-header {
+  align-items: baseline;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.missing-origin-collection-header h4 {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.95rem;
+  margin: 0;
+}
+
+.missing-origin-collection-header .btn {
+  font-size: 0.8rem;
+  padding: 0.25rem 0.7rem;
+}
+
+.missing-origin-collection-header .btn:first-of-type {
+  margin-left: auto;
+}
+
+.schemas-table .missing-origins {
+  color: var(--danger);
+  font-weight: 600;
+}
+
+.schemas-table .missing-origins > details > summary {
+  cursor: pointer;
+}
+
+.missing-origin-ids {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.8rem;
+  font-weight: 400;
+  list-style: none;
+  margin: 0.25rem 0 0;
+  padding: 0;
+  text-align: right;
+}
+
+.shape-tag.unverifiable {
+  color: var(--warning);
+}
+
 /* Status badge
 -------------------------------------------------- */
 .status-badge {
