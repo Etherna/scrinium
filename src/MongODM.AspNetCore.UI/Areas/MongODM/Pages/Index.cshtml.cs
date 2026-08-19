@@ -162,6 +162,48 @@ namespace Etherna.MongODM.AspNetCore.UI.Areas.MongODM.Pages
         }
 
         /// <summary>
+        /// Find the references of a single collection pointing to missing origin documents.
+        /// This reads every referenced id of the collection, so it runs only on explicit
+        /// request, one collection at a time.
+        /// </summary>
+        public async Task<IActionResult> OnGetMissingOriginReferencesAsync(string identifier, string repositoryName)
+        {
+            InitializePage();
+
+            var dbContext = DbContexts.FirstOrDefault(dbc => dbc.Engine.Identifier == identifier);
+            var repository = dbContext?.RepositoryRegistry.Repositories
+                .FirstOrDefault(repo => repo.Name == repositoryName);
+            if (repository is null)
+                return NotFound();
+
+            MissingOriginReferencesReport? report = null;
+            try
+            {
+                report = await repository.FindMissingOriginReferencesAsync().ConfigureAwait(false);
+            }
+            catch (UnauthorizedAccessException)
+            {
+                //an exclusive access (a running migration) denies reads on the collection
+            }
+
+            return new JsonResult(new
+            {
+                repository = repository.Name,
+                isUnavailable = report is null,
+                pathReports = report?.PathReports.Select(pathReport => new
+                {
+                    elementPath = pathReport.ElementPath,
+                    originRepositoryNames = pathReport.OriginRepositoryNames,
+                    missingOriginIdsCount = pathReport.MissingOriginIdsCount,
+                    //a capped listing: the counts always report the full amounts
+                    trackedMissingOriginIds = pathReport.TrackedMissingOriginIds,
+                    referencingDocumentsCount = pathReport.ReferencingDocumentsCount
+                }),
+                unverifiableElementPaths = report?.UnverifiableElementPaths
+            });
+        }
+
+        /// <summary>
         /// Count the documents of a single collection by schema id. This scans the whole
         /// collection, so it runs only on explicit request, one collection at a time.
         /// </summary>
@@ -255,6 +297,58 @@ namespace Etherna.MongODM.AspNetCore.UI.Areas.MongODM.Pages
                 headers.ContentSecurityPolicy = ContentSecurityPolicy;
                 headers.XFrameOptions = "DENY";
             }
+        }
+
+        /// <summary>
+        /// Remove from a single collection the references pointing to missing origin
+        /// documents. The collection is scanned again server side: the removal never
+        /// trusts a list of ids sent by the browser.
+        /// </summary>
+        public async Task<IActionResult> OnPostRemoveMissingOriginReferencesAsync(string identifier, string repositoryName)
+        {
+            InitializePage();
+
+            var dbContext = DbContexts.FirstOrDefault(dbc => dbc.Engine.Identifier == identifier);
+            var repository = dbContext?.RepositoryRegistry.Repositories
+                .FirstOrDefault(repo => repo.Name == repositoryName);
+            if (repository is null)
+                return NotFound();
+
+            /* The page doesn't render the removal control on a read-only repository, but the
+             * request doesn't have to come from it. */
+            if (repository.IsReadOnly)
+                return BadRequest(new
+                {
+                    removed = false,
+                    error = $"The repository \"{repository.Name}\" is read-only."
+                });
+
+            MissingOriginReferencesRemovalReport report;
+            try
+            {
+                report = await repository.RemoveMissingOriginReferencesAsync().ConfigureAwait(false);
+            }
+            catch (UnauthorizedAccessException)
+            {
+                //an exclusive access (a running migration) denies access to the collection
+                return new JsonResult(new
+                {
+                    removed = false,
+                    error = "The collection is unavailable: an exclusive access is running."
+                });
+            }
+
+            return new JsonResult(new
+            {
+                removed = true,
+                pathRemovals = report.PathRemovals.Select(pathRemoval => new
+                {
+                    elementPath = pathRemoval.ElementPath,
+                    missingOriginIdsCount = pathRemoval.MissingOriginIdsCount,
+                    updatedDocumentsCount = pathRemoval.UpdatedDocumentsCount
+                }),
+                unverifiableElementPaths = report.UnverifiableElementPaths
+            });
         }
 
         public async Task<IActionResult> OnPostStartMigrationAsync(

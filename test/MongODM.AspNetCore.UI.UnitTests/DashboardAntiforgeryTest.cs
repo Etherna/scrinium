@@ -93,6 +93,27 @@ namespace Etherna.MongODM.AspNetCore.UI
         }
 
         [Fact]
+        public async Task RemoveMissingOriginReferencesPostWithoutTokenIsRejected()
+        {
+            // Setup.
+            using var host = await StartDashboardHostAsync();
+            var client = host.GetTestClient();
+
+            using var request = new HttpRequestMessage(HttpMethod.Post, PagePath + "?handler=RemoveMissingOriginReferences");
+            request.Content = new FormUrlEncodedContent(new Dictionary<string, string>
+            {
+                ["identifier"] = DbContextIdentifier,
+                ["repositoryName"] = "posts"
+            });
+
+            // Action.
+            var response = await client.SendAsync(request);
+
+            // Assert.
+            Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        }
+
+        [Fact]
         public async Task StartMigrationPostWithTokenExecutesHandler()
         {
             // Setup.

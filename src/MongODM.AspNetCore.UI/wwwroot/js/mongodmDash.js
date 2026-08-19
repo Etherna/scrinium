@@ -31,6 +31,20 @@
                 loadSchemaCounts(card, collection);
             });
         });
+
+        /* Missing origin references are available on every db context too: the scan is a
+         * read, and the removal control renders only on the writable repositories. */
+        Array.prototype.forEach.call(card.querySelectorAll('.missing-origin-collection'), function (collection) {
+            collection.querySelector('[data-role="scan-references"]').addEventListener('click', function () {
+                scanMissingOriginReferences(card, collection);
+            });
+
+            var removeButton = collection.querySelector('[data-role="remove-references"]');
+            if (removeButton)
+                removeButton.addEventListener('click', function () {
+                    removeMissingOriginReferences(card, collection);
+                });
+        });
     });
 
     cards.forEach(function (card) {
@@ -248,6 +262,207 @@
         cell.className = documentsCount === 0
             ? 'numeric muted'
             : 'numeric' + (needsMigration ? ' needs-migration' : '');
+    }
+
+    function scanMissingOriginReferences(card, collection) {
+        var button = collection.querySelector('[data-role="scan-references"]');
+        button.disabled = true;
+        button.textContent = 'Scanning…';
+
+        fetch(baseUrl + '?handler=MissingOriginReferences' +
+            '&identifier=' + encodeURIComponent(card.dataset.identifier) +
+            '&repositoryName=' + encodeURIComponent(collection.dataset.repository), {
+            headers: { 'Accept': 'application/json' }
+        }).then(function (response) {
+            if (!response.ok)
+                throw new Error('HTTP ' + response.status);
+            return response.json();
+        }).then(function (report) {
+            renderMissingOriginReport(collection, report);
+            button.textContent = report.isUnavailable ? 'Scan references' : 'Rescan';
+        }).catch(function () {
+            button.textContent = 'Scan failed, retry';
+        }).then(function () {
+            button.disabled = false;
+        });
+    }
+
+    function renderMissingOriginReport(collection, report) {
+        var container = collection.querySelector('[data-role="scan-results"]');
+        container.innerHTML = '';
+
+        var removeButton = collection.querySelector('[data-role="remove-references"]');
+        var totalMissing = 0;
+
+        if (report.isUnavailable) {
+            var unavailable = document.createElement('p');
+            unavailable.className = 'muted';
+            unavailable.textContent = 'Scan unavailable: an exclusive access is running.';
+            container.appendChild(unavailable);
+        } else if (report.pathReports.length === 0) {
+            var noReferences = document.createElement('p');
+            noReferences.className = 'muted';
+            noReferences.textContent = 'The documents of this collection carry no verifiable reference.';
+            container.appendChild(noReferences);
+        } else {
+            var table = document.createElement('table');
+            table.className = 'schemas-table';
+
+            var head = document.createElement('thead');
+            var headRow = document.createElement('tr');
+            ['Reference path', 'Origin collection', 'Missing origins', 'Referencing documents'].forEach(function (title, index) {
+                var cell = document.createElement('th');
+                cell.textContent = title;
+                if (index >= 2)
+                    cell.className = 'numeric';
+                headRow.appendChild(cell);
+            });
+            head.appendChild(headRow);
+            table.appendChild(head);
+
+            var body = document.createElement('tbody');
+            report.pathReports.forEach(function (pathReport) {
+                totalMissing += pathReport.missingOriginIdsCount;
+                body.appendChild(buildMissingOriginRow(pathReport));
+            });
+            table.appendChild(body);
+            container.appendChild(table);
+        }
+
+        //the paths the scan can't verify, whose references stay untouched
+        if (!report.isUnavailable && report.unverifiableElementPaths.length > 0) {
+            var unverifiable = document.createElement('p');
+            unverifiable.className = 'muted';
+            var tag = document.createElement('span');
+            tag.className = 'shape-tag unverifiable';
+            tag.textContent = 'unverifiable';
+            unverifiable.appendChild(tag);
+            unverifiable.appendChild(document.createTextNode(
+                ' ' + report.unverifiableElementPaths.join(', ')));
+            container.appendChild(unverifiable);
+        }
+
+        if (removeButton)
+            removeButton.hidden = totalMissing === 0;
+    }
+
+    function buildMissingOriginRow(pathReport) {
+        var row = document.createElement('tr');
+
+        var pathCell = document.createElement('td');
+        var pathLabel = document.createElement('span');
+        pathLabel.className = 'schema-id';
+        pathLabel.textContent = pathReport.elementPath;
+        pathCell.appendChild(pathLabel);
+        row.appendChild(pathCell);
+
+        var originCell = document.createElement('td');
+        originCell.textContent = pathReport.originRepositoryNames.join(', ');
+        row.appendChild(originCell);
+
+        var missingCell = document.createElement('td');
+        if (pathReport.missingOriginIdsCount === 0) {
+            missingCell.className = 'numeric muted';
+            missingCell.textContent = '0';
+        } else {
+            missingCell.className = 'numeric missing-origins';
+
+            //the missing origin ids listing, capped by the server: the count is complete
+            var idsEntry = document.createElement('details');
+            var idsSummary = document.createElement('summary');
+            idsSummary.textContent = pathReport.missingOriginIdsCount.toLocaleString();
+            idsEntry.appendChild(idsSummary);
+            var idsList = document.createElement('ul');
+            idsList.className = 'missing-origin-ids';
+            pathReport.trackedMissingOriginIds.forEach(function (missingOriginId) {
+                var idItem = document.createElement('li');
+                /* The ids are document content: they must keep landing on textContent,
+                 * never on innerHTML. */
+                idItem.textContent = missingOriginId;
+                idsList.appendChild(idItem);
+            });
+            if (pathReport.trackedMissingOriginIds.length < pathReport.missingOriginIdsCount) {
+                var truncationItem = document.createElement('li');
+                truncationItem.className = 'muted';
+                truncationItem.textContent = '… and ' +
+                    (pathReport.missingOriginIdsCount - pathReport.trackedMissingOriginIds.length).toLocaleString() +
+                    ' more';
+                idsList.appendChild(truncationItem);
+            }
+            idsEntry.appendChild(idsList);
+            missingCell.appendChild(idsEntry);
+        }
+        row.appendChild(missingCell);
+
+        var referencingCell = document.createElement('td');
+        if (pathReport.missingOriginIdsCount === 0) {
+            referencingCell.className = 'numeric muted';
+            referencingCell.textContent = '0';
+        } else {
+            referencingCell.className = 'numeric missing-origins';
+            //counted over the listed ids only: a truncated listing makes it a lower bound
+            referencingCell.textContent =
+                (pathReport.trackedMissingOriginIds.length < pathReport.missingOriginIdsCount ? '≥ ' : '') +
+                pathReport.referencingDocumentsCount.toLocaleString();
+        }
+        row.appendChild(referencingCell);
+
+        return row;
+    }
+
+    function removeMissingOriginReferences(card, collection) {
+        var repository = collection.dataset.repository;
+        if (!window.confirm('Remove the references to missing origin documents from "' + repository + '"?\n\n' +
+            'The collection is scanned again, and every verified reference pointing to a missing origin ' +
+            'document is removed: array items are pulled out of their arrays, single references are set ' +
+            'to null. No document is deleted.'))
+            return;
+
+        var removeButton = collection.querySelector('[data-role="remove-references"]');
+        var outcome = collection.querySelector('[data-role="removal-outcome"]');
+        removeButton.disabled = true;
+        outcome.hidden = true;
+
+        fetch(baseUrl + '?handler=RemoveMissingOriginReferences', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'RequestVerificationToken': antiforgeryToken
+            },
+            body: new URLSearchParams({
+                identifier: card.dataset.identifier,
+                repositoryName: repository
+            })
+        }).then(function (response) {
+            //a removal rejected by the server reports its reason in the body, with an error status
+            return response.json().then(function (result) {
+                if (!response.ok && !result.error)
+                    throw new Error('HTTP ' + response.status);
+                return result;
+            });
+        }).then(function (result) {
+            if (result.error) {
+                outcome.textContent = result.error;
+            } else {
+                var removedIds = 0;
+                var updatedDocuments = 0;
+                result.pathRemovals.forEach(function (pathRemoval) {
+                    removedIds += pathRemoval.missingOriginIdsCount;
+                    updatedDocuments += pathRemoval.updatedDocumentsCount;
+                });
+                outcome.textContent = 'Removed the references to ' + removedIds.toLocaleString() +
+                    ' missing origin documents, updating ' + updatedDocuments.toLocaleString() + ' documents.';
+            }
+            outcome.hidden = false;
+
+            //rescan to render the repaired state
+            scanMissingOriginReferences(card, collection);
+        }).catch(function () {
+            outcome.textContent = 'Removal request failed.';
+            outcome.hidden = false;
+        }).then(function () {
+            removeButton.disabled = false;
+        });
     }
 
     function refreshStatus() {

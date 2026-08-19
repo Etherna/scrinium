@@ -20,6 +20,7 @@ using Microsoft.AspNetCore.Mvc.RazorPages;
 using System;
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
+using System.Linq;
 using System.Threading.Tasks;
 
 namespace Etherna.MongODM.AspNetCoreSample.Pages
@@ -37,6 +38,9 @@ namespace Etherna.MongODM.AspNetCoreSample.Pages
 #pragma warning disable CS8618 // Non-nullable field must contain a non-null value when exiting constructor. Consider declaring as nullable.
             public string Name { get; set; }
 #pragma warning restore CS8618 // Non-nullable field must contain a non-null value when exiting constructor. Consider declaring as nullable.
+
+            [Display(Name = "Owner")]
+            public string? OwnerId { get; set; }
         }
 
         // Fields.
@@ -51,27 +55,64 @@ namespace Etherna.MongODM.AspNetCoreSample.Pages
         }
 
         // Properties.
-        public List<Cat> Cats { get; } = new List<Cat>();
+        public List<Cat> Cats { get; } = [];
 
         [BindProperty]
         public InputModel Input { get; set; }
 
+        [BindProperty]
+        [Display(Name = "Person name")]
+        public string? NewPersonName { get; set; }
+
+        public List<Person> Persons { get; } = [];
+
         // Methods.
         public async Task<IActionResult> OnGetAsync()
         {
-            await LoadCatsAsync();
+            await LoadAsync();
             return Page();
         }
 
         public async Task<IActionResult> OnPostAsync()
         {
-            await LoadCatsAsync();
+            await LoadAsync();
 
             if (!ModelState.IsValid)
                 return Page();
 
-            var cat = new Cat(Input.Name, Input.Birthday);
+            // Resolve the selected owner, if any.
+            Person? owner = null;
+            if (!string.IsNullOrEmpty(Input.OwnerId))
+            {
+                owner = await sampleDbContext.Persons.TryFindOneAsync(Input.OwnerId);
+                if (owner is null)
+                {
+                    ModelState.AddModelError($"{nameof(Input)}.{nameof(Input.OwnerId)}", "The selected owner doesn't exist anymore.");
+                    return Page();
+                }
+            }
+
+            var cat = new Cat(Input.Name, Input.Birthday, owner);
             await sampleDbContext.Cats.CreateAsync(cat);
+
+            return RedirectToPage();
+        }
+
+        public async Task<IActionResult> OnPostAddPersonAsync()
+        {
+            if (string.IsNullOrWhiteSpace(NewPersonName))
+            {
+                /* Only the person name concerns this form: the cat form fields, bound empty by
+                 * this post, must not render their validation errors. */
+                ModelState.Clear();
+                ModelState.AddModelError(nameof(NewPersonName), "The person name is required.");
+
+                await LoadAsync();
+                return Page();
+            }
+
+            var person = new Person(NewPersonName.Trim());
+            await sampleDbContext.Persons.CreateAsync(person);
 
             return RedirectToPage();
         }
@@ -83,13 +124,27 @@ namespace Etherna.MongODM.AspNetCoreSample.Pages
             return RedirectToPage();
         }
 
+        public async Task<IActionResult> OnPostRemovePersonAsync(string id)
+        {
+            /* Deleting a person doesn't touch the cats referring them: their documents keep
+             * the dangling summary, readable as the missing origin references that the admin
+             * dashboard finds and removes. */
+            await sampleDbContext.Persons.DeleteAsync(id);
+
+            return RedirectToPage();
+        }
+
         // Private helpers.
-        private async Task LoadCatsAsync()
+        private async Task LoadAsync()
         {
             var cats = await sampleDbContext.Cats.QueryElementsAsync(elements =>
                 elements.ToListAsync());
-
             Cats.AddRange(cats);
+
+            var persons = await sampleDbContext.Persons.QueryElementsAsync(elements =>
+                elements.OrderBy(person => person.Name)
+                        .ToListAsync());
+            Persons.AddRange(persons);
         }
     }
 }
