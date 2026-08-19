@@ -18,6 +18,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.Extensions.DependencyInjection;
 using System;
+using System.Linq;
 
 namespace Etherna.MongODM.AspNetCore.UI
 {
@@ -34,6 +35,36 @@ namespace Etherna.MongODM.AspNetCore.UI
             ArgumentNullException.ThrowIfNull(services);
 
             dashboardOptions ??= new DashboardOptions();
+
+            /* Validate the back link target, which the dashboard layout renders as the href of
+             * its back link: a relative path and an absolute http/https URL are accepted, while
+             * any other scheme (javascript:, for one) would hand the operator clicking the link
+             * a script running in the dashboard origin. The scheme reads like a browser reads
+             * it, as the name before the first ':' of the space trimmed value, and control
+             * characters are refused everywhere, since browsers discard them when parsing an
+             * href, so they could disguise a scheme. */
+            if (dashboardOptions.AppPath is { } appPath)
+            {
+                if (appPath.Any(char.IsControl))
+                    throw new ArgumentException(
+                        $"{nameof(DashboardOptions.AppPath)} contains control characters: " +
+                        "the back link target must be a relative path, or an absolute http/https URL.",
+                        nameof(dashboardOptions));
+
+                var trimmedAppPath = appPath.Trim(' ');
+                var schemeDelimiterIndex = trimmedAppPath.IndexOf(':', StringComparison.Ordinal);
+                if (schemeDelimiterIndex >= 0)
+                {
+                    var scheme = trimmedAppPath[..schemeDelimiterIndex];
+                    if (Uri.CheckSchemeName(scheme) &&
+                        !scheme.Equals(Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase) &&
+                        !scheme.Equals(Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase))
+                        throw new ArgumentException(
+                            $"{nameof(DashboardOptions.AppPath)} declares the \"{scheme}\" URL scheme: " +
+                            "the back link target must be a relative path, or an absolute http/https URL.",
+                            nameof(dashboardOptions));
+                }
+            }
 
             /* Normalize the base path, which replaces the area name as first route segment of
              * every dashboard page: leading, trailing and repeated '/' would render routes
