@@ -19,7 +19,5 @@ namespace Etherna.MongODM.Core.Models
     public abstract class FakeEntityModelBase<TKey> : ModelBase, IEntityModel<TKey>
     {
         public virtual TKey Id { get; set; } = default!;
-
-        public virtual void DisposeForDelete() { }
     }
 }

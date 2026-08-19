@@ -16,6 +16,7 @@ using Etherna.MongoDB.Bson;
 using Etherna.MongoDB.Bson.Serialization.Serializers;
 using Etherna.MongODM.Core;
 using Etherna.MongODM.Core.Domain.Models;
+using Etherna.MongODM.Core.Options;
 using Etherna.MongODM.Core.Serialization;
 using Etherna.MongODM.Core.Serialization.Serializers;
 using Etherna.MongODM.IntegrationTests.Models;
@@ -31,11 +32,13 @@ namespace Etherna.MongODM.IntegrationTests.ModelMaps
         }
 
         /// <summary>
-        /// Preview information serializer, including the post title
+        /// Preview information serializer, including the post title. It denies the missing
+        /// origin documents: the strict opt-in of a reference that must not tolerate them.
         /// </summary>
         public static ReferenceSerializer<Post, string> PreviewInfoSerializer(IDbContextEngine dbContextEngine) =>
             ReferenceSerializer.Create(dbContextEngine, config =>
             {
+                config.MissingOriginDocument = MissingOriginDocumentMode.Throw;
                 config.AddModelMap<ModelBase>("5a55693d-e49a-4079-968d-0d210db49721");
                 config.AddModelMap<EntityModelBase<string>>("3e87ebac-b5a4-4372-9b44-07cec75d5c24", mm =>
                 {

@@ -45,6 +45,13 @@ namespace Etherna.MongODM.AspNetCoreSample.Models.ModelMaps
         public static ReferenceSerializer<Person, string> SummarySerializer(IDbContextEngine dbContextEngine) =>
             new(dbContextEngine, config =>
             {
+                /* By default, deleting a person through their repository removes this
+                 * reference from every cat referring them, in background: the owner becomes
+                 * null. Uncomment to cascade instead: the delete then deletes the referring
+                 * cats themselves, with a domain delete propagating their own reference
+                 * policies in turn. */
+                // config.OriginDelete = Etherna.MongODM.Core.Options.OriginDeleteMode.DeleteReferencingDocument;
+
                 config.AddModelMap<ModelBase>(SummaryBaseSchemaId, _ => { }); //no summary members at this level
                 config.AddModelMap<EntityModelBase<string>>(SummaryEntityBaseSchemaId, schema =>
                 {
