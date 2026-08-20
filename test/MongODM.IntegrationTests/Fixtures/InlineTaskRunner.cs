@@ -85,6 +85,7 @@ namespace Etherna.MongODM.IntegrationTests.Fixtures
 
         public void RunDeleteDocDependenciesTask(
             Type dbContextType,
+            Type deletedDbContextType,
             string deletedRepositoryName,
             object modelId,
             IEnumerable<string> idMemberMapIdentifiers)
@@ -103,7 +104,7 @@ namespace Etherna.MongODM.IntegrationTests.Fixtures
                         .MakeGenericMethod(dbContextType)
                         .Invoke(
                             serviceProvider.GetRequiredService<IDeleteDocDependenciesTask>(),
-                            [deletedRepositoryName, modelId, idMemberMapIdentifiersList])!);
+                            [deletedDbContextType, deletedRepositoryName, modelId, idMemberMapIdentifiersList])!);
             }
         }
 
@@ -111,6 +112,7 @@ namespace Etherna.MongODM.IntegrationTests.Fixtures
 
         public void RunUpdateDocDependenciesTask(
             Type dbContextType,
+            Type referenceDbContextType,
             string referenceRepositoryName,
             object modelId,
             IEnumerable<string> idMemberMapIdentifiers)
@@ -129,7 +131,7 @@ namespace Etherna.MongODM.IntegrationTests.Fixtures
                         .MakeGenericMethod(dbContextType)
                         .Invoke(
                             serviceProvider.GetRequiredService<IUpdateDocDependenciesTask>(),
-                            [referenceRepositoryName, modelId, idMemberMapIdentifiersList])!);
+                            [referenceDbContextType, referenceRepositoryName, modelId, idMemberMapIdentifiersList])!);
             }
         }
 

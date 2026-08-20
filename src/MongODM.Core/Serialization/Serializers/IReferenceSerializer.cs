@@ -31,6 +31,14 @@ namespace Etherna.MongODM.Core.Serialization.Serializers
         internal Type ReferenceModelType { get; }
 
         /// <summary>
+        /// The db context type declared by the typed source repository factory: the
+        /// reference sources its models on another db context when the hosting db context
+        /// doesn't implement it. Null for sources declared untyped, or resolved by the map
+        /// registry at engine build, which always live on the hosting db context.
+        /// </summary>
+        internal Type? SourceRepositoryDbContextType { get; }
+
+        /// <summary>
         /// The source repository selector: declared on construction, or resolved by the
         /// map registry at engine build. Null for references to models of another db context.
         /// </summary>

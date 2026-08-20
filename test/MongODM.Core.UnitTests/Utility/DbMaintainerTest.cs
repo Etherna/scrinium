@@ -40,6 +40,7 @@ namespace Etherna.MongODM.Core.Utility
         private readonly Mock<IExecutionContext> executionContextMock = new();
         private readonly Mock<IMapRegistry> mapRegistryMock = new();
         private readonly Mock<IDbContextOptions> optionsMock = new();
+        private readonly Mock<IParentEnginesProvider> parentEnginesProviderMock = new();
         private readonly Mock<IProxyGenerator> proxyGeneratorMock = new();
         private readonly Mock<IRepository> referenceRepositoryMock = new();
         private readonly Mock<ITaskRunner> taskRunnerMock = new();
@@ -49,6 +50,7 @@ namespace Etherna.MongODM.Core.Utility
         {
             executionContextMock.Setup(c => c.Items).Returns(new Dictionary<object, object?>());
             optionsMock.Setup(o => o.DbName).Returns("test-db");
+            parentEnginesProviderMock.Setup(p => p.GetParentEngines(It.IsAny<Type>())).Returns([]);
             proxyGeneratorMock.Setup(g => g.PurgeProxyType(It.IsAny<Type>())).Returns<Type>(type => type);
             referenceRepositoryMock.Setup(r => r.Name).Returns("fakeModels");
 
@@ -58,7 +60,7 @@ namespace Etherna.MongODM.Core.Utility
             engineMock.Setup(e => e.Options).Returns(optionsMock.Object);
             engineMock.Setup(e => e.ProxyGenerator).Returns(proxyGeneratorMock.Object);
 
-            dbMaintainer = new DbMaintainer(taskRunnerMock.Object);
+            dbMaintainer = new DbMaintainer(parentEnginesProviderMock.Object, taskRunnerMock.Object);
             dbMaintainer.Initialize(engineMock.Object, new Mock<ILogger>().Object);
         }
 
@@ -85,6 +87,7 @@ namespace Etherna.MongODM.Core.Utility
             // Assert.
             taskRunnerMock.Verify(
                 r => r.RunUpdateDocDependenciesTask(
+                    typeof(IDbContext),
                     typeof(IDbContext),
                     "fakeModels",
                     "modelId",
@@ -127,10 +130,58 @@ namespace Etherna.MongODM.Core.Utility
             VerifyNoEnqueuedTask();
         }
 
+        [Fact]
+        public void OnUpdatedModelSkipsParentEnginesWithoutInvolvedMemberMaps()
+        {
+            // Setup: a writable parent engine whose registry maps none of the changed members.
+            var parentMapRegistryMock = new Mock<IMapRegistry>();
+            parentMapRegistryMock.Setup(r => r.GetMemberMapsFromMemberInfo(changedMember))
+                .Returns([]);
+
+            var parentOptionsMock = new Mock<IDbContextOptions>();
+            var parentEngineMock = new Mock<IDbContextEngine>();
+            parentEngineMock.Setup(e => e.MapRegistry).Returns(parentMapRegistryMock.Object);
+            parentEngineMock.Setup(e => e.Options).Returns(parentOptionsMock.Object);
+
+            mapRegistryMock.Setup(r => r.GetMemberMapsFromMemberInfo(changedMember))
+                .Returns([]);
+            parentEnginesProviderMock.Setup(p => p.GetParentEngines(typeof(IDbContext)))
+                .Returns([parentEngineMock.Object]);
+
+            // Action.
+            dbMaintainer.OnUpdatedModel<string>(updatedModel, [changedMember], referenceRepositoryMock.Object);
+
+            // Assert.
+            VerifyNoEnqueuedTask();
+        }
+
+        [Fact]
+        public void OnUpdatedModelSkipsReadOnlyParentEngines()
+        {
+            // Setup: a read-only parent engine consumes documents owned by another application.
+            var parentOptionsMock = new Mock<IDbContextOptions>();
+            parentOptionsMock.Setup(o => o.IsReadOnly).Returns(true);
+            var parentEngineMock = new Mock<IDbContextEngine>();
+            parentEngineMock.Setup(e => e.Options).Returns(parentOptionsMock.Object);
+
+            mapRegistryMock.Setup(r => r.GetMemberMapsFromMemberInfo(changedMember))
+                .Returns([]);
+            parentEnginesProviderMock.Setup(p => p.GetParentEngines(typeof(IDbContext)))
+                .Returns([parentEngineMock.Object]);
+
+            // Action.
+            dbMaintainer.OnUpdatedModel<string>(updatedModel, [changedMember], referenceRepositoryMock.Object);
+
+            // Assert: nothing enqueues, without even reading the parent registry.
+            VerifyNoEnqueuedTask();
+            parentEngineMock.Verify(e => e.MapRegistry, Times.Never());
+        }
+
         // Helpers.
         private void VerifyNoEnqueuedTask() =>
             taskRunnerMock.Verify(
                 r => r.RunUpdateDocDependenciesTask(
+                    It.IsAny<Type>(),
                     It.IsAny<Type>(),
                     It.IsAny<string>(),
                     It.IsAny<object>(),

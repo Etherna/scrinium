@@ -25,6 +25,7 @@ namespace Etherna.MongODM.HF.Tasks
         // Methods.
         public Task RunAsync(
             Type dbContextType,
+            Type referenceDbContextType,
             string referenceRepositoryName,
             object modelId,
             IEnumerable<string> idMemberMapIdentifiers)
@@ -36,6 +37,7 @@ namespace Etherna.MongODM.HF.Tasks
 
             return (Task)method.Invoke(task,
             [
+                referenceDbContextType,
                 referenceRepositoryName,
                 modelId,
                 idMemberMapIdentifiers

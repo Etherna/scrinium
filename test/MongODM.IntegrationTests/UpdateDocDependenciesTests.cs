@@ -252,6 +252,51 @@ namespace Etherna.MongODM.IntegrationTests
         }
 
         [Fact]
+        public async Task MismatchedReferencedDbContextTypesAreSkipped()
+        {
+            /* The referenced repository is identified by db context type and repository
+             * name together, since repository names are unique per db context only: a
+             * payload carrying the type of another db context matches nothing and skips,
+             * without touching the documents. */
+
+            // Setup.
+            using var contextHandler = AsyncLocalContext.Instance.InitAsyncLocalContext();
+            fixture.TaskRunner.ClearPending();
+
+            var post = new Post("original title", "content");
+            await dbContext.Posts.CreateAsync(post);
+            var blog = new Blog("my blog");
+            blog.AddPost(post);
+            await dbContext.Blogs.CreateAsync(blog);
+
+            var loadedPost = await dbContext.Posts.FindOneAsync(post.Id);
+            loadedPost.Title = "updated title";
+            await dbContext.SaveChangesAsync();
+            fixture.TaskRunner.ClearPending();
+
+            var idMemberMapIds = dbContext.Engine.MapRegistry.MemberMapsById.Values
+                .Where(memberMap => memberMap is { IsEntityReferenceMember: true, IsIdMember: true })
+                .Select(memberMap => memberMap.Id)
+                .ToArray();
+
+            // Action: run the task directly, with the type of another db context.
+            using var taskScope = fixture.ServiceProvider.CreateScope();
+            var task = taskScope.ServiceProvider.GetRequiredService<IUpdateDocDependenciesTask>();
+            await task.RunAsync<TestDbContext>(typeof(SecondDbContext), "posts", post.Id, idMemberMapIds);
+
+            // Assert: the summary is untouched.
+            var blogsCollection = dbContext.Engine.Database.GetCollection<BsonDocument>("blogs");
+            var rawBlog = await blogsCollection.Find(IdFilter(blog.Id)).SingleAsync();
+            Assert.Equal("original title", rawBlog["LastPost"]["Title"].AsString);
+
+            // Action and assert: the same payload with the right type refreshes the summary.
+            await task.RunAsync<TestDbContext>(typeof(TestDbContext), "posts", post.Id, idMemberMapIds);
+
+            rawBlog = await blogsCollection.Find(IdFilter(blog.Id)).SingleAsync();
+            Assert.Equal("updated title", rawBlog["LastPost"]["Title"].AsString);
+        }
+
+        [Fact]
         public async Task OutdatedSummariesMigrateToTheActiveReferenceSchema()
         {
             /* The refresh filter matches summaries by their id element path, whatever
@@ -445,7 +490,7 @@ namespace Etherna.MongODM.IntegrationTests
             // Action: run the task directly with an unknown member map identifier.
             using var taskScope = fixture.ServiceProvider.CreateScope();
             var task = taskScope.ServiceProvider.GetRequiredService<IUpdateDocDependenciesTask>();
-            await task.RunAsync<TestDbContext>("posts", post.Id, ["unknown-member-map-id"]);
+            await task.RunAsync<TestDbContext>(typeof(TestDbContext), "posts", post.Id, ["unknown-member-map-id"]);
 
             // Assert.
             var rawBlogAfter = await blogsCollection.Find(IdFilter(blog.Id)).SingleAsync();
@@ -474,7 +519,7 @@ namespace Etherna.MongODM.IntegrationTests
             // Action: run the task directly with an unknown repository name.
             using var taskScope = fixture.ServiceProvider.CreateScope();
             var task = taskScope.ServiceProvider.GetRequiredService<IUpdateDocDependenciesTask>();
-            await task.RunAsync<TestDbContext>("unknownRepository", post.Id, ["unknown-member-map-id"]);
+            await task.RunAsync<TestDbContext>(typeof(TestDbContext), "unknownRepository", post.Id, ["unknown-member-map-id"]);
 
             // Assert.
             var rawBlogAfter = await blogsCollection.Find(IdFilter(blog.Id)).SingleAsync();

@@ -15,6 +15,7 @@
 using Etherna.MongoDB.Bson;
 using Etherna.MongoDB.Driver;
 using Etherna.MongODM.Core.ExecContext.AsyncLocal;
+using Etherna.MongODM.Core.Tasks;
 using Etherna.MongODM.IntegrationTests.Fixtures;
 using Etherna.MongODM.IntegrationTests.Models;
 using Microsoft.Extensions.DependencyInjection;
@@ -222,6 +223,44 @@ namespace Etherna.MongODM.IntegrationTests
             var rawMixtape = await GetRawDocumentAsync("mixtapes", mixtape.Id);
             Assert.Equal(BsonNull.Value, rawMixtape["Highlight"]);
             Assert.Equal(ObjectId.Parse(track.Id), rawMixtape["Pinned"]["_id"].AsObjectId);
+        }
+
+        [Fact]
+        public async Task MismatchedDeletedDbContextTypesAreSkipped()
+        {
+            /* The deleted model repository is identified by db context type and repository
+             * name together, since repository names are unique per db context only: a
+             * payload carrying the type of another db context matches no reference and
+             * skips, without touching the documents. */
+
+            // Setup.
+            using var contextHandler = AsyncLocalContext.Instance.InitAsyncLocalContext();
+            await ResetPropagationCollectionsAsync();
+            fixture.TaskRunner.ClearPending();
+
+            var track = new Track("referenced");
+            var mixtape = new Mixtape("mixtape") { Highlight = track };
+            await dbContext.Mixtapes.CreateAsync(mixtape);
+
+            var idMemberMapIds = dbContext.Engine.MapRegistry.MemberMapsById.Values
+                .Where(memberMap => memberMap is { IsEntityReferenceMember: true, IsIdMember: true })
+                .Select(memberMap => memberMap.Id)
+                .ToArray();
+
+            // Action: run the task directly, with the type of another db context.
+            using var taskScope = fixture.ServiceProvider.CreateScope();
+            var task = taskScope.ServiceProvider.GetRequiredService<IDeleteDocDependenciesTask>();
+            await task.RunAsync<TestDbContext>(typeof(SecondDbContext), "tracks", track.Id, idMemberMapIds);
+
+            // Assert: the reference is untouched.
+            var rawMixtape = await GetRawDocumentAsync("mixtapes", mixtape.Id);
+            Assert.Equal(ObjectId.Parse(track.Id), rawMixtape["Highlight"]["_id"].AsObjectId);
+
+            // Action and assert: the same payload with the right type removes the reference.
+            await task.RunAsync<TestDbContext>(typeof(TestDbContext), "tracks", track.Id, idMemberMapIds);
+
+            rawMixtape = await GetRawDocumentAsync("mixtapes", mixtape.Id);
+            Assert.Equal(BsonNull.Value, rawMixtape["Highlight"]);
         }
 
         // Helpers.

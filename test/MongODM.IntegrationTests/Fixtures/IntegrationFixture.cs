@@ -105,6 +105,16 @@ namespace Etherna.MongODM.IntegrationTests.Fixtures
                         options.ConnectionString = $"{mongoDb.DbUrl}/{ParentDbName}";
                         options.ParentFor<ISecondDbContext>();
                     })
+                //read-only parent of the second db context, consuming the parent database:
+                //the child models propagation must never enqueue toward it
+                .AddDbContext<IReadOnlyParentDbContext, ReadOnlyParentDbContext>(
+                    _ => new ReadOnlyParentDbContext(),
+                    options =>
+                    {
+                        options.ConnectionString = $"{mongoDb.DbUrl}/{ParentDbName}";
+                        options.IsReadOnly = true;
+                        options.ParentFor<ISecondDbContext>();
+                    })
                 .AddDbContext<IImplicitSourceDbContext, ImplicitSourceDbContext>(
                     _ => new ImplicitSourceDbContext(),
                     options =>

@@ -83,6 +83,7 @@ namespace Etherna.MongODM.AspNetCore.Extensions
 
             services.AddExecutionContext();
 
+            services.TryAddSingleton<IParentEnginesProvider, ParentEnginesProvider>();
             services.TryAddSingleton<IProxyGenerator, ProxyGenerator>();
             services.TryAddSingleton<ITaskRunner, TTaskRunner>();
             services.TryAddSingleton<ITaskRunnerBuilder>(sp => (TTaskRunner)sp.GetRequiredService<ITaskRunner>());
