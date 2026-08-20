@@ -60,11 +60,20 @@ namespace Etherna.MongODM.Core.Tasks
              * works, and converges on their outcome. */
 
             // Get data.
-            /* A model deleted while its update task was pending has nothing to propagate:
+            /* Like the member map identifiers below, the repository name can address a
+             * configuration that doesn't exist anymore (e.g. after a software upgrade):
              * skip without failing, or the task executor would retry forever a task that
-             * can never succeed. The referencing summaries keep their last denormalized
-             * values. */
-            var referencedRepository = dbContext.RepositoryRegistry.Repositories.First(r => r.Name == referencedRepositoryName);
+             * can never succeed. */
+            var referencedRepository = dbContext.RepositoryRegistry.Repositories.FirstOrDefault(r => r.Name == referencedRepositoryName);
+            if (referencedRepository is null)
+            {
+                logger.UpdateDocDependenciesTaskSkippedOnUnknownRepository(typeof(TDbContext), referencedRepositoryName);
+                return;
+            }
+
+            /* A model deleted while its update task was pending has nothing to propagate:
+             * skip without failing too. The referencing summaries keep their last
+             * denormalized values. */
             var referencedModel = await referencedRepository.TryFindOneAsync(referencedModelId).ConfigureAwait(false);
             if (referencedModel is null)
             {
@@ -106,6 +115,10 @@ namespace Etherna.MongODM.Core.Tasks
             var serializedDocumentsCache = new Dictionary<IBsonSerializer, BsonDocument>();
             var repositoryDictionary = idMemberMaps
                 .SelectMany(idmm => dbContext.RepositoryRegistry.Repositories
+                    /* A read-only repository consumes documents owned by another application:
+                     * their summaries are not this task's to refresh, and every write would
+                     * be denied. */
+                    .Where(repository => !repository.IsReadOnly)
                     .Where(repository => repository.ModelType.IsAssignableFrom(
                         idmm.MemberMapPath.First().ModelMapSchema.ModelMap.ModelType))
                     .Select(repository => (repository, idmm)))

@@ -23,25 +23,33 @@ namespace Etherna.MongODM.IntegrationTests
 {
     public interface IMixedAccessDbContext : IDbContext
     {
+        IRepository<Mixtape, string> ArchivedMixtapes { get; }
+        IRepository<Mixtape, string> Mixtapes { get; }
         IRepository<Note, string> Notes { get; }
         IRepository<TagBag, string> TagBags { get; }
+        IRepository<Track, string> Tracks { get; }
     }
 
     /// <summary>
     /// A writable db context mixing access levels on the shared database owned by
-    /// <see cref="SecondDbContext"/>: it consumes the shared notes collection read-only,
-    /// and owns its own writable collection.
+    /// <see cref="SecondDbContext"/>: it consumes the shared notes collection and an
+    /// archived mixtapes collection read-only, and owns its own writable collections,
+    /// with the mixtapes referencing the tracks.
     /// </summary>
     internal sealed class MixedAccessDbContext : DbContext, IMixedAccessDbContext
     {
         // Properties.
         //repositories
+        public IRepository<Mixtape, string> ArchivedMixtapes { get; } = new Repository<Mixtape, string>(
+            new RepositoryOptions<Mixtape>("archivedMixtapes") { IsReadOnly = true });
+        public IRepository<Mixtape, string> Mixtapes { get; } = new Repository<Mixtape, string>("mixedMixtapes");
         public IRepository<Note, string> Notes { get; } = new Repository<Note, string>(
             new RepositoryOptions<Note>("notes") { IsReadOnly = true });
         public IRepository<TagBag, string> TagBags { get; } = new Repository<TagBag, string>("mixedTagBags");
+        public IRepository<Track, string> Tracks { get; } = new Repository<Track, string>("mixedTracks");
 
         // Protected properties.
         protected override IEnumerable<IModelMapsCollector> ModelMapsCollectors =>
-            [new NoteMap(), new TagBagMap()];
+            [new MixtapeMap(), new NoteMap(), new TagBagMap(), new TrackMap()];
     }
 }

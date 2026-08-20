@@ -20,7 +20,7 @@ namespace Etherna.MongODM.Core.Extensions
 {
     /*
      * Always group similar log delegates by type, always use incremental event ids.
-     * Last event id is: 71
+     * Last event id is: 72
      */
     public static class LoggerExtensions
     {
@@ -419,6 +419,12 @@ namespace Etherna.MongODM.Core.Extensions
                 new EventId(45, nameof(UpdateDocDependenciesTaskSkippedOnDeletedModel)),
                 "UpdateDocDependenciesTask skipped on DbContext {DbContextType} with reference repository {ReferenceRepositoryName}: model Id {ModelId} doesn't exist anymore");
 
+        private static readonly Action<ILogger, Type, string, Exception> _updateDocDependenciesTaskSkippedOnUnknownRepository =
+            LoggerMessage.Define<Type, string>(
+                LogLevel.Warning,
+                new EventId(72, nameof(UpdateDocDependenciesTaskSkippedOnUnknownRepository)),
+                "UpdateDocDependenciesTask skipped on DbContext {DbContextType}: reference repository {ReferenceRepositoryName} doesn't exist in the current configuration");
+
         //*** ERROR LOGS ***
         private static readonly Action<ILogger, string, string, Exception> _dbContextLockLeaseLost =
             LoggerMessage.Define<string, string>(
@@ -632,6 +638,9 @@ namespace Etherna.MongODM.Core.Extensions
 
         public static void UpdateDocDependenciesTaskSkippedOnDeletedModel(this ILogger logger, Type dbContextType, string referencedRepositoryName, string modelId) =>
             _updateDocDependenciesTaskSkippedOnDeletedModel(logger, dbContextType, referencedRepositoryName, modelId, null!);
+
+        public static void UpdateDocDependenciesTaskSkippedOnUnknownRepository(this ILogger logger, Type dbContextType, string referencedRepositoryName) =>
+            _updateDocDependenciesTaskSkippedOnUnknownRepository(logger, dbContextType, referencedRepositoryName, null!);
 
         public static void UpdateDocDependenciesTaskStarted(this ILogger logger, Type dbContextType, string referencedRepositoryName, string modelId, IEnumerable<string> idMemberMapIdentifiers) =>
             _updateDocDependenciesTaskStarted(logger, dbContextType, referencedRepositoryName, modelId, idMemberMapIdentifiers, null!);

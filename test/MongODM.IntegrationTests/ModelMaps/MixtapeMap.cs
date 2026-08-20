@@ -45,6 +45,11 @@ namespace Etherna.MongODM.IntegrationTests.ModelMaps
                             new StringSerializer(),
                             TrackMap.PreviewInfoSerializer(dbContextEngine)));
                     mm.SetMemberSerializer(m => m.Pinned!, TrackMap.KeptReferenceSerializer(dbContextEngine));
+                    mm.SetMemberSerializer(m => m.RankedTracks,
+                        new DictionarySerializer<string, Track>(
+                            DictionaryRepresentation.ArrayOfArrays,
+                            new StringSerializer(),
+                            TrackMap.PreviewInfoSerializer(dbContextEngine)));
                     mm.SetMemberSerializer(m => m.Tracks,
                         new EnumerableSerializer<Track>(
                             TrackMap.PreviewInfoSerializer(dbContextEngine)));

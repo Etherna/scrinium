@@ -19,10 +19,10 @@ namespace Etherna.MongODM.IntegrationTests.Models
 {
     /// <summary>
     /// An entity referencing tracks through references following the default origin delete
-    /// policy — a single member, an array of references, a dictionary in array of documents
-    /// representation, whose path stays addressable, and a dictionary in document
-    /// representation, whose path the propagation can't address — plus a reference
-    /// explicitly declaring to keep the reference on origin delete.
+    /// policy — a single member, an array of references, dictionaries in array of documents
+    /// and array of arrays representation, whose paths stay addressable, and a dictionary
+    /// in document representation, whose path the propagation can't address — plus a
+    /// reference explicitly declaring to keep the reference on origin delete.
     /// </summary>
     public class Mixtape : EntityModelBase<string>
     {
@@ -41,6 +41,7 @@ namespace Etherna.MongODM.IntegrationTests.Models
         public virtual IDictionary<string, Track> LabeledTracks { get; set; } = new Dictionary<string, Track>();
         public virtual string Name { get; set; }
         public virtual Track? Pinned { get; set; }
+        public virtual IDictionary<string, Track> RankedTracks { get; set; } = new Dictionary<string, Track>();
         public virtual IEnumerable<Track> Tracks { get; set; } = [];
     }
 }
