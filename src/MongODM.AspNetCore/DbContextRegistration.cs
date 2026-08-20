@@ -12,19 +12,20 @@
 // You should have received a copy of the GNU Lesser General Public License along with MongODM.
 // If not, see <https://www.gnu.org/licenses/>.
 
+using Etherna.MongODM.Core.Options;
 using System;
-using System.Collections.Generic;
-using System.Threading.Tasks;
 
-namespace Etherna.MongODM.Core.Tasks
+namespace Etherna.MongODM.AspNetCore
 {
-    public interface IDeleteDocDependenciesTask
-    {
-        Task RunAsync<TDbContext>(
-            Type deletedDbContextType,
-            string deletedRepositoryName,
-            object deletedModelId,
-            IEnumerable<string> idMemberMapIdentifiers)
-            where TDbContext : class, IDbContext;
-    }
+    /// <summary>
+    /// A db context registered with the service collection: the service type exposed to the
+    /// application, the implementation type keying its engine, and its options.
+    /// </summary>
+    /// <param name="ServiceType">The registered db context service type</param>
+    /// <param name="ImplementationType">The db context implementation type</param>
+    /// <param name="Options">The db context options</param>
+    internal sealed record DbContextRegistration(
+        Type ServiceType,
+        Type ImplementationType,
+        IDbContextOptions Options);
 }

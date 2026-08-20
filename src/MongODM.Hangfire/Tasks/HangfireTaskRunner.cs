@@ -30,12 +30,14 @@ namespace Etherna.MongODM.HF.Tasks
         // Methods.
         public void RunDeleteDocDependenciesTask(
             Type dbContextType,
+            Type deletedDbContextType,
             string deletedRepositoryName,
             object modelId,
             IEnumerable<string> idMemberMapIdentifiers) =>
             backgroundJobClient.Create<DeleteDocDependenciesTaskFacade>(
                 task => task.RunAsync(
                     dbContextType,
+                    deletedDbContextType,
                     deletedRepositoryName,
                     modelId,
                     idMemberMapIdentifiers),
@@ -48,12 +50,14 @@ namespace Etherna.MongODM.HF.Tasks
 
         public void RunUpdateDocDependenciesTask(
             Type dbContextType,
+            Type referenceDbContextType,
             string referenceRepositoryName,
             object modelId,
             IEnumerable<string> idMemberMapIdentifiers) =>
             backgroundJobClient.Create<UpdateDocDependenciesTaskFacade>(
                 task => task.RunAsync(
                     dbContextType,
+                    referenceDbContextType,
                     referenceRepositoryName,
                     modelId,
                     idMemberMapIdentifiers),

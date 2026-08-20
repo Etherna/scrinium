@@ -47,7 +47,7 @@
                         <span class="shape-tag reference" title="This element carries the summary of a referenced document: the members below it are denormalized copies, rewritten when the referenced document changes them">reference</span>
                         if (!element.HasReferencedModelRepository)
                         {
-                            <span class="shape-tag external" title="No repository of this db context handles the referenced model: its documents are saved on the db context owning them, and their updates don't propagate to this summary">external</span>
+                            <span class="shape-tag external" title="No repository of this db context handles the referenced model: its documents are saved on the db context owning them, and their changes refresh this summary only when applied by an application hosting both db contexts">external</span>
                         }
                         if (!element.IsUpdatePropagated)
                         {

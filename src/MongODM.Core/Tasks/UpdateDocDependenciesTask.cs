@@ -40,12 +40,14 @@ namespace Etherna.MongODM.Core.Tasks
     {
         // Methods.
         public async Task RunAsync<TDbContext>(
+            Type referencedDbContextType,
             string referencedRepositoryName,
             object referencedModelId,
             IEnumerable<string> idMemberMapIdentifiers)
             where TDbContext : class, IDbContext
         {
             ArgumentNullException.ThrowIfNull(idMemberMapIdentifiers);
+            ArgumentNullException.ThrowIfNull(referencedDbContextType);
             ArgumentNullException.ThrowIfNull(referencedModelId);
 
             logger.UpdateDocDependenciesTaskStarted(typeof(TDbContext), referencedRepositoryName, referencedModelId.ToString()!, idMemberMapIdentifiers);
@@ -59,12 +61,41 @@ namespace Etherna.MongODM.Core.Tasks
              * task executor retries later — background propagation stays out of exclusive
              * works, and converges on their outcome. */
 
-            // Get data.
-            /* Like the member map identifiers below, the repository name can address a
-             * configuration that doesn't exist anymore (e.g. after a software upgrade):
-             * skip without failing, or the task executor would retry forever a task that
-             * can never succeed. */
-            var referencedRepository = dbContext.RepositoryRegistry.Repositories.FirstOrDefault(r => r.Name == referencedRepositoryName);
+            // Recover the reference id member maps from the map registry.
+            /*
+             * At this point idMemberMapIdentifiers contains Ids from all reference Member Maps, also from different ModelMaps/Schemas, also ponting to the same Id paths.
+             *
+             * Verify that member map exists, because a scheduled task could be executed with a different configuration respectly to when it has been generated.
+             * This could happen for example if the software is upgraded in the meanwhile.
+             */
+            /*
+             * Skip the id member maps whose element path contains an unknown document key
+             * (a dictionary in document representation): the path can't render an update
+             * filter, since querying unknown document keys is still not supported by Mongo
+             * (https://jira.mongodb.org/browse/SERVER-267), so their summaries stay stale,
+             * reported by the engine build warning.
+             */
+            var recoveredIdMemberMaps = idMemberMapIdentifiers
+                .Select(idMemberMapIdentifier => dbContext.Engine.MapRegistry.MemberMapsById.TryGetValue(idMemberMapIdentifier, out var idmm) ? idmm : null!)
+                .Where(idMemberMap => idMemberMap is not null)
+                .Where(idMemberMap => !idMemberMap.ElementPathHasUndefinedDocumentElement)
+                .ToArray();
+
+            // Resolve the referenced repository from the reference serializers of the member maps.
+            /* The referenced model can live on this db context, or on a child db context
+             * attached to the scope for a cross db context reference: the source repository
+             * of the hosting reference serializers resolves on either, like a lazy load
+             * would do, verified against the db context type and repository name carried by
+             * the payload — repository names are unique per db context only, so a same
+             * named repository of another db context never serves the read. A pair that no
+             * recovered configuration sources anymore (e.g. after a software upgrade) skips
+             * without failing, or the task executor would retry forever a task that can
+             * never succeed. */
+            var referencedRepository = recoveredIdMemberMaps
+                .Select(idMemberMap => idMemberMap.TryFindHostingReferenceSerializer()?.TryResolveSourceRepository(dbContext))
+                .FirstOrDefault(repository => repository is not null &&
+                    repository.Name == referencedRepositoryName &&
+                    repository.DbContext.Engine.DbContextType == referencedDbContextType);
             if (referencedRepository is null)
             {
                 logger.UpdateDocDependenciesTaskSkippedOnUnknownRepository(typeof(TDbContext), referencedRepositoryName);
@@ -82,25 +113,12 @@ namespace Etherna.MongODM.Core.Tasks
             }
             var referencedModelType = dbContext.Engine.ProxyGenerator.PurgeProxyType(referencedModel.GetType());
 
-            // Recover reference id member maps model's schemas, and all model maps.
+            // Select the id member maps of the referenced model type.
             /*
-             * At this point idMemberMapIdentifiers contains Ids from all reference Member Maps, also from different ModelMaps/Schemas, also ponting to the same Id paths.
-             * Anyway, we know the referenced model type, and only member maps from the same type are valid. We can select only them.
-             * 
-             * Verify that member map exists, because a scheduled task could be executed with a different configuration respectly to when it has been generated.
-             * This could happen for example if the software is upgraded in the meanwhile.
+             * We know the referenced model type, and only member maps from the same type are valid. We can select only them.
              */
-            /*
-             * Skip the id member maps whose element path contains an unknown document key
-             * (a dictionary in document representation): the path can't render an update
-             * filter, since querying unknown document keys is still not supported by Mongo
-             * (https://jira.mongodb.org/browse/SERVER-267), so their summaries stay stale,
-             * reported by the engine build warning.
-             */
-            var idMemberMaps = idMemberMapIdentifiers
-                .Select(idMemberMapIdentifier => dbContext.Engine.MapRegistry.MemberMapsById.TryGetValue(idMemberMapIdentifier, out var idmm) ? idmm : null!)
-                .Where(idMemberMap => idMemberMap is not null && idMemberMap.ModelMapSchema.ModelMap.ModelType == referencedModelType)
-                .Where(idMemberMap => !idMemberMap.ElementPathHasUndefinedDocumentElement);
+            var idMemberMaps = recoveredIdMemberMaps
+                .Where(idMemberMap => idMemberMap.ModelMapSchema.ModelMap.ModelType == referencedModelType);
 
             // Define mapping of serialized documents.
             /*

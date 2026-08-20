@@ -12,6 +12,7 @@
 // You should have received a copy of the GNU Lesser General Public License along with MongODM.
 // If not, see <https://www.gnu.org/licenses/>.
 
+using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 
@@ -20,6 +21,7 @@ namespace Etherna.MongODM.Core.Tasks
     public interface IUpdateDocDependenciesTask
     {
         Task RunAsync<TDbContext>(
+            Type referencedDbContextType,
             string referencedRepositoryName,
             object referencedModelId,
             IEnumerable<string> idMemberMapIdentifiers)

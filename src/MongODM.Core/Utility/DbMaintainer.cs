@@ -17,6 +17,7 @@ using Etherna.MongODM.Core.Extensions;
 using Etherna.MongODM.Core.Options;
 using Etherna.MongODM.Core.Repositories;
 using Etherna.MongODM.Core.Serialization.Mapping;
+using Etherna.MongODM.Core.Serialization.Serializers;
 using Etherna.MongODM.Core.Tasks;
 using Microsoft.Extensions.Logging;
 using System;
@@ -26,7 +27,9 @@ using System.Reflection;
 
 namespace Etherna.MongODM.Core.Utility
 {
-    public class DbMaintainer(ITaskRunner taskRunner) : IDbMaintainer
+    public class DbMaintainer(
+        IParentEnginesProvider parentEnginesProvider,
+        ITaskRunner taskRunner) : IDbMaintainer
     {
         // Fields.
         private IDbContextEngine dbContextEngine = null!;
@@ -76,8 +79,6 @@ namespace Etherna.MongODM.Core.Utility
              * type, and resolves its source on the repository the model was deleted from:
              * hierarchically dependent origin repositories can host the same model type, and a
              * reference sourced elsewhere doesn't point at the deleted document.
-             * The registry is per engine, like the whole propagation: references hosted by the
-             * documents of another db context keep their references.
              */
             var deletedModelType = dbContextEngine.ProxyGenerator.PurgeProxyType(deletedModel.GetType());
             var idMemberMapIds = dbContextEngine.MapRegistry.MemberMapsById.Values
@@ -90,26 +91,75 @@ namespace Etherna.MongODM.Core.Utility
                 .Select(memberMap => memberMap.Id)
                 .ToArray();
 
-            // Skip the enqueue without involved references: the task would have nothing to propagate.
-            if (idMemberMapIds.Length == 0)
+            var enqueuedTasks = 0;
+            if (idMemberMapIds.Length > 0)
             {
+                taskRunner.RunDeleteDocDependenciesTask(
+                    dbContextEngine.DbContextType,
+                    dbContextEngine.DbContextType,
+                    referenceRepository.Name,
+                    deletedModelId,
+                    idMemberMapIds);
+                enqueuedTasks++;
+
+                logger.DbMaintainerEnqueuedDependenciesDeleteTask(
+                    dbContextEngine.Options.DbName,
+                    deletedModelType,
+                    deletedModelId.ToString()!,
+                    idMemberMapIds.Length);
+            }
+
+            // Enqueue the propagation to the parent engines referencing the deleted model.
+            /*
+             * Cross db context references live in the map registries of the parent db
+             * contexts: their id member maps select there with the same policy filters,
+             * keeping only the references sourced on the deleting repository, and each
+             * involved parent engine gets a task of its own. The propagation crosses the
+             * engines of this application only: documents of applications not hosting the
+             * parent db context keep their references, found by the missing origin
+             * references scan.
+             */
+            foreach (var parentEngine in parentEnginesProvider.GetParentEngines(dbContextEngine.DbContextType))
+            {
+                /* A read-only parent db context consumes documents owned by another
+                 * application: they are not this propagation's to repair, and every write
+                 * would be denied. */
+                if (parentEngine.Options.IsReadOnly)
+                    continue;
+
+                var parentIdMemberMapIds = parentEngine.MapRegistry.MemberMapsById.Values
+                    .Where(memberMap => memberMap is { IsEntityReferenceMember: true, IsIdMember: true })
+                    .Where(memberMap =>
+                        memberMap.TryFindHostingReferenceSerializer() is { } referenceSerializer &&
+                        referenceSerializer.Configuration.OriginDelete != OriginDeleteMode.KeepReference &&
+                        referenceSerializer.ReferenceModelType.IsAssignableFrom(deletedModelType) &&
+                        IsSourcedOnRepository(referenceSerializer, referenceRepository))
+                    .Select(memberMap => memberMap.Id)
+                    .ToArray();
+                if (parentIdMemberMapIds.Length == 0)
+                    continue;
+
+                taskRunner.RunDeleteDocDependenciesTask(
+                    parentEngine.DbContextType,
+                    dbContextEngine.DbContextType,
+                    referenceRepository.Name,
+                    deletedModelId,
+                    parentIdMemberMapIds);
+                enqueuedTasks++;
+
+                logger.DbMaintainerEnqueuedParentDependenciesDeleteTask(
+                    dbContextEngine.Options.DbName,
+                    parentEngine.Options.DbName,
+                    deletedModelType,
+                    deletedModelId.ToString()!,
+                    parentIdMemberMapIds.Length);
+            }
+
+            // Skip the enqueue without involved references: the tasks would have nothing to propagate.
+            if (enqueuedTasks == 0)
                 logger.DbMaintainerSkippedDependenciesDeleteWithoutPolicies(
                     dbContextEngine.Options.DbName,
                     deletedModelId.ToString()!);
-                return;
-            }
-
-            taskRunner.RunDeleteDocDependenciesTask(
-                dbContextEngine.DbContextType,
-                referenceRepository.Name,
-                deletedModelId,
-                idMemberMapIds);
-
-            logger.DbMaintainerEnqueuedDependenciesDeleteTask(
-                dbContextEngine.Options.DbName,
-                deletedModelType,
-                deletedModelId.ToString()!,
-                idMemberMapIds.Length);
         }
 
         /*
@@ -155,8 +205,11 @@ namespace Etherna.MongODM.Core.Utility
                 return;
             }
 
+            //materialize the changed members once: the parent engines enumerate them again
+            var changedMembersList = changedMembers.ToArray();
+
             // Find all possibly involved member maps with changes, from all model maps. Select only referenced members.
-            var referenceMemberMaps = changedMembers
+            var referenceMemberMaps = changedMembersList
                 .SelectMany(updatedMemberInfo => dbContextEngine.MapRegistry.GetMemberMapsFromMemberInfo(updatedMemberInfo))
                 .Where(memberMap => memberMap.IsEntityReferenceMember);
 
@@ -188,26 +241,94 @@ namespace Etherna.MongODM.Core.Utility
             var idMemberMapIds = allIdMemberMaps.Select(mm => mm.Id).ToArray();
             var updatedModelId = ((IEntityModel<TKey>)updatedModel).Id!;
 
-            // Skip the enqueue without involved reference members: the task would have nothing to propagate.
-            if (idMemberMapIds.Length == 0)
+            var enqueuedTasks = 0;
+            if (idMemberMapIds.Length > 0)
             {
+                taskRunner.RunUpdateDocDependenciesTask(
+                    dbContextEngine.DbContextType,
+                    dbContextEngine.DbContextType,
+                    referenceRepository.Name,
+                    updatedModelId,
+                    idMemberMapIds);
+                enqueuedTasks++;
+
+                logger.DbMaintainerEnqueuedDependenciesUpdateTask(
+                    dbContextEngine.Options.DbName,
+                    dbContextEngine.ProxyGenerator.PurgeProxyType(updatedModel.GetType()),
+                    updatedModelId.ToString()!,
+                    idMemberMapIds.Length);
+            }
+
+            // Enqueue the propagation to the parent engines denormalizing the changed members.
+            /*
+             * Cross db context references live in the map registries of the parent db
+             * contexts, with their summaries denormalized into the parent documents: the
+             * changed members resolve their member maps on each parent registry like on the
+             * own one, keeping only the references sourced on the updated repository, and
+             * each involved parent engine gets a task of its own. The propagation crosses
+             * the engines of this application only: documents of applications not hosting
+             * the parent db context keep their summaries, so cross db context summaries
+             * denormalize safely only when every writer of the child collections also hosts
+             * the referencing db contexts.
+             */
+            foreach (var parentEngine in parentEnginesProvider.GetParentEngines(dbContextEngine.DbContextType))
+            {
+                /* A read-only parent db context consumes documents owned by another
+                 * application: their summaries are not this propagation's to refresh, and
+                 * every write would be denied. */
+                if (parentEngine.Options.IsReadOnly)
+                    continue;
+
+                var parentIdMemberMapIds = changedMembersList
+                    .SelectMany(updatedMemberInfo => parentEngine.MapRegistry.GetMemberMapsFromMemberInfo(updatedMemberInfo))
+                    .Where(memberMap => memberMap.IsEntityReferenceMember)
+                    .Select(memberMap => memberMap.OwnerEntityIdMap)
+                    .OfType<IMemberMap>()
+                    .Distinct()
+                    .Where(idMemberMap =>
+                        idMemberMap.TryFindHostingReferenceSerializer() is { } referenceSerializer &&
+                        IsSourcedOnRepository(referenceSerializer, referenceRepository))
+                    .SelectMany(parentEngine.MapRegistry.GetMemberMapsWithSameElementPath)
+                    .Distinct()
+                    .Select(memberMap => memberMap.Id)
+                    .ToArray();
+                if (parentIdMemberMapIds.Length == 0)
+                    continue;
+
+                taskRunner.RunUpdateDocDependenciesTask(
+                    parentEngine.DbContextType,
+                    dbContextEngine.DbContextType,
+                    referenceRepository.Name,
+                    updatedModelId,
+                    parentIdMemberMapIds);
+                enqueuedTasks++;
+
+                logger.DbMaintainerEnqueuedParentDependenciesUpdateTask(
+                    dbContextEngine.Options.DbName,
+                    parentEngine.Options.DbName,
+                    dbContextEngine.ProxyGenerator.PurgeProxyType(updatedModel.GetType()),
+                    updatedModelId.ToString()!,
+                    parentIdMemberMapIds.Length);
+            }
+
+            // Skip the enqueue without involved reference members: the tasks would have nothing to propagate.
+            if (enqueuedTasks == 0)
                 logger.DbMaintainerSkippedDependenciesUpdateWithoutReferences(
                     dbContextEngine.Options.DbName,
                     updatedModelId.ToString()!);
-                return;
-            }
-
-            taskRunner.RunUpdateDocDependenciesTask(
-                dbContextEngine.DbContextType,
-                referenceRepository.Name,
-                updatedModelId,
-                idMemberMapIds);
-
-            logger.DbMaintainerEnqueuedDependenciesUpdateTask(
-                dbContextEngine.Options.DbName,
-                dbContextEngine.ProxyGenerator.PurgeProxyType(updatedModel.GetType()),
-                updatedModelId.ToString()!,
-                idMemberMapIds.Length);
         }
+
+        // Helpers.
+        /*
+         * A cross db context reference declares its source db context type with the typed
+         * factory: only such a selector can run on the changed repository db context,
+         * resolving the source like a deserialization would. Selectors of untyped or
+         * implicit sources expect an instance of their own db context type, so they never
+         * source another engine.
+         */
+        private static bool IsSourcedOnRepository(IReferenceSerializer referenceSerializer, IRepository referenceRepository) =>
+            referenceSerializer.SourceRepositoryDbContextType is { } sourceDbContextType &&
+            sourceDbContextType.IsInstanceOfType(referenceRepository.DbContext) &&
+            referenceSerializer.TryResolveSourceRepository(referenceRepository.DbContext) == referenceRepository;
     }
 }

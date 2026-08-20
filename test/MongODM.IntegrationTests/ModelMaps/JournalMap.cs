@@ -17,6 +17,7 @@ using Etherna.MongoDB.Bson.Serialization.Serializers;
 using Etherna.MongODM.Core;
 using Etherna.MongODM.Core.Domain.Models;
 using Etherna.MongODM.Core.Extensions;
+using Etherna.MongODM.Core.Options;
 using Etherna.MongODM.Core.Serialization;
 using Etherna.MongODM.Core.Serialization.Serializers;
 using Etherna.MongODM.IntegrationTests.Models;
@@ -35,6 +36,7 @@ namespace Etherna.MongODM.IntegrationTests.ModelMaps
 
                     // Set members with custom serializers.
                     mm.SetMemberSerializer(m => m.PinnedNote!, NoteReferenceSerializer(dbContextEngine));
+                    mm.SetMemberSerializer(m => m.SubjectNote!, SubjectNoteReferenceSerializer(dbContextEngine));
                 });
         }
 
@@ -54,6 +56,24 @@ namespace Etherna.MongODM.IntegrationTests.ModelMaps
                 {
                     mm.MapMember(m => m.Tag);
                 });
+            },
+            sourceRepository: (ISecondDbContext dbContext) => dbContext.Notes);
+
+        /// <summary>
+        /// Reference to the note entity of the child db context, declaring the referencing
+        /// document delete when the note is deleted through its repository
+        /// </summary>
+        public static ReferenceSerializer<Note, string> SubjectNoteReferenceSerializer(IDbContextEngine dbContextEngine) =>
+            ReferenceSerializer.Create(dbContextEngine, config =>
+            {
+                config.OriginDelete = OriginDeleteMode.DeleteReferencingDocument;
+                config.AddModelMap<ModelBase>("25530dac-94f8-46f0-b5b9-3bc6eff22ed5");
+                config.AddModelMap<EntityModelBase<string>>("1c95d7c0-1cad-48e2-a141-9cd367917e56", mm =>
+                {
+                    mm.MapIdMember(m => m.Id);
+                    mm.IdMemberMap.SetSerializer(new StringSerializer(BsonType.ObjectId));
+                });
+                config.AddModelMap<Note>("400f3fc7-7ed1-4bee-995c-e9bde44d091b", _ => { });
             },
             sourceRepository: (ISecondDbContext dbContext) => dbContext.Notes);
     }

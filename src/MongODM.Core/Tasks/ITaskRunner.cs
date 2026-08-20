@@ -21,12 +21,14 @@ namespace Etherna.MongODM.Core.Tasks
     {
         void RunDeleteDocDependenciesTask(
             Type dbContextType,
+            Type deletedDbContextType,
             string deletedRepositoryName,
             object modelId,
             IEnumerable<string> idMemberMapIdentifiers);
         void RunMigrateDbTask(Type dbContextType, string dbMigrationOpId);
         void RunUpdateDocDependenciesTask(
             Type dbContextType,
+            Type referenceDbContextType,
             string referenceRepositoryName,
             object modelId,
             IEnumerable<string> idMemberMapIdentifiers);

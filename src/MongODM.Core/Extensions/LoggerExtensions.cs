@@ -20,7 +20,7 @@ namespace Etherna.MongODM.Core.Extensions
 {
     /*
      * Always group similar log delegates by type, always use incremental event ids.
-     * Last event id is: 72
+     * Last event id is: 74
      */
     public static class LoggerExtensions
     {
@@ -92,6 +92,18 @@ namespace Etherna.MongODM.Core.Extensions
                 LogLevel.Trace,
                 new EventId(31, nameof(DbMaintainerEnqueuedDependenciesUpdateTask)),
                 "DbMaintainer of DbContext {DbName} enqueued dependencies update task for model {ModelType} with Id {ModelId} on {IdMemberMapsCount} id member maps");
+
+        private static readonly Action<ILogger, string, string, Type, string, int, Exception> _dbMaintainerEnqueuedParentDependenciesDeleteTask =
+            LoggerMessage.Define<string, string, Type, string, int>(
+                LogLevel.Debug,
+                new EventId(73, nameof(DbMaintainerEnqueuedParentDependenciesDeleteTask)),
+                "DbContext {DbName} enqueued dependencies delete task on parent DbContext {ParentDbName} for deleted model type {ModelType} with Id {ModelId}, involving {IdMemberMapsCount} id member maps");
+
+        private static readonly Action<ILogger, string, string, Type, string, int, Exception> _dbMaintainerEnqueuedParentDependenciesUpdateTask =
+            LoggerMessage.Define<string, string, Type, string, int>(
+                LogLevel.Trace,
+                new EventId(74, nameof(DbMaintainerEnqueuedParentDependenciesUpdateTask)),
+                "DbMaintainer of DbContext {DbName} enqueued dependencies update task on parent DbContext {ParentDbName} for model {ModelType} with Id {ModelId} on {IdMemberMapsCount} id member maps");
 
         private static readonly Action<ILogger, string, Exception> _dbMaintainerInitialized =
             LoggerMessage.Define<string>(
@@ -515,6 +527,12 @@ namespace Etherna.MongODM.Core.Extensions
 
         public static void DbMaintainerEnqueuedDependenciesUpdateTask(this ILogger logger, string dbName, Type modelType, string modelId, int idMemberMapsCount) =>
             _dbMaintainerEnqueuedDependenciesUpdateTask(logger, dbName, modelType, modelId, idMemberMapsCount, null!);
+
+        public static void DbMaintainerEnqueuedParentDependenciesDeleteTask(this ILogger logger, string dbName, string parentDbName, Type modelType, string modelId, int idMemberMapsCount) =>
+            _dbMaintainerEnqueuedParentDependenciesDeleteTask(logger, dbName, parentDbName, modelType, modelId, idMemberMapsCount, null!);
+
+        public static void DbMaintainerEnqueuedParentDependenciesUpdateTask(this ILogger logger, string dbName, string parentDbName, Type modelType, string modelId, int idMemberMapsCount) =>
+            _dbMaintainerEnqueuedParentDependenciesUpdateTask(logger, dbName, parentDbName, modelType, modelId, idMemberMapsCount, null!);
 
         public static void DbMaintainerInitialized(this ILogger logger, string dbName) =>
             _dbMaintainerInitialized(logger, dbName, null!);

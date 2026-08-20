@@ -29,6 +29,7 @@ namespace Etherna.MongODM.IntegrationTests.Models
 
         // Properties.
         public virtual Note? PinnedNote { get; set; }
+        public virtual Note? SubjectNote { get; set; }
         public virtual string Title { get; set; }
     }
 }

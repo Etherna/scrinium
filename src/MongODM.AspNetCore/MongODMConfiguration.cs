@@ -147,6 +147,9 @@ namespace Etherna.MongODM.AspNetCore
                 });
                 services.AddScoped<TDbContext, TDbContextImpl>(sp => sp.GetRequiredService<TDbContextImpl>());
 
+                // Record the registration for the parent engines resolution.
+                services.AddSingleton(new DbContextRegistration(typeof(TDbContext), typeof(TDbContextImpl), options));
+
                 // Add db context type.
                 dbContextTypes.Add(typeof(TDbContext));
 

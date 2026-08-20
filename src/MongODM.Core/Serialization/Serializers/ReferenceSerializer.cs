@@ -88,6 +88,7 @@ namespace Etherna.MongODM.Core.Serialization.Serializers
         private IDiscriminatorConvention _discriminatorConvention = null!;
 
         private readonly IDbContextEngine dbContextEngine;
+        private readonly Type? sourceRepositoryDbContextType;
         private Func<IDbContext, IRepository>? sourceRepositorySelector;
 
         // Constructors.
@@ -107,6 +108,7 @@ namespace Etherna.MongODM.Core.Serialization.Serializers
             ArgumentNullException.ThrowIfNull(configure);
 
             this.dbContextEngine = dbContextEngine ?? throw new ArgumentNullException(nameof(dbContextEngine));
+            this.sourceRepositoryDbContextType = sourceRepositoryDbContextType;
             sourceRepositorySelector = sourceRepository;
 
             /* Report the source declaration to the map registry for initialization
@@ -128,6 +130,7 @@ namespace Etherna.MongODM.Core.Serialization.Serializers
         // Internal properties.
         Type IReferenceSerializer.ReferenceKeyType => typeof(TKey);
         Type IReferenceSerializer.ReferenceModelType => typeof(TModelBase);
+        Type? IReferenceSerializer.SourceRepositoryDbContextType => sourceRepositoryDbContextType;
         Func<IDbContext, IRepository>? IReferenceSerializer.SourceRepositorySelector
         {
             get => sourceRepositorySelector;

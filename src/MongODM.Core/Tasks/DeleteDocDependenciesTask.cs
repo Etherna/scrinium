@@ -44,11 +44,13 @@ namespace Etherna.MongODM.Core.Tasks
 
         // Methods.
         public async Task RunAsync<TDbContext>(
+            Type deletedDbContextType,
             string deletedRepositoryName,
             object deletedModelId,
             IEnumerable<string> idMemberMapIdentifiers)
             where TDbContext : class, IDbContext
         {
+            ArgumentNullException.ThrowIfNull(deletedDbContextType);
             ArgumentNullException.ThrowIfNull(deletedModelId);
             ArgumentNullException.ThrowIfNull(idMemberMapIdentifiers);
 
@@ -66,16 +68,20 @@ namespace Etherna.MongODM.Core.Tasks
             // Recover the reference id member maps.
             /*
              * Verify that each member map still exists, still declares an origin delete policy,
-             * and still resolves its source on the repository the model was deleted from: a
-             * scheduled task could execute with a configuration different from the one that
-             * enqueued it, for example after a software upgrade.
+             * and still resolves its source on the repository the model was deleted from —
+             * verified against the db context type and repository name carried by the payload,
+             * since repository names are unique per db context only: a scheduled task could
+             * execute with a configuration different from the one that enqueued it, for
+             * example after a software upgrade.
              */
             var idMemberMaps = idMemberMapIdentifiers
                 .Select(idMemberMapIdentifier => dbContext.Engine.MapRegistry.MemberMapsById.TryGetValue(idMemberMapIdentifier, out var idmm) ? idmm : null!)
                 .Where(idMemberMap => idMemberMap is not null &&
                     idMemberMap.TryFindHostingReferenceSerializer() is { } referenceSerializer &&
                     referenceSerializer.Configuration.OriginDelete != OriginDeleteMode.KeepReference &&
-                    referenceSerializer.TryResolveSourceRepository(dbContext)?.Name == deletedRepositoryName);
+                    referenceSerializer.TryResolveSourceRepository(dbContext) is { } sourceRepository &&
+                    sourceRepository.Name == deletedRepositoryName &&
+                    sourceRepository.DbContext.Engine.DbContextType == deletedDbContextType);
 
             // Propagate on each repository hosting the referencing documents.
             /*
