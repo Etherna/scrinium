@@ -134,7 +134,7 @@ namespace Etherna.MongODM.Core
         public void OnImplicitLazyLoadDeniesLoadsWithThrowMode()
         {
             // Setup.
-            options.ImplicitLazyLoad = ImplicitLazyLoadMode.Throw;
+            options.ImplicitLazyLoad = ReactionMode.Throw;
 
             // Action and assert.
             var exception = Assert.Throws<MongodmLazyLoadingException>(
@@ -144,9 +144,9 @@ namespace Etherna.MongODM.Core
         }
 
         [Theory]
-        [InlineData(ImplicitLazyLoadMode.Silent)]
-        [InlineData(ImplicitLazyLoadMode.Warn)]
-        public void OnImplicitLazyLoadAllowsLoadsWithNotThrowingModes(ImplicitLazyLoadMode mode)
+        [InlineData(ReactionMode.Silent)]
+        [InlineData(ReactionMode.Warn)]
+        public void OnImplicitLazyLoadAllowsLoadsWithNotThrowingModes(ReactionMode mode)
         {
             // Setup.
             options.ImplicitLazyLoad = mode;
@@ -161,7 +161,7 @@ namespace Etherna.MongODM.Core
         {
             // Setup.
             var model = NewBoundProxy("id");
-            ((IReferenceable)model).SetAsSummary([], MissingOriginDocumentMode.Throw);
+            ((IReferenceable)model).SetAsSummary([], ReactionMode.Throw);
 
             // Action and assert.
             var exception = Assert.Throws<MongodmMissingOriginDocumentException>(
@@ -172,9 +172,9 @@ namespace Etherna.MongODM.Core
         }
 
         [Theory]
-        [InlineData(MissingOriginDocumentMode.Silent)]
-        [InlineData(MissingOriginDocumentMode.Warn)]
-        public void OnMissingOriginDocumentToleratesSummariesWithNotThrowingModes(MissingOriginDocumentMode mode)
+        [InlineData(ReactionMode.Silent)]
+        [InlineData(ReactionMode.Warn)]
+        public void OnMissingOriginDocumentToleratesSummariesWithNotThrowingModes(ReactionMode mode)
         {
             // Setup.
             var model = NewBoundProxy("id");
@@ -196,7 +196,7 @@ namespace Etherna.MongODM.Core
             using var contextHandler = AsyncLocalContext.Instance.InitAsyncLocalContext();
 
             var model = NewBoundProxy("id");
-            ((IReferenceable)model).SetAsSummary([], MissingOriginDocumentMode.Throw);
+            ((IReferenceable)model).SetAsSummary([], ReactionMode.Throw);
 
             collectionMock.Setup(c => c.FindAsync(
                     It.IsAny<FilterDefinition<FakeModel>>(),
@@ -503,7 +503,7 @@ namespace Etherna.MongODM.Core
                 {
                     var proxy = NewBoundProxy($"id{i}");
                     //the mocked collection returns no document: the missing origin ones are not the object here
-                    ((IReferenceable)proxy).SetAsSummary([], MissingOriginDocumentMode.Silent);
+                    ((IReferenceable)proxy).SetAsSummary([], ReactionMode.Silent);
                     return proxy;
                 })
                 .ToArray();

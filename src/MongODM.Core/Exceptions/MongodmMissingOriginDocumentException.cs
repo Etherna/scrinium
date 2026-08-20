@@ -18,9 +18,10 @@ namespace Etherna.MongODM.Core.Exceptions
 {
     /// <summary>
     /// Thrown loading the full document of a summary model when the reference denies missing
-    /// origin documents (<see cref="Options.MissingOriginDocumentMode.Throw"/>): the referred
-    /// document doesn't exist anymore on the origin collection, so the summary can't complete
-    /// its members.
+    /// origin documents (<see cref="Options.ReactionMode.Throw"/> on
+    /// <see cref="Serialization.Serializers.ReferenceSerializerConfiguration.MissingOriginDocument"/>):
+    /// the referred document doesn't exist anymore on the origin collection, so the summary
+    /// can't complete its members.
     /// </summary>
     public class MongodmMissingOriginDocumentException : Exception
     {

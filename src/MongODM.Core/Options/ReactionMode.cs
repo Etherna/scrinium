@@ -15,21 +15,23 @@
 namespace Etherna.MongODM.Core.Options
 {
     /// <summary>
-    /// How the db context reacts to an implicit lazy load: a member of a summary model, not
-    /// loaded and not preloaded with <see cref="IDbContext.LoadValuesAsync{TModel}(TModel, System.Linq.Expressions.Expression{System.Func{TModel, object?}}[])"/>,
-    /// read through its property or a domain method. The load is synchronous over the db
-    /// call, so it degrades the reading path: prefer explicit preloads on performance
-    /// sensitive code.
+    /// How a component reacts to a condition it can tolerate: silently, logging a warning,
+    /// or denying the operation with a detailed exception. Each configuration exposing the
+    /// mode declares the tolerated condition, the warning deduplication, the thrown
+    /// exception, and its own default.
+    /// Values are ordered by strictness: where more declarations reach the same target
+    /// (like the references materializing the same summary instance), the strictest mode
+    /// wins.
     /// </summary>
-    public enum ImplicitLazyLoadMode
+    public enum ReactionMode
     {
-        /// <summary>Load silently.</summary>
-        Silent,
+        /// <summary>Tolerate silently.</summary>
+        Silent = 0,
 
-        /// <summary>Deny the load, throwing <see cref="Exceptions.MongodmLazyLoadingException"/>.</summary>
-        Throw,
+        /// <summary>Tolerate, logging a warning.</summary>
+        Warn = 1,
 
-        /// <summary>Load, logging a warning once per member, per db context scope. The default.</summary>
-        Warn
+        /// <summary>Deny, throwing a detailed exception.</summary>
+        Throw = 2
     }
 }

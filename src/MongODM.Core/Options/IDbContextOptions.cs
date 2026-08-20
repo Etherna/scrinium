@@ -58,10 +58,11 @@ namespace Etherna.MongODM.Core.Options
 
         /// <summary>
         /// How the db context reacts to implicit lazy loads of summary model members:
-        /// load logging a warning (the default), load silently, or deny them throwing.
+        /// load logging a warning once per member per scope (the default), load silently, or
+        /// deny them throwing <see cref="Exceptions.MongodmLazyLoadingException"/>.
         /// Preload members explicitly with <see cref="IDbContext.LoadValuesAsync{TModel}(TModel, System.Linq.Expressions.Expression{System.Func{TModel, object?}}[])"/>.
         /// </summary>
-        public ImplicitLazyLoadMode ImplicitLazyLoad { get; }
+        public ReactionMode ImplicitLazyLoad { get; }
 
         /// <summary>
         /// True to deny any write on the database from this db context: document writes,
@@ -89,5 +90,14 @@ namespace Etherna.MongODM.Core.Options
         /// Configuration of the document element carrying the model map schema id.
         /// </summary>
         public ModelMapSchemaIdOptions ModelMapSchemaId { get; }
+
+        /// <summary>
+        /// How the engine build reacts to not propagated reference paths — reference id
+        /// element paths with an unknown document key (a dictionary in document
+        /// representation), that the dependencies propagation can't address: report a
+        /// warning per element path (the default), tolerate silently, or deny the build
+        /// throwing <see cref="Exceptions.MongodmNotPropagatedReferenceException"/>.
+        /// </summary>
+        public ReactionMode NotPropagatedReferences { get; }
     }
 }

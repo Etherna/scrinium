@@ -313,6 +313,9 @@ namespace Etherna.MongODM.Core.Serialization.Mapping
 
             // Verify that mapped id members implement the entity id contract.
             ValidateIdMemberMaps();
+
+            // Report the reference element paths the dependencies propagation can't address.
+            ReportNotPropagatedReferencePaths();
         }
 
         // Helpers.
@@ -558,6 +561,57 @@ namespace Etherna.MongODM.Core.Serialization.Mapping
                     typeof(MappedSerializerAdapter<>).MakeGenericType(modelType))
                     throw;
             }
+        }
+
+        /* The dependencies propagation addresses the referencing documents server side,
+         * filtering on the reference id element path: a path containing an unknown
+         * document key — a dictionary in document representation — can't render a filter
+         * (querying unknown document keys is unsupported, see upstream SERVER-267), so the
+         * update propagation skips it and its summaries go stale when the referenced
+         * models change, the origin delete propagation leaves its references untouched,
+         * and the missing origin references scan reports it unverifiable. The
+         * configuration stays legitimate: report every such path at engine build, one per
+         * hosting model type and element path whatever the schemas producing it, so the
+         * limitation is a conscious choice instead of a silent behavior. The reaction is
+         * declared by DbContextOptions.NotPropagatedReferences: a warning per path (the
+         * default), silent tolerance, or a detailed exception denying the build. */
+        private void ReportNotPropagatedReferencePaths()
+        {
+            if (dbContextEngine.Options.NotPropagatedReferences == ReactionMode.Silent)
+                return;
+
+            HashSet<(Type ModelType, string ElementPath)> notPropagatedPaths = [];
+            foreach (var idMemberMap in _memberMapsById.Values.Where(mm =>
+                mm is { IsEntityReferenceMember: true, IsIdMember: true, ElementPathHasUndefinedDocumentElement: true }))
+            {
+                notPropagatedPaths.Add((
+                    idMemberMap.MemberMapPath.First().ModelMapSchema.ModelMap.ModelType,
+                    idMemberMap.ParentMemberMap!.RenderElementPath(
+                        referToFinalItem: false,
+                        _ => "",
+                        _ => ".*")));
+            }
+
+            var orderedPaths = notPropagatedPaths
+                .OrderBy(path => path.ModelType.Name, StringComparer.Ordinal)
+                .ThenBy(path => path.ElementPath, StringComparer.Ordinal);
+
+            if (dbContextEngine.Options.NotPropagatedReferences == ReactionMode.Throw &&
+                notPropagatedPaths.Count > 0)
+                throw new MongodmNotPropagatedReferenceException(
+                    $"DbContext {dbContextEngine.DbContextType.Name} maps references behind unknown document keys, " +
+                    "at element paths the dependencies propagation can't address: " +
+                    string.Join("; ", orderedPaths.Select(path => $"{path.ElementPath} of model type {path.ModelType.Name}")) +
+                    ". Their summaries go stale when the referenced models change, the origin delete propagation " +
+                    "leaves their references untouched, and the missing origin references scan can't verify them. " +
+                    "Serialize the dictionaries with an addressable representation (like ArrayOfDocuments), or " +
+                    "configure DbContextOptions.NotPropagatedReferences to tolerate them");
+
+            foreach (var (modelType, elementPath) in orderedPaths)
+                logger.MapRegistryFoundNotPropagatedReferencePath(
+                    dbContextEngine.Options.DbName,
+                    elementPath,
+                    modelType);
         }
 
         /* A document carries the discriminator of the concrete model type that wrote it,

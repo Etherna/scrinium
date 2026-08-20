@@ -347,10 +347,10 @@ namespace Etherna.MongODM.Core
 
             switch (engine.Options.ImplicitLazyLoad)
             {
-                case ImplicitLazyLoadMode.Silent:
+                case ReactionMode.Silent:
                     break;
 
-                case ImplicitLazyLoadMode.Throw:
+                case ReactionMode.Throw:
                     throw new MongodmLazyLoadingException(
                         $"Denied implicit lazy load on model type {modelType.Name}" +
                         (memberName is null ? " from a domain method" : $", member {memberName}") +
@@ -378,10 +378,10 @@ namespace Etherna.MongODM.Core
 
             switch (referenceable.MissingOriginDocument)
             {
-                case MissingOriginDocumentMode.Silent:
+                case ReactionMode.Silent:
                     break;
 
-                case MissingOriginDocumentMode.Warn:
+                case ReactionMode.Warn:
                     /* Report the model type and its source repository, without the document id:
                      * an id can be a natural identifier, and this level is enabled by default. */
                     bool firstOccurrence;

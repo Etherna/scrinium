@@ -12,6 +12,8 @@
 // You should have received a copy of the GNU Lesser General Public License along with MongODM.
 // If not, see <https://www.gnu.org/licenses/>.
 
+using Etherna.MongoDB.Bson;
+using Etherna.MongoDB.Driver;
 using Etherna.MongODM.Core.ExecContext.AsyncLocal;
 using Etherna.MongODM.Core.ProxyModels;
 using Etherna.MongODM.IntegrationTests.Fixtures;
@@ -200,6 +202,38 @@ namespace Etherna.MongODM.IntegrationTests
 
             var foundJournal = await readParentDbContext.Journals.FindOneAsync(journal.Id);
             Assert.Equal(note.Id, foundJournal.PinnedNote!.Id);
+        }
+
+        [Fact]
+        public async Task CrossDbContextSummariesDontRefreshOnChildModelChanges()
+        {
+            /* MODM-205: the dependencies update propagation stays per engine. A change of
+             * the child model enqueues nothing for the documents of the parent db context,
+             * whose denormalized summary members keep their last values: keep cross db
+             * context summaries id only, unless staleness is acceptable. */
+
+            // Setup.
+            using var contextHandler = AsyncLocalContext.Instance.InitAsyncLocalContext();
+            var note = new Note("note text") { Tag = "original tag" };
+            await secondDbContext.Notes.CreateAsync(note);
+            var journal = new Journal("journal title") { PinnedNote = note };
+            await parentDbContext.Journals.CreateAsync(journal);
+
+            // Action: update the denormalized member through the child repository.
+            fixture.TaskRunner.ClearPending();
+            var loadedNote = await secondDbContext.Notes.FindOneAsync(note.Id);
+            loadedNote.Tag = "updated tag";
+            await secondDbContext.SaveChangesAsync();
+
+            // Assert: nothing enqueues for the parent documents, and the summary is stale.
+            Assert.Equal(0, fixture.TaskRunner.PendingCount);
+            await fixture.TaskRunner.ExecutePendingAsync(fixture.ServiceProvider);
+
+            var journalsCollection = parentDbContext.Engine.Database.GetCollection<BsonDocument>("journals");
+            var rawJournal = await journalsCollection
+                .Find(Builders<BsonDocument>.Filter.Eq("_id", ObjectId.Parse(journal.Id)))
+                .SingleAsync();
+            Assert.Equal("original tag", rawJournal["PinnedNote"]["Tag"].AsString);
         }
     }
 }

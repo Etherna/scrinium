@@ -300,8 +300,8 @@ namespace Etherna.MongODM.Core.Generators
             b.AppendLine("        // Fields.");
             b.AppendLine("        private global::Etherna.MongODM.Core.IDbContext? proxyDbContext;");
             b.AppendLine("        private bool proxyIsSummary;");
-            b.AppendLine("        private global::Etherna.MongODM.Core.Options.MissingOriginDocumentMode proxyMissingOriginDocument =");
-            b.AppendLine("            global::Etherna.MongODM.Core.Options.MissingOriginDocumentMode.Throw;");
+            b.AppendLine("        private global::Etherna.MongODM.Core.Options.ReactionMode proxyMissingOriginDocument =");
+            b.AppendLine("            global::Etherna.MongODM.Core.Options.ReactionMode.Throw;");
             b.AppendLine("        private global::System.Type? proxyOutdatedModelType;");
             b.AppendLine("        private readonly global::System.Collections.Generic.Dictionary<string, bool> proxySettedMemberNames = new(); //<memberName, isFromSummary>");
             b.AppendLine("        private global::Etherna.MongODM.Core.Repositories.IRepository proxySourceRepository = null!; //bound right after creation");
@@ -342,7 +342,7 @@ namespace Etherna.MongODM.Core.Generators
             //IProxyModel and IReferenceable properties
             b.AppendLine("        global::System.Type? global::Etherna.MongODM.Core.ProxyModels.IProxyModel.OutdatedModelType => proxyOutdatedModelType;");
             b.AppendLine("        bool global::Etherna.MongODM.Core.ProxyModels.IReferenceable.IsSummary => proxyIsSummary;");
-            b.AppendLine("        global::Etherna.MongODM.Core.Options.MissingOriginDocumentMode global::Etherna.MongODM.Core.ProxyModels.IReferenceable.MissingOriginDocument =>");
+            b.AppendLine("        global::Etherna.MongODM.Core.Options.ReactionMode global::Etherna.MongODM.Core.ProxyModels.IReferenceable.MissingOriginDocument =>");
             b.AppendLine("            proxyMissingOriginDocument;");
             b.AppendLine("        global::System.Collections.Generic.IEnumerable<string> global::Etherna.MongODM.Core.ProxyModels.IReferenceable.SettedMemberNames =>");
             b.AppendLine("            global::System.Linq.Enumerable.ToArray(proxySettedMemberNames.Keys);");
@@ -425,7 +425,7 @@ namespace Etherna.MongODM.Core.Generators
             b.AppendLine();
             b.AppendLine("        void global::Etherna.MongODM.Core.ProxyModels.IReferenceable.SetAsSummary(");
             b.AppendLine("            global::System.Collections.Generic.IEnumerable<string> summaryLoadedMemberNames,");
-            b.AppendLine("            global::Etherna.MongODM.Core.Options.MissingOriginDocumentMode missingOriginDocument)");
+            b.AppendLine("            global::Etherna.MongODM.Core.Options.ReactionMode missingOriginDocument)");
             b.AppendLine("        {");
             b.AppendLine("            proxyIsSummary = true;");
             b.AppendLine("            proxyMissingOriginDocument = missingOriginDocument;");

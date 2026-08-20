@@ -304,12 +304,12 @@ namespace Etherna.MongODM.Core
         }
 
         [Theory]
-        [InlineData(null, MissingOriginDocumentMode.Warn)] //warned by default
-        [InlineData(MissingOriginDocumentMode.Silent, MissingOriginDocumentMode.Silent)]
-        [InlineData(MissingOriginDocumentMode.Throw, MissingOriginDocumentMode.Throw)]
-        public void DeserializeStampsSummariesWithTheConfiguredMissingOriginDocumentMode(
-            MissingOriginDocumentMode? configuredMode,
-            MissingOriginDocumentMode expectedMode)
+        [InlineData(null, ReactionMode.Warn)] //warned by default
+        [InlineData(ReactionMode.Silent, ReactionMode.Silent)]
+        [InlineData(ReactionMode.Throw, ReactionMode.Throw)]
+        public void DeserializeStampsSummariesWithTheConfiguredReactionMode(
+            ReactionMode? configuredMode,
+            ReactionMode expectedMode)
         {
             /* The full load of a summary runs much later than its deserialization, on an
              * instance knowing only its source repository: the mode declared by the reference
@@ -517,7 +517,7 @@ namespace Etherna.MongODM.Core
         // Helpers.
         private ReferenceSerializer<FakeModel, string> BuildSerializer(
             Action<BsonClassMap<FakeModel>>? fakeModelInitializer = null,
-            MissingOriginDocumentMode? missingOriginDocument = null) =>
+            ReactionMode? missingOriginDocument = null) =>
             new(dbContextEngineMock.Object, config =>
             {
                 if (missingOriginDocument.HasValue)

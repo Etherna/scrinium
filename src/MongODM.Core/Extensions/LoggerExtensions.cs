@@ -20,7 +20,7 @@ namespace Etherna.MongODM.Core.Extensions
 {
     /*
      * Always group similar log delegates by type, always use incremental event ids.
-     * Last event id is: 70
+     * Last event id is: 72
      */
     public static class LoggerExtensions
     {
@@ -395,6 +395,12 @@ namespace Etherna.MongODM.Core.Extensions
                 new EventId(44, nameof(DbContextReplacedOutdatedLoadedModel)),
                 "DbContext {DbName} replaced outdated loaded model with Id {ModelId}: its document changed type from {OutdatedModelType} to {CurrentModelType}");
 
+        private static readonly Action<ILogger, string, string, Type, Exception> _mapRegistryFoundNotPropagatedReferencePath =
+            LoggerMessage.Define<string, string, Type>(
+                LogLevel.Warning,
+                new EventId(71, nameof(MapRegistryFoundNotPropagatedReferencePath)),
+                "DbContext {DbName} maps references behind an unknown document key, at element path {ElementPath} of model type {ModelType}: the dependencies update propagation can't address the path, so its summaries go stale when the referenced models change, the origin delete propagation leaves its references untouched, and the missing origin references scan can't verify them");
+
         private static readonly Action<ILogger, string, string, string?, Exception> _modelMapSerializerUnrecognizedSchemaId =
             LoggerMessage.Define<string, string, string?>(
                 LogLevel.Warning,
@@ -412,6 +418,12 @@ namespace Etherna.MongODM.Core.Extensions
                 LogLevel.Warning,
                 new EventId(45, nameof(UpdateDocDependenciesTaskSkippedOnDeletedModel)),
                 "UpdateDocDependenciesTask skipped on DbContext {DbContextType} with reference repository {ReferenceRepositoryName}: model Id {ModelId} doesn't exist anymore");
+
+        private static readonly Action<ILogger, Type, string, Exception> _updateDocDependenciesTaskSkippedOnUnknownRepository =
+            LoggerMessage.Define<Type, string>(
+                LogLevel.Warning,
+                new EventId(72, nameof(UpdateDocDependenciesTaskSkippedOnUnknownRepository)),
+                "UpdateDocDependenciesTask skipped on DbContext {DbContextType}: reference repository {ReferenceRepositoryName} doesn't exist in the current configuration");
 
         //*** ERROR LOGS ***
         private static readonly Action<ILogger, string, string, Exception> _dbContextLockLeaseLost =
@@ -546,6 +558,9 @@ namespace Etherna.MongODM.Core.Extensions
         public static void DiscriminatorRegistryInitialized(this ILogger logger, string dbName) =>
             _discriminatorRegistryInitialized(logger, dbName, null!);
 
+        public static void MapRegistryFoundNotPropagatedReferencePath(this ILogger logger, string dbName, string elementPath, Type modelType) =>
+            _mapRegistryFoundNotPropagatedReferencePath(logger, dbName, elementPath, modelType, null!);
+
         public static void ModelMapSerializerUnrecognizedSchemaId(this ILogger logger, string dbName, string modelType, string? schemaId) =>
             _modelMapSerializerUnrecognizedSchemaId(logger, dbName, modelType, schemaId, null!);
 
@@ -623,6 +638,9 @@ namespace Etherna.MongODM.Core.Extensions
 
         public static void UpdateDocDependenciesTaskSkippedOnDeletedModel(this ILogger logger, Type dbContextType, string referencedRepositoryName, string modelId) =>
             _updateDocDependenciesTaskSkippedOnDeletedModel(logger, dbContextType, referencedRepositoryName, modelId, null!);
+
+        public static void UpdateDocDependenciesTaskSkippedOnUnknownRepository(this ILogger logger, Type dbContextType, string referencedRepositoryName) =>
+            _updateDocDependenciesTaskSkippedOnUnknownRepository(logger, dbContextType, referencedRepositoryName, null!);
 
         public static void UpdateDocDependenciesTaskStarted(this ILogger logger, Type dbContextType, string referencedRepositoryName, string modelId, IEnumerable<string> idMemberMapIdentifiers) =>
             _updateDocDependenciesTaskStarted(logger, dbContextType, referencedRepositoryName, modelId, idMemberMapIdentifiers, null!);

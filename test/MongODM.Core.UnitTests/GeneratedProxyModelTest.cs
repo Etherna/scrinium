@@ -54,7 +54,7 @@ namespace Etherna.MongODM.Core
                 .Throws(new MongodmMissingOriginDocumentException());
 
             proxyModel.Id = "idVal";
-            ((IReferenceable)proxyModel).SetAsSummary([], MissingOriginDocumentMode.Throw);
+            ((IReferenceable)proxyModel).SetAsSummary([], ReactionMode.Throw);
 
             // Action and assert.
             Assert.Throws<MongodmMissingOriginDocumentException>(() => proxyModel.StringProp);
@@ -70,7 +70,7 @@ namespace Etherna.MongODM.Core
                 .ReturnsAsync((object?)null);
 
             proxyModel.Id = "idVal";
-            ((IReferenceable)proxyModel).SetAsSummary([], MissingOriginDocumentMode.Silent);
+            ((IReferenceable)proxyModel).SetAsSummary([], ReactionMode.Silent);
 
             // Action.
             var value = proxyModel.StringProp;
@@ -88,7 +88,7 @@ namespace Etherna.MongODM.Core
             // Setup.
             proxyModel.Id = "idVal";
             proxyModel.StringProp = "loaded";
-            ((IReferenceable)proxyModel).SetAsSummary(["StringProp"], MissingOriginDocumentMode.Throw);
+            ((IReferenceable)proxyModel).SetAsSummary(["StringProp"], ReactionMode.Throw);
 
             // Action.
             var value = proxyModel.StringProp;
@@ -115,7 +115,7 @@ namespace Etherna.MongODM.Core
                 .ReturnsAsync(fullModel);
 
             proxyModel.Id = "idVal";
-            ((IReferenceable)proxyModel).SetAsSummary([], MissingOriginDocumentMode.Throw);
+            ((IReferenceable)proxyModel).SetAsSummary([], ReactionMode.Throw);
 
             // Action.
             var value = proxyModel.StringProp;
@@ -144,7 +144,7 @@ namespace Etherna.MongODM.Core
         {
             // Setup.
             proxyModel.Id = "idVal";
-            ((IReferenceable)proxyModel).SetAsSummary([], MissingOriginDocumentMode.Throw);
+            ((IReferenceable)proxyModel).SetAsSummary([], ReactionMode.Throw);
 
             // Action.
             var id = proxyModel.Id;
@@ -179,7 +179,7 @@ namespace Etherna.MongODM.Core
             // Setup.
             proxyModel.Id = "idVal";
             proxyModel.StringProp = "current";
-            ((IReferenceable)proxyModel).SetAsSummary(["StringProp"], MissingOriginDocumentMode.Throw);
+            ((IReferenceable)proxyModel).SetAsSummary(["StringProp"], ReactionMode.Throw);
 
             // Action.
             ((IReferenceable)proxyModel).MergeFullModel(new object());
@@ -196,7 +196,7 @@ namespace Etherna.MongODM.Core
             // Setup.
             proxyModel.Id = "idVal";
             proxyModel.StringProp = "current";
-            ((IReferenceable)proxyModel).SetAsSummary(["StringProp"], MissingOriginDocumentMode.Throw);
+            ((IReferenceable)proxyModel).SetAsSummary(["StringProp"], ReactionMode.Throw);
 
             var otherSummaryModel = new FakeModelProxy
             {
@@ -204,7 +204,7 @@ namespace Etherna.MongODM.Core
                 IntegerProp = 42,
                 StringProp = "other"
             };
-            ((IReferenceable)otherSummaryModel).SetAsSummary(["IntegerProp", "StringProp"], MissingOriginDocumentMode.Throw);
+            ((IReferenceable)otherSummaryModel).SetAsSummary(["IntegerProp", "StringProp"], ReactionMode.Throw);
 
             // Action.
             ((IReferenceable)proxyModel).MergeSummaryModel(otherSummaryModel);
@@ -217,13 +217,13 @@ namespace Etherna.MongODM.Core
         }
 
         [Theory]
-        [InlineData(MissingOriginDocumentMode.Silent, MissingOriginDocumentMode.Warn, MissingOriginDocumentMode.Warn)]
-        [InlineData(MissingOriginDocumentMode.Throw, MissingOriginDocumentMode.Silent, MissingOriginDocumentMode.Throw)]
-        [InlineData(MissingOriginDocumentMode.Warn, MissingOriginDocumentMode.Throw, MissingOriginDocumentMode.Throw)]
-        public void MergeSummaryModelKeepsTheStrictestMissingOriginDocumentMode(
-            MissingOriginDocumentMode currentMode,
-            MissingOriginDocumentMode otherMode,
-            MissingOriginDocumentMode expectedMode)
+        [InlineData(ReactionMode.Silent, ReactionMode.Warn, ReactionMode.Warn)]
+        [InlineData(ReactionMode.Throw, ReactionMode.Silent, ReactionMode.Throw)]
+        [InlineData(ReactionMode.Warn, ReactionMode.Throw, ReactionMode.Throw)]
+        public void MergeSummaryModelKeepsTheStrictestReactionMode(
+            ReactionMode currentMode,
+            ReactionMode otherMode,
+            ReactionMode expectedMode)
         {
             /* One document materializes one single instance, whatever the references reaching
              * it: the modes they declare can differ, and the instance keeps the strictest. */

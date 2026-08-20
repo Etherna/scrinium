@@ -203,7 +203,7 @@ namespace Etherna.MongODM.Core
 
         /// <summary>
         /// React to a full load finding no origin document for a summary model, honoring the
-        /// <see cref="Options.MissingOriginDocumentMode"/> declared by the reference that
+        /// <see cref="Options.ReactionMode"/> declared by the reference that
         /// deserialized it: log a warning once per model type and source repository per scope,
         /// stay silent, or report the db inconsistency throwing
         /// <see cref="Exceptions.MongodmMissingOriginDocumentException"/>. Invoked by the proxy
