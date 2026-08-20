@@ -20,7 +20,7 @@ namespace Etherna.MongODM.Core.Extensions
 {
     /*
      * Always group similar log delegates by type, always use incremental event ids.
-     * Last event id is: 70
+     * Last event id is: 71
      */
     public static class LoggerExtensions
     {
@@ -395,6 +395,12 @@ namespace Etherna.MongODM.Core.Extensions
                 new EventId(44, nameof(DbContextReplacedOutdatedLoadedModel)),
                 "DbContext {DbName} replaced outdated loaded model with Id {ModelId}: its document changed type from {OutdatedModelType} to {CurrentModelType}");
 
+        private static readonly Action<ILogger, string, string, Type, Exception> _mapRegistryFoundNotPropagatedReferencePath =
+            LoggerMessage.Define<string, string, Type>(
+                LogLevel.Warning,
+                new EventId(71, nameof(MapRegistryFoundNotPropagatedReferencePath)),
+                "DbContext {DbName} maps references behind an unknown document key, at element path {ElementPath} of model type {ModelType}: the dependencies update propagation can't address the path, so its summaries go stale when the referenced models change, the origin delete propagation leaves its references untouched, and the missing origin references scan can't verify them");
+
         private static readonly Action<ILogger, string, string, string?, Exception> _modelMapSerializerUnrecognizedSchemaId =
             LoggerMessage.Define<string, string, string?>(
                 LogLevel.Warning,
@@ -545,6 +551,9 @@ namespace Etherna.MongODM.Core.Extensions
 
         public static void DiscriminatorRegistryInitialized(this ILogger logger, string dbName) =>
             _discriminatorRegistryInitialized(logger, dbName, null!);
+
+        public static void MapRegistryFoundNotPropagatedReferencePath(this ILogger logger, string dbName, string elementPath, Type modelType) =>
+            _mapRegistryFoundNotPropagatedReferencePath(logger, dbName, elementPath, modelType, null!);
 
         public static void ModelMapSerializerUnrecognizedSchemaId(this ILogger logger, string dbName, string modelType, string? schemaId) =>
             _modelMapSerializerUnrecognizedSchemaId(logger, dbName, modelType, schemaId, null!);

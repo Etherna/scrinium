@@ -19,7 +19,8 @@ namespace Etherna.MongODM.IntegrationTests.Models
 {
     /// <summary>
     /// An entity referencing tracks through references following the default origin delete
-    /// policy — a single member, an array of references, and a dictionary in document
+    /// policy — a single member, an array of references, a dictionary in array of documents
+    /// representation, whose path stays addressable, and a dictionary in document
     /// representation, whose path the propagation can't address — plus a reference
     /// explicitly declaring to keep the reference on origin delete.
     /// </summary>
@@ -36,6 +37,7 @@ namespace Etherna.MongODM.IntegrationTests.Models
 
         // Properties.
         public virtual Track? Highlight { get; set; }
+        public virtual IDictionary<string, Track> IndexedTracks { get; set; } = new Dictionary<string, Track>();
         public virtual IDictionary<string, Track> LabeledTracks { get; set; } = new Dictionary<string, Track>();
         public virtual string Name { get; set; }
         public virtual Track? Pinned { get; set; }

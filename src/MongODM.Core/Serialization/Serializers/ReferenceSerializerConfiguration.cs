@@ -37,7 +37,7 @@ namespace Etherna.MongODM.Core.Serialization.Serializers
         public const int MaxWarnedUnrecognizedSchemaIds = 100;
 
         // Fields.
-        private MissingOriginDocumentMode _missingOriginDocument = MissingOriginDocumentMode.Warn;
+        private ReactionMode _missingOriginDocument = ReactionMode.Warn;
         private readonly Dictionary<Type, IModelMap> _modelMaps = new();
         private OriginDeleteMode _originDelete = OriginDeleteMode.RemoveReference;
 
@@ -60,10 +60,13 @@ namespace Etherna.MongODM.Core.Serialization.Serializers
         /// between the delete and its background propagation, so an exception can't be the
         /// default reaction to a load inside that window; the warning still reports the
         /// summaries degraded to their not loaded members at default values. Denial
-        /// (<see cref="MissingOriginDocumentMode.Throw"/>) stays the strict opt-in of the
+        /// (<see cref="ReactionMode.Throw"/>) stays the strict opt-in of the
         /// references that must not tolerate the inconsistency.
+        /// The mode is carried by the summary models this reference deserializes: one
+        /// document materializes one single instance whatever the references reaching it,
+        /// so an instance reached also by a stricter reference keeps the stricter mode.
         /// </summary>
-        public MissingOriginDocumentMode MissingOriginDocument
+        public ReactionMode MissingOriginDocument
         {
             get => _missingOriginDocument;
             set => ExecuteConfigAction(() => _missingOriginDocument = value);

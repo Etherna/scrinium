@@ -34,6 +34,11 @@ namespace Etherna.MongODM.IntegrationTests.ModelMaps
 
                     // Set members with custom serializers.
                     mm.SetMemberSerializer(m => m.Highlight!, TrackMap.PreviewInfoSerializer(dbContextEngine));
+                    mm.SetMemberSerializer(m => m.IndexedTracks,
+                        new DictionarySerializer<string, Track>(
+                            DictionaryRepresentation.ArrayOfDocuments,
+                            new StringSerializer(),
+                            TrackMap.PreviewInfoSerializer(dbContextEngine)));
                     mm.SetMemberSerializer(m => m.LabeledTracks,
                         new DictionarySerializer<string, Track>(
                             DictionaryRepresentation.Document,

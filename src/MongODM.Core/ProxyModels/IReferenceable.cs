@@ -31,7 +31,7 @@ namespace Etherna.MongODM.Core.ProxyModels
         /// reference that deserialized it as a summary. A summary merged from a stricter
         /// reference keeps the stricter mode.
         /// </summary>
-        MissingOriginDocumentMode MissingOriginDocument { get; }
+        ReactionMode MissingOriginDocument { get; }
 
         /// <summary>
         /// Name list of current setted members
@@ -74,6 +74,6 @@ namespace Etherna.MongODM.Core.ProxyModels
         /// <param name="missingOriginDocument">How to react to a full load finding no origin document</param>
         void SetAsSummary(
             IEnumerable<string> summaryLoadedMemberNames,
-            MissingOriginDocumentMode missingOriginDocument);
+            ReactionMode missingOriginDocument);
     }
 }

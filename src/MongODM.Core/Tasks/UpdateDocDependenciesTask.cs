@@ -81,9 +81,17 @@ namespace Etherna.MongODM.Core.Tasks
              * Verify that member map exists, because a scheduled task could be executed with a different configuration respectly to when it has been generated.
              * This could happen for example if the software is upgraded in the meanwhile.
              */
+            /*
+             * Skip the id member maps whose element path contains an unknown document key
+             * (a dictionary in document representation): the path can't render an update
+             * filter, since querying unknown document keys is still not supported by Mongo
+             * (https://jira.mongodb.org/browse/SERVER-267), so their summaries stay stale,
+             * reported by the engine build warning.
+             */
             var idMemberMaps = idMemberMapIdentifiers
                 .Select(idMemberMapIdentifier => dbContext.Engine.MapRegistry.MemberMapsById.TryGetValue(idMemberMapIdentifier, out var idmm) ? idmm : null!)
-                .Where(idMemberMap => idMemberMap is not null && idMemberMap.ModelMapSchema.ModelMap.ModelType == referencedModelType);
+                .Where(idMemberMap => idMemberMap is not null && idMemberMap.ModelMapSchema.ModelMap.ModelType == referencedModelType)
+                .Where(idMemberMap => !idMemberMap.ElementPathHasUndefinedDocumentElement);
 
             // Define mapping of serialized documents.
             /*
@@ -107,14 +115,32 @@ namespace Etherna.MongODM.Core.Tasks
                     .Select(idmm =>
                     {
                         /* Select the serializer of the reference member hosting the sub-document,
-                         * unwrapping array serializers on collection members: the same serializer
-                         * writing the summary at document save, so the refreshed sub-document
-                         * keeps the reference schema shape, its schema id, and the discriminator
-                         * of the current referenced model type. */
+                         * unwrapping array and dictionary serializers on collection members: the
+                         * same serializer writing the summary at document save, so the refreshed
+                         * sub-document keeps the reference schema shape, its schema id, and the
+                         * discriminator of the current referenced model type. Dictionaries
+                         * unwrap first, to their value serializer: their array unwrap stops on
+                         * the key value pair serializer, which hosts no sub-document. */
                         var documentSerializer = idmm.ParentMemberMap!.Serializer;
-                        while (documentSerializer is IBsonArraySerializer arraySerializer &&
-                            arraySerializer.TryGetItemSerializationInfo(out var itemSerializationInfo))
-                            documentSerializer = itemSerializationInfo.Serializer;
+                        while (true)
+                        {
+                            if (documentSerializer is IBsonDictionarySerializer dictionarySerializer)
+                            {
+                                try
+                                {
+                                    documentSerializer = dictionarySerializer.ValueSerializer;
+                                    continue;
+                                }
+                                catch { }
+                            }
+                            if (documentSerializer is IBsonArraySerializer arraySerializer &&
+                                arraySerializer.TryGetItemSerializationInfo(out var itemSerializationInfo))
+                            {
+                                documentSerializer = itemSerializationInfo.Serializer;
+                                continue;
+                            }
+                            break;
+                        }
 
                         //use cache
                         if (!serializedDocumentsCache.TryGetValue(documentSerializer, out BsonDocument? doc))
@@ -181,14 +207,6 @@ namespace Etherna.MongODM.Core.Tasks
             object referencedModelId)
             where TOriginModel : class, IEntityModel<TOriginKey>
         {
-            /*
-             * If id member map has undefined document element in path, we can't build a filter with it.
-             * To query document keys with a wildcard is still not supported by Mongo https://jira.mongodb.org/browse/SERVER-267.
-             * This case is possibile, for example, with dictionary serialization in document representation.
-             */
-            if (idMemberMap.ElementPathHasUndefinedDocumentElement)
-                return;
-
             var subDocumentMemberMap = idMemberMap.ParentMemberMap!;
 
             // Define update filter.

@@ -345,6 +345,46 @@ namespace Etherna.MongODM.IntegrationTests
         }
 
         [Fact]
+        public async Task SummariesUnderUnknownDocumentKeysStayStale()
+        {
+            /* MODM-205: a dictionary in document representation writes its keys as element
+             * names, unknown to the maps: the task can't address the path server side
+             * (querying unknown document keys is unsupported, see upstream SERVER-267), so
+             * it skips the path — without failing the task — and the summaries hosted
+             * under it stay stale, while the summaries at every addressable path of the
+             * same document refresh. The configuration is reported by a warning at engine
+             * build. */
+
+            // Setup.
+            using var contextHandler = AsyncLocalContext.Instance.InitAsyncLocalContext();
+            fixture.TaskRunner.ClearPending();
+
+            var track = new Track("original title");
+            await dbContext.Tracks.CreateAsync(track);
+
+            var mixtape = new Mixtape("my mixtape")
+            {
+                Highlight = track,
+                LabeledTracks = { ["labeled"] = track },
+                Tracks = [track]
+            };
+            await dbContext.Mixtapes.CreateAsync(mixtape);
+
+            // Action: update the referenced track, and execute the enqueued task.
+            var loadedTrack = await dbContext.Tracks.FindOneAsync(track.Id);
+            loadedTrack.Title = "updated title";
+            await dbContext.SaveChangesAsync();
+            await fixture.TaskRunner.ExecutePendingAsync(fixture.ServiceProvider);
+
+            // Assert: the addressable paths refresh, the dictionary hosted summary doesn't.
+            var mixtapesCollection = dbContext.Engine.Database.GetCollection<BsonDocument>("mixtapes");
+            var rawMixtape = await mixtapesCollection.Find(IdFilter(mixtape.Id)).SingleAsync();
+            Assert.Equal("updated title", rawMixtape["Highlight"]["Title"].AsString);
+            Assert.Equal("updated title", rawMixtape["Tracks"].AsBsonArray[0]["Title"].AsString);
+            Assert.Equal("original title", rawMixtape["LabeledTracks"]["labeled"]["Title"].AsString);
+        }
+
+        [Fact]
         public async Task UnknownMemberMapIdentifiersAreSkipped()
         {
             /* A scheduled task can execute against a configuration different from the
@@ -455,6 +495,47 @@ namespace Etherna.MongODM.IntegrationTests
             Assert.Equal("Web2Account", rawBob["_t"].AsString);
             Assert.Equal("f5825985-4d3a-43e0-a15a-e6f504c34e07", rawBob["_s"].AsString); //untouched original summary
             Assert.Equal("bob", rawBob["Username"].AsString);
+        }
+
+        [Fact]
+        public async Task UpdatesSummariesHostedByArrayOfDocumentsDictionaries()
+        {
+            /* MODM-205: the array of documents representation writes the dictionary
+             * entries as documents with fixed "k"/"v" element names: the reference id
+             * element path stays addressable, and the summaries hosted by the entry
+             * values refresh like on any other collection member, only on the entries
+             * of the changed model. */
+
+            // Setup.
+            using var contextHandler = AsyncLocalContext.Instance.InitAsyncLocalContext();
+            fixture.TaskRunner.ClearPending();
+
+            var changedTrack = new Track("original title");
+            await dbContext.Tracks.CreateAsync(changedTrack);
+            var otherTrack = new Track("other title");
+            await dbContext.Tracks.CreateAsync(otherTrack);
+
+            var mixtape = new Mixtape("my mixtape")
+            {
+                IndexedTracks =
+                {
+                    ["changed"] = changedTrack,
+                    ["other"] = otherTrack
+                }
+            };
+            await dbContext.Mixtapes.CreateAsync(mixtape);
+
+            // Action: update the referenced track, and execute the enqueued task.
+            var loadedTrack = await dbContext.Tracks.FindOneAsync(changedTrack.Id);
+            loadedTrack.Title = "updated title";
+            await dbContext.SaveChangesAsync();
+            await fixture.TaskRunner.ExecutePendingAsync(fixture.ServiceProvider);
+
+            // Assert.
+            var mixtapesCollection = dbContext.Engine.Database.GetCollection<BsonDocument>("mixtapes");
+            var rawEntries = (await mixtapesCollection.Find(IdFilter(mixtape.Id)).SingleAsync())["IndexedTracks"].AsBsonArray;
+            Assert.Equal("updated title", rawEntries.Single(e => e["k"] == "changed")["v"]["Title"].AsString);
+            Assert.Equal("other title", rawEntries.Single(e => e["k"] == "other")["v"]["Title"].AsString);
         }
 
         [Fact]

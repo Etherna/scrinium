@@ -15,6 +15,7 @@
 using Etherna.MongoDB.Bson;
 using Etherna.MongoDB.Bson.IO;
 using Etherna.MongoDB.Bson.Serialization;
+using Etherna.MongoDB.Bson.Serialization.Options;
 using Etherna.MongoDB.Bson.Serialization.Serializers;
 using Etherna.MongODM.Core.Domain.Models;
 using Etherna.MongODM.Core.Exceptions;
@@ -79,6 +80,12 @@ namespace Etherna.MongODM.Core
         {
             public string? Area { get; set; }
             public int Number { get; set; }
+        }
+        public class DictionaryChildHostModel : IEntityModel<string>
+        {
+            public IDictionary<string, object>? ExtraElements { get; }
+            public virtual string Id { get; set; } = null!;
+            public virtual IDictionary<string, ChildModel>? LabeledChildren { get; set; }
         }
         public class EntityChildHostModel
         {
@@ -171,6 +178,7 @@ namespace Etherna.MongODM.Core
 
         // Fields.
         private readonly Mock<IDbContextEngine> dbContextEngineMock = new();
+        private readonly Mock<ILogger> loggerMock = new();
         private readonly MapRegistry mapRegistry = new();
         private readonly BsonSerializerRegistry serializerRegistry = new();
 
@@ -185,10 +193,14 @@ namespace Etherna.MongODM.Core
                 .Returns("fakeDb");
             dbContextEngineMock.Setup(e => e.Options.ModelMapSchemaId)
                 .Returns(new ModelMapSchemaIdOptions());
+            dbContextEngineMock.Setup(e => e.Options.NotPropagatedReferences)
+                .Returns(ReactionMode.Warn); //the DbContextOptions default
             dbContextEngineMock.Setup(e => e.SerializerRegistry)
                 .Returns(serializerRegistry);
+            loggerMock.Setup(l => l.IsEnabled(It.IsAny<LogLevel>()))
+                .Returns(true);
 
-            mapRegistry.Initialize(dbContextEngineMock.Object, new Mock<ILogger>().Object);
+            mapRegistry.Initialize(dbContextEngineMock.Object, loggerMock.Object);
         }
 
         // Tests.
@@ -349,6 +361,46 @@ namespace Etherna.MongODM.Core
             Assert.Equal(
                 new[] { typeof(FakeModel), typeof(FakeEntityModelBase<string>), typeof(ModelBase) }.OrderBy(t => t.FullName),
                 mapRegistry.MapsByModelType.Keys.OrderBy(t => t.FullName));
+        }
+
+        [Fact]
+        public void FreezeDoesntWarnReferencePathsWithAddressableDictionaries()
+        {
+            /* The array of documents representation writes the dictionary entries as
+             * documents with fixed "k"/"v" element names: the reference id element path
+             * stays addressable by the dependencies propagation, and the freeze reports
+             * nothing. */
+
+            // Setup.
+            dbContextEngineMock.Setup(e => e.MapRegistry)
+                .Returns(mapRegistry);
+
+            mapRegistry.AddModelMap<DictionaryChildHostModel>("hostSchemaId", cm =>
+            {
+                cm.AutoMap();
+                cm.SetMemberSerializer(m => m.LabeledChildren!, new DictionarySerializer<string, ChildModel>(
+                    DictionaryRepresentation.ArrayOfDocuments,
+                    new StringSerializer(),
+                    new ReferenceSerializer<ChildModel, string>(
+                        dbContextEngineMock.Object,
+                        config =>
+                        {
+                            config.AddModelMap<FakeEntityModelBase<string>>("childBaseSchemaId", cm2 => cm2.MapIdMember(c => c.Id));
+                            config.AddModelMap<ChildModel>("childSchemaId", cm2 => cm2.MapMember(c => c.Name));
+                        })));
+            });
+
+            // Action.
+            mapRegistry.Freeze();
+
+            // Assert.
+            loggerMock.Verify(l => l.Log(
+                    LogLevel.Warning,
+                    It.Is<EventId>(id => id.Name == nameof(Extensions.LoggerExtensions.MapRegistryFoundNotPropagatedReferencePath)),
+                    It.IsAny<It.IsAnyType>(),
+                    It.IsAny<Exception>(),
+                    It.IsAny<Func<It.IsAnyType, Exception?, string>>()),
+                Times.Never());
         }
 
         /* MODM-222: an entity id is always a value. A composite id is addressed by no atomic
@@ -646,6 +698,30 @@ namespace Etherna.MongODM.Core
         }
 
         [Fact]
+        public void FreezeFailsWithNotPropagatedReferencePathsOnThrowMode()
+        {
+            /* MODM-205: a db context declaring the throw reaction denies the engine build
+             * on any reference path the dependencies propagation can't address, with every
+             * element path detailed: the strict opt-in of the applications that must not
+             * host silently stale summaries. */
+
+            // Setup.
+            dbContextEngineMock.Setup(e => e.Options.NotPropagatedReferences)
+                .Returns(ReactionMode.Throw);
+            AddDictionaryChildHostModelMap();
+
+            // Action.
+            var exception = Assert.Throws<MongodmNotPropagatedReferenceException>(() => mapRegistry.Freeze());
+
+            // Assert.
+            Assert.Contains(
+                $"{nameof(DictionaryChildHostModel.LabeledChildren)} of model type {nameof(DictionaryChildHostModel)}",
+                exception.Message,
+                StringComparison.Ordinal);
+            Assert.Contains(nameof(DbContextOptions.NotPropagatedReferences), exception.Message, StringComparison.Ordinal);
+        }
+
+        [Fact]
         public void FreezeFailsWithReservedFallbackSchemaId()
         {
             // Setup.
@@ -881,6 +957,32 @@ namespace Etherna.MongODM.Core
         }
 
         [Fact]
+        public void FreezeSucceedsWithNotPropagatedReferencePathsOnSilentMode()
+        {
+            /* MODM-205: a db context declaring the silent reaction tolerates the reference
+             * paths the dependencies propagation can't address without any report: the
+             * explicit opt-out of the applications accepting stale summaries. */
+
+            // Setup.
+            dbContextEngineMock.Setup(e => e.Options.NotPropagatedReferences)
+                .Returns(ReactionMode.Silent);
+            AddDictionaryChildHostModelMap();
+
+            // Action.
+            mapRegistry.Freeze();
+
+            // Assert.
+            Assert.True(mapRegistry.IsFrozen);
+            loggerMock.Verify(l => l.Log(
+                    LogLevel.Warning,
+                    It.Is<EventId>(id => id.Name == nameof(Extensions.LoggerExtensions.MapRegistryFoundNotPropagatedReferencePath)),
+                    It.IsAny<It.IsAnyType>(),
+                    It.IsAny<Exception>(),
+                    It.IsAny<Func<It.IsAnyType, Exception?, string>>()),
+                Times.Never());
+        }
+
+        [Fact]
         public void FreezeSucceedsWithReferencedEntityModelMembers()
         {
             /* Reference serializers are the valid way to serialize entity model members,
@@ -982,7 +1084,65 @@ namespace Etherna.MongODM.Core
             Assert.True(mapRegistry.IsFrozen);
         }
 
+        [Fact]
+        public void FreezeWarnsNotPropagatedReferencePaths()
+        {
+            /* MODM-205: a dictionary in document representation writes its keys as element
+             * names, unknown to the maps: the dependencies propagation can't address the
+             * reference id element path, so the freeze reports the path with a warning by
+             * default, making the limitation a conscious configuration choice. The schemas
+             * producing the same element path report it once. */
+
+            // Setup.
+            AddDictionaryChildHostModelMap();
+
+            // Action.
+            mapRegistry.Freeze();
+
+            // Assert.
+            loggerMock.Verify(l => l.Log(
+                    LogLevel.Warning,
+                    It.Is<EventId>(id => id.Name == nameof(Extensions.LoggerExtensions.MapRegistryFoundNotPropagatedReferencePath)),
+                    It.Is<It.IsAnyType>((state, _) =>
+                        state.ToString()!.Contains(nameof(DictionaryChildHostModel), StringComparison.Ordinal) &&
+                        state.ToString()!.Contains(nameof(DictionaryChildHostModel.LabeledChildren), StringComparison.Ordinal)),
+                    It.IsAny<Exception>(),
+                    It.IsAny<Func<It.IsAnyType, Exception?, string>>()),
+                Times.Once());
+        }
+
         // Helpers.
+        /* Register a host model map with a reference hosted under a dictionary in document
+         * representation — a not propagated reference path — on an active and a secondary
+         * schema producing the same element path. */
+        private void AddDictionaryChildHostModelMap()
+        {
+            dbContextEngineMock.Setup(e => e.MapRegistry)
+                .Returns(mapRegistry);
+
+            var labeledChildrenSerializer = new DictionarySerializer<string, ChildModel>(
+                DictionaryRepresentation.Document,
+                new StringSerializer(),
+                new ReferenceSerializer<ChildModel, string>(
+                    dbContextEngineMock.Object,
+                    config =>
+                    {
+                        config.AddModelMap<FakeEntityModelBase<string>>("childBaseSchemaId", cm => cm.MapIdMember(c => c.Id));
+                        config.AddModelMap<ChildModel>("childSchemaId", cm => cm.MapMember(c => c.Name));
+                    }));
+
+            mapRegistry.AddModelMap<DictionaryChildHostModel>("hostSchemaId", cm =>
+                {
+                    cm.AutoMap();
+                    cm.SetMemberSerializer(m => m.LabeledChildren!, labeledChildrenSerializer);
+                })
+                .AddSecondarySchema("hostSecondarySchemaId", cm =>
+                {
+                    cm.AutoMap();
+                    cm.SetMemberSerializer(m => m.LabeledChildren!, labeledChildrenSerializer);
+                });
+        }
+
         private static TModel DeserializeModel<TModel>(IBsonSerializer serializer, BsonDocument document)
         {
             var bsonReader = new BsonDocumentReader(document);

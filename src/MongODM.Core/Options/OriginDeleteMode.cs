@@ -27,7 +27,7 @@ namespace Etherna.MongODM.Core.Options
     {
         /// <summary>
         /// Keep the reference dangling: loads of its summary react per
-        /// <see cref="MissingOriginDocumentMode"/>.
+        /// <see cref="Serialization.Serializers.ReferenceSerializerConfiguration.MissingOriginDocument"/>.
         /// </summary>
         KeepReference = 0,
 

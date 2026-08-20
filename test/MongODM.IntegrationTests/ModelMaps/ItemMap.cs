@@ -48,7 +48,7 @@ namespace Etherna.MongODM.IntegrationTests.ModelMaps
         public static ReferenceSerializer<Item, string> MinimalReferenceSerializer(IDbContextEngine dbContextEngine) =>
             ReferenceSerializer.Create(dbContextEngine, config =>
             {
-                config.MissingOriginDocument = MissingOriginDocumentMode.Warn;
+                config.MissingOriginDocument = ReactionMode.Warn;
 
                 config.AddModelMap<ModelBase>("28cf04b3-8593-42a6-ac8c-199c89721cff");
                 config.AddModelMap<EntityModelBase<string>>("3b30c7ce-c8c7-4c15-8e0a-0edd05b77573", mm =>

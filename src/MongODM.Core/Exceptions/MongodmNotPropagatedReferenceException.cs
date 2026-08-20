@@ -17,22 +17,24 @@ using System;
 namespace Etherna.MongODM.Core.Exceptions
 {
     /// <summary>
-    /// Thrown on an implicit lazy load when the db context denies them
-    /// (<see cref="Options.ReactionMode.Throw"/> on
-    /// <see cref="Options.DbContextOptions.ImplicitLazyLoad"/>): a member of a summary model
-    /// was read without a preceding explicit preload.
+    /// Thrown at engine build when a reference id element path contains an unknown document
+    /// key (a dictionary in document representation) and the db context declares
+    /// <see cref="Options.ReactionMode.Throw"/> on
+    /// <see cref="Options.DbContextOptions.NotPropagatedReferences"/>: the dependencies
+    /// propagation can't address the path, so its summaries would go stale when the
+    /// referenced models change.
     /// </summary>
-    public class MongodmLazyLoadingException : Exception
+    public class MongodmNotPropagatedReferenceException : Exception
     {
         // Constructors.
-        public MongodmLazyLoadingException()
+        public MongodmNotPropagatedReferenceException()
         { }
 
-        public MongodmLazyLoadingException(string message)
+        public MongodmNotPropagatedReferenceException(string message)
             : base(message)
         { }
 
-        public MongodmLazyLoadingException(string message, Exception innerException)
+        public MongodmNotPropagatedReferenceException(string message, Exception innerException)
             : base(message, innerException)
         { }
     }
