@@ -48,12 +48,13 @@ namespace Etherna.MongODM.Core
         /// <summary>
         /// Server side lock of the db context, coordinating its exclusive works (seeding and
         /// migrations) once per db context across every application instance connected to the
-        /// database. Applications configuring different lock collection names for the same
-        /// database don't exclude each other.
+        /// database: the resource lock bound to the db context identifier. Applications
+        /// configuring different lock collection names for the same database don't exclude
+        /// each other.
         /// </summary>
         /// <exception cref="InvalidOperationException">The db context is read-only: claiming
         /// the lock would write on a database it can only read</exception>
-        IDbContextLock DbContextLock { get; }
+        IResourceLock DbContextLock { get; }
 
         /// <summary>
         /// Type of the db context of this engine.
@@ -154,6 +155,25 @@ namespace Etherna.MongODM.Core
             string name,
             MongoCollectionSettings? settings = null,
             bool isReadOnly = false);
+
+        /// <summary>
+        /// Get the resource lock of an application resource, coordinating works on it across
+        /// every application instance connected to the database. The resource id lives in
+        /// the namespace the application chooses, so locks of different kinds never collide:
+        /// the lock identifier is the plain string <c>namespace/resourceId</c>, with the
+        /// namespace denied to contain the separator. A db context identifier carrying the
+        /// separator could alias an application lock: keep identifiers out of that shape.
+        /// The lease documents share the collection of <see cref="DbContextLock"/>, named by
+        /// <see cref="IDbContextOptions.DbLockCollectionName"/>.
+        /// </summary>
+        /// <param name="resourceNamespace">The namespace of the resource, one per lock kind;
+        /// it can't contain the <c>/</c> separator</param>
+        /// <param name="resourceId">The resource identifier inside its namespace</param>
+        /// <returns>The lock of the resource</returns>
+        /// <exception cref="ArgumentException">The namespace contains the separator</exception>
+        /// <exception cref="InvalidOperationException">The db context is read-only: claiming
+        /// a lock would write on a database it can only read</exception>
+        IResourceLock GetResourceLock(string resourceNamespace, string resourceId);
 
         Task RunWithExclusiveAccessAsync(
             Func<Task> action,

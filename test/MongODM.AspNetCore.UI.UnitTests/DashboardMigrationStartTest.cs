@@ -95,7 +95,7 @@ namespace Etherna.MongODM.AspNetCore.UI
             Assert.Contains("data-role=\"lock-lease-duration\"", pageHtml, StringComparison.Ordinal);
             //the control offers the default lease duration, inside the range the handler accepts
             Assert.Contains(
-                $"value=\"{(int)DbContextLock.DefaultLeaseDuration.TotalMinutes}\"",
+                $"value=\"{(int)ResourceLock.DefaultLeaseDuration.TotalMinutes}\"",
                 pageHtml,
                 StringComparison.Ordinal);
             Assert.Contains(

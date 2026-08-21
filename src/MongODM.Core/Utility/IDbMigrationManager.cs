@@ -57,7 +57,7 @@ namespace Etherna.MongODM.Core.Utility
         /// <param name="stopAtFirstError">If true, abort a documents migration at its first
         /// failing document, instead of skipping it and processing every other document</param>
         /// <param name="lockLeaseDuration">Duration of the lock lease claimed by this start,
-        /// defaulted to <see cref="DbContextLock.DefaultLeaseDuration"/>: how long the db
+        /// defaulted to <see cref="ResourceLock.DefaultLeaseDuration"/>: how long the db
         /// context stays locked if this application instance dies before the migration
         /// completes, and how long the claim survives waiting for the background task runner to
         /// pick the operation up, the only window nothing renews it. It doesn't have to cover

@@ -38,8 +38,8 @@ namespace Etherna.MongODM.Core.Utility
         private readonly DbMigrationManager dbMigrationManager;
         private readonly DbMigrationOperation dbMigrationOp;
 
-        private readonly Mock<IDbContextLockLease> dbContextLockLeaseMock = new();
-        private readonly Mock<IDbContextLock> dbContextLockMock = new();
+        private readonly Mock<IResourceLockLease> dbContextLockLeaseMock = new();
+        private readonly Mock<IResourceLock> dbContextLockMock = new();
         private readonly Mock<IDbContext> dbContextMock = new();
         private readonly Mock<IRepository<OperationBase, string>> dbOperationsMock = new();
         private readonly Mock<IDbContextEngine> engineMock = new();
@@ -154,7 +154,7 @@ namespace Etherna.MongODM.Core.Utility
             // Setup.
             //the lock has been taken over by another owner, or released: the claim can't resume
             dbContextLockMock.Setup(l => l.TryResumeClaimAsync(It.IsAny<string>()))
-                .ReturnsAsync((IDbContextLockLease?)null);
+                .ReturnsAsync((IResourceLockLease?)null);
 
             var docMigrationMock = new Mock<DocumentMigration>();
             dbContextMock.Setup(c => c.DocumentMigrationList).Returns([docMigrationMock.Object]);
@@ -428,7 +428,7 @@ namespace Etherna.MongODM.Core.Utility
         {
             // Setup.
             //an outer flow (e.g. seeding) already holds a lease on the db context lock
-            var ambientLeaseMock = new Mock<IDbContextLockLease>();
+            var ambientLeaseMock = new Mock<IResourceLockLease>();
             dbContextLockMock.Setup(l => l.TryGetAmbientLease())
                 .Returns(ambientLeaseMock.Object);
 
@@ -455,7 +455,7 @@ namespace Etherna.MongODM.Core.Utility
             dbOperationsMock.Setup(r => r.FindOneAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
                 .ReturnsAsync(completedOp);
             dbContextLockMock.Setup(l => l.TryResumeClaimAsync(It.IsAny<string>()))
-                .ReturnsAsync((IDbContextLockLease?)null);
+                .ReturnsAsync((IResourceLockLease?)null);
 
             // Action.
             await dbMigrationManager.ExecuteDbContextMigrationAsync(dbContextMock.Object, "opId");

@@ -89,6 +89,11 @@ documents to complex application domains.
   `TryStartMigrationAsync(lockLeaseDuration)` and `SeedIfNeededAsync(lockWaitTimeout, lockLeaseDuration)`
   (forwarded by the startup `SeedDbContexts`), 10 minutes by default. An unspecified seeding wait for
   the lock owner defaults to the lease duration of that seeding.
+- **Resource locks** — the same server side lease lock, usable by applications on their own resources:
+  exclusive or shared locks on arbitrary resource ids, each inside its own namespace, acquired in one
+  call on the db context (`TryAcquireResourceLockAsync`, exclusive by default or shared by parameter)
+  with a single atomic command, and renewed in background with a lost lease signal. A dead holder expires
+  alone, and a TTL index collects the abandoned lock documents, with no cleanup task to run.
 - **Customizable indexes** — declare the indexes of a collection, with automatic indexes for the id paths
   of referenced documents.
 - **Read-only access** — deny writes on a whole db context or on a single repository, to safely consume

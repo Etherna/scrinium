@@ -41,8 +41,12 @@ namespace Etherna.MongODM.Core
     public sealed class DbContextEngine(ILogger logger)
         : IDbContextEngine, IDisposable
     {
+        // Consts.
+        //separates the namespace from the resource id in the application lock identifiers
+        private const string ResourceLockNamespaceSeparator = "/";
+
         // Fields.
-        private IDbContextLock? _dbContextLock;
+        private IResourceLock? _dbContextLock;
         private volatile bool _isExclusiveReadEnabled;
         private volatile bool _isExclusiveWriteEnabled;
         private bool? _isSeededCache;
@@ -51,6 +55,8 @@ namespace Etherna.MongODM.Core
         private readonly SemaphoreSlim exclusiveAccessSemaphore = new(1, 1); //support async/await
         private bool isInitialized;
         private readonly ReaderWriterLockSlim isSeededCacheLock = new(); //support read/write locks
+        private Task? lockCollectionPreparation;
+        private readonly object lockCollectionPreparationSync = new();
 
         // Initializer.
         public void Initialize(
@@ -141,7 +147,7 @@ namespace Etherna.MongODM.Core
         public IMongoDatabase Database { get; private set; } = null!;
         /* Built lazily at first use: the lock collection is accessed raw, out of the engine
          * access limitations, being the coordination infrastructure of the exclusive works. */
-        public IDbContextLock DbContextLock
+        public IResourceLock DbContextLock
         {
             get
             {
@@ -154,11 +160,7 @@ namespace Etherna.MongODM.Core
                         $"claiming it would write the {Options.DbLockCollectionName} collection of database {Options.DbName}. " +
                         "Seeding and migrations of that database belong to the application owning it");
 
-                return LazyInitializer.EnsureInitialized(ref _dbContextLock, () => new DbContextLock(
-                    Database.GetCollection<BsonDocument>(Options.DbLockCollectionName),
-                    Identifier,
-                    ExecutionContext,
-                    logger));
+                return LazyInitializer.EnsureInitialized(ref _dbContextLock, () => BuildResourceLock(Identifier));
             }
         }
         public Type DbContextType { get; private set; } = null!;
@@ -223,6 +225,35 @@ namespace Etherna.MongODM.Core
             return new LimitedAccessMongoCollection<TDocument>(this, mongoCollection, isReadOnly || Options.IsReadOnly);
         }
 
+        public IResourceLock GetResourceLock(string resourceNamespace, string resourceId)
+        {
+            ArgumentException.ThrowIfNullOrEmpty(resourceNamespace);
+            ArgumentException.ThrowIfNullOrEmpty(resourceId);
+
+            /* The lock identifier is a plain string, like every MongODM id: the namespace and
+             * the resource id serialize into one value, joined by the separator. A namespace
+             * carrying the separator would make different resources alias one lock document
+             * (namespace "a" with id "b/c", and namespace "a/b" with id "c"), so it is
+             * denied, while the resource id, being the last segment, stays free. */
+            if (resourceNamespace.Contains(ResourceLockNamespaceSeparator, StringComparison.Ordinal))
+                throw new ArgumentException(
+                    $"Invalid resource lock namespace \"{resourceNamespace}\": " +
+                    $"it can't contain \"{ResourceLockNamespaceSeparator}\", separating the namespace " +
+                    "from the resource id in the lock identifier",
+                    nameof(resourceNamespace));
+
+            /* The lock collection is written raw, out of the read-only enforcement of the
+             * guarded collections: deny the application locks on a read-only db context, or
+             * claiming one would write on a database this db context can only read. */
+            if (Options.IsReadOnly)
+                throw new InvalidOperationException(
+                    $"Can't access the resource locks of the read-only db context {Identifier}: " +
+                    $"claiming one would write the {Options.DbLockCollectionName} collection of database {Options.DbName}. " +
+                    "Coordinate through the locks of a db context this application can write");
+
+            return BuildResourceLock(resourceNamespace + ResourceLockNamespaceSeparator + resourceId);
+        }
+
         public Task RunWithExclusiveAccessAsync(
             Func<Task> action,
             bool lockOnRead = true) =>
@@ -260,6 +291,13 @@ namespace Etherna.MongODM.Core
             Client.StartSessionAsync(cancellationToken: cancellationToken);
 
         // Helpers.
+        private ResourceLock BuildResourceLock(string lockId) => new(
+            Database.GetCollection<BsonDocument>(Options.DbLockCollectionName),
+            lockId,
+            ExecutionContext,
+            logger,
+            PrepareLockCollectionAsync);
+
         private void InitializeSerializerRegistry()
         {
             //order matters. It's in reverse order of how they'll get consumed
@@ -270,6 +308,28 @@ namespace Etherna.MongODM.Core
             _serializerRegistry.RegisterSerializationProvider(new AttributedSerializationProvider());
             _serializerRegistry.RegisterSerializationProvider(new TypeMappingSerializationProvider());
             _serializerRegistry.RegisterSerializationProvider(new BsonObjectModelSerializationProvider());
+        }
+
+        //one preparation per engine, shared by every lock built over the collection
+        private Task PrepareLockCollectionAsync()
+        {
+            lock (lockCollectionPreparationSync)
+                return lockCollectionPreparation ??= PrepareLockCollectionCoreAsync();
+        }
+
+        /* The TTL index is garbage collection, not correctness: a creation failure must not
+         * deny the claims, so it reports as a warning, tried once per process. */
+        private async Task PrepareLockCollectionCoreAsync()
+        {
+            try
+            {
+                await ResourceLock.CreateAbandonedDocumentsTtlIndexAsync(
+                    Database.GetCollection<BsonDocument>(Options.DbLockCollectionName)).ConfigureAwait(false);
+            }
+            catch (Exception e)
+            {
+                logger.LockCollectionTtlIndexCreationFailed(Options.DbName, e);
+            }
         }
     }
 }

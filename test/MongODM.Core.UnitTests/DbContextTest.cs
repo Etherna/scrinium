@@ -759,6 +759,78 @@ namespace Etherna.MongODM.Core
         }
 
         [Fact]
+        public void GetResourceLockDeniesOnReadOnlyDbContext()
+        {
+            /* Application locks write the same raw lock collection of the db context lock:
+             * claiming one from a read-only db context would write on a database owned by
+             * another application. */
+
+            // Setup.
+            BuildDbContext(new DbContextOptions { IsReadOnly = true }, out var readOnlyEngine);
+
+            // Action and assert.
+            var lockException = Assert.Throws<InvalidOperationException>(() =>
+                readOnlyEngine.GetResourceLock("pins", "resource"));
+            Assert.Contains("read-only", lockException.Message, StringComparison.Ordinal);
+
+            (readOnlyEngine as IDisposable)?.Dispose();
+        }
+
+        [Fact]
+        public void GetResourceLockValidatesNamespaceAndResourceId()
+        {
+            // Setup.
+            BuildDbContext(new DbContextOptions(), out var engine);
+
+            // Action and assert.
+            //an empty namespace or resource id would collapse different locks onto one document
+            Assert.Throws<ArgumentException>(() => engine.GetResourceLock("", "resource"));
+            Assert.Throws<ArgumentException>(() => engine.GetResourceLock("pins", ""));
+            /* A namespace carrying the separator would make different resources alias one
+             * lock document: namespace "a" with id "b/c", and namespace "a/b" with id "c". */
+            var separatorException = Assert.Throws<ArgumentException>(() =>
+                engine.GetResourceLock("pins/nested", "resource"));
+            Assert.Contains("/", separatorException.Message, StringComparison.Ordinal);
+
+            (engine as IDisposable)?.Dispose();
+        }
+
+        [Fact]
+        public async Task ResourceLockFacadesForwardToTheEngineLock()
+        {
+            /* The db context is the client surface of the resource locks: one call acquires
+             * or inspects, without passing through the engine. */
+
+            // Setup.
+            var chosenLeaseDuration = TimeSpan.FromMinutes(3);
+            var exclusiveLease = new Mock<IResourceLockLease>().Object;
+            var sharedLease = new Mock<IResourceLockLease>().Object;
+            var resourceLockMock = new Mock<IResourceLock>();
+            resourceLockMock.Setup(l => l.TryAcquireAsync(ResourceLockMode.Exclusive, chosenLeaseDuration))
+                .ReturnsAsync(exclusiveLease);
+            resourceLockMock.Setup(l => l.TryAcquireAsync(ResourceLockMode.Shared, chosenLeaseDuration))
+                .ReturnsAsync(sharedLease);
+            resourceLockMock.Setup(l => l.IsLockedAsync())
+                .ReturnsAsync(true);
+
+            var mockedEngineMock = new Mock<IDbContextEngine>();
+            mockedEngineMock.Setup(e => e.Options).Returns(new DbContextOptions());
+            mockedEngineMock.Setup(e => e.GetResourceLock("pins", "resource"))
+                .Returns(resourceLockMock.Object);
+
+            var facadeDbContext = new FakeDbContext();
+            facadeDbContext.AttachToEngine(mockedEngineMock.Object, [], new RepositoryRegistry());
+
+            // Action and assert.
+            //each facade addresses the lock of the given namespace and resource, verbatim
+            Assert.Same(exclusiveLease,
+                await facadeDbContext.TryAcquireResourceLockAsync("pins", "resource", leaseDuration: chosenLeaseDuration));
+            Assert.Same(sharedLease,
+                await facadeDbContext.TryAcquireResourceLockAsync("pins", "resource", ResourceLockMode.Shared, chosenLeaseDuration));
+            Assert.True(await facadeDbContext.IsResourceLockedAsync("pins", "resource"));
+        }
+
+        [Fact]
         public async Task SeedIfNeededFailsWhenTheLockStaysHeldForTheWaitTimeout()
         {
             /* The caller blocks on the seeding, and the startup one waits on every db context
@@ -766,7 +838,7 @@ namespace Etherna.MongODM.Core
              * instead of hanging the whole startup forever. */
 
             // Setup.
-            var dbContextLockMock = new Mock<IDbContextLock>();
+            var dbContextLockMock = new Mock<IResourceLock>();
             dbContextLockMock.Setup(l => l.TryClaimAsync(It.IsAny<string>(), It.IsAny<TimeSpan?>()))
                 .ReturnsAsync(false);
             var seedingDbContext = BuildDbContextOnMockedEngine(
@@ -792,11 +864,11 @@ namespace Etherna.MongODM.Core
 
             // Setup.
             var chosenLeaseDuration = TimeSpan.FromMinutes(3);
-            var dbContextLockMock = new Mock<IDbContextLock>();
+            var dbContextLockMock = new Mock<IResourceLock>();
             dbContextLockMock.Setup(l => l.TryClaimAsync(It.IsAny<string>(), It.IsAny<TimeSpan?>()))
                 .ReturnsAsync(true);
             dbContextLockMock.Setup(l => l.TryResumeClaimAsync(It.IsAny<string>()))
-                .ReturnsAsync((IDbContextLockLease?)null);
+                .ReturnsAsync((IResourceLockLease?)null);
             var seedingDbContext = BuildDbContextOnMockedEngine(dbContextLockMock.Object, new DbContextOptions());
 
             // Action.
@@ -814,11 +886,11 @@ namespace Etherna.MongODM.Core
         public async Task SeedIfNeededClaimsTheLockWithTheDefaultLeaseDurationWithoutAnExplicitOne()
         {
             // Setup.
-            var dbContextLockMock = new Mock<IDbContextLock>();
+            var dbContextLockMock = new Mock<IResourceLock>();
             dbContextLockMock.Setup(l => l.TryClaimAsync(It.IsAny<string>(), It.IsAny<TimeSpan?>()))
                 .ReturnsAsync(true);
             dbContextLockMock.Setup(l => l.TryResumeClaimAsync(It.IsAny<string>()))
-                .ReturnsAsync((IDbContextLockLease?)null);
+                .ReturnsAsync((IResourceLockLease?)null);
             var seedingDbContext = BuildDbContextOnMockedEngine(dbContextLockMock.Object, new DbContextOptions());
 
             // Action.
@@ -826,7 +898,7 @@ namespace Etherna.MongODM.Core
 
             // Assert.
             dbContextLockMock.Verify(
-                l => l.TryClaimAsync(It.IsAny<string>(), DbContextLock.DefaultLeaseDuration),
+                l => l.TryClaimAsync(It.IsAny<string>(), ResourceLock.DefaultLeaseDuration),
                 Times.Once());
         }
 
@@ -837,11 +909,11 @@ namespace Etherna.MongODM.Core
              * context, on every application instance, until its lease expiration. */
 
             // Setup.
-            var dbContextLockMock = new Mock<IDbContextLock>();
+            var dbContextLockMock = new Mock<IResourceLock>();
             dbContextLockMock.Setup(l => l.TryClaimAsync(It.IsAny<string>(), It.IsAny<TimeSpan?>()))
                 .ReturnsAsync(true);
             dbContextLockMock.Setup(l => l.TryResumeClaimAsync(It.IsAny<string>()))
-                .ReturnsAsync((IDbContextLockLease?)null);
+                .ReturnsAsync((IResourceLockLease?)null);
             var seedingDbContext = BuildDbContextOnMockedEngine(dbContextLockMock.Object, new DbContextOptions());
 
             // Action and assert.
@@ -856,7 +928,7 @@ namespace Etherna.MongODM.Core
              * only an owner still alive, and working longer than it, fails the seeding. */
 
             // Setup.
-            var dbContextLockMock = new Mock<IDbContextLock>();
+            var dbContextLockMock = new Mock<IResourceLock>();
             dbContextLockMock.Setup(l => l.TryClaimAsync(It.IsAny<string>(), It.IsAny<TimeSpan?>()))
                 .ReturnsAsync(false);
             var seedingDbContext = BuildDbContextOnMockedEngine(dbContextLockMock.Object, new DbContextOptions());
@@ -887,7 +959,7 @@ namespace Etherna.MongODM.Core
         /* The seeding lock flow lives entirely on the engine: a mocked engine drives its lock
          * and its seeding cache, without any database behind. */
         private static FakeDbContext BuildDbContextOnMockedEngine(
-            IDbContextLock dbContextLock,
+            IResourceLock dbContextLock,
             DbContextOptions dbContextOptions)
         {
             bool? isSeededCache = false;

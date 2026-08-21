@@ -46,7 +46,7 @@ namespace Etherna.MongODM.AspNetCore.UI
 
         // Fields.
         private readonly Mock<IDbContext> dbContextMock;
-        private readonly Mock<IDbContextLock> dbContextLockMock = new();
+        private readonly Mock<IResourceLock> dbContextLockMock = new();
 
         // Constructor.
         public DashboardStatusTest()
