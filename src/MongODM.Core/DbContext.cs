@@ -30,6 +30,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Linq.Expressions;
 using System.Reflection;
@@ -38,8 +39,10 @@ using System.Threading.Tasks;
 
 namespace Etherna.MongODM.Core
 {
+    [SuppressMessage("Design", "CA1033:Interface methods should be callable by child types",
+        Justification = "The explicitly implemented members are infrastructure invoked by the generated proxy models, deliberately out of the surface of derived db contexts")]
     public abstract class DbContext(ILogger? logger = null)
-        : IDbContext, IDbContextBuilder
+        : IDbContext, IDbContextBuilder, IInternalDbContext
     {
         // Consts.
         private const int SeedingLockMinRetries = 4;
@@ -131,14 +134,6 @@ namespace Etherna.MongODM.Core
         public IRepository<OperationBase, string> DbOperations { get; private set; } = null!;
         public virtual IEnumerable<DocumentMigration> DocumentMigrationList { get; } = [];
         public IDbContextEngine Engine => engine;
-        public bool IsChangeTrackingSuppressed
-        {
-            get
-            {
-                lock (trackingLock)
-                    return changeTrackingSuppressions > 0;
-            }
-        }
         public bool IsSeeded
         {
             get
@@ -312,149 +307,7 @@ namespace Etherna.MongODM.Core
             foreach (var (model, _, _) in modelsToLoad)
                 if (model is IReferenceable { IsSummary: true } &&
                     model is not IProxyModel { OutdatedModelType: not null })
-                    OnMissingOriginDocument(model);
-        }
-
-        public void ClearChangeCandidate(IEntityModel model)
-        {
-            ArgumentNullException.ThrowIfNull(model);
-
-            lock (trackingLock)
-                changeCandidates.Remove(model);
-        }
-
-        public void MarkChangeCandidate(IEntityModel model)
-        {
-            ArgumentNullException.ThrowIfNull(model);
-
-            bool marked;
-            lock (trackingLock)
-            {
-                /* Ignore the mark until the model has a model document: the member sets replayed
-                 * while deserializing run before the model document capture, and must not be tracked. Ignore
-                 * it while merging loaded data into a model too, keeping the merges out of the
-                 * unit of work. */
-                if (changeTrackingSuppressions > 0 || !modelBsonDocuments.ContainsKey(model))
-                    return;
-                marked = changeCandidates.Add(model);
-            }
-
-            if (marked &&
-                TryGetSourceRepository(model) is { } repository)
-                logger.DbContextRegisteredChangedModel(engine.Options.DbName, repository.ModelIdToString(model), repository.Name);
-        }
-
-        public void OnImplicitLazyLoad(Type modelType, string? memberName)
-        {
-            ArgumentNullException.ThrowIfNull(modelType);
-
-            switch (engine.Options.ImplicitLazyLoad)
-            {
-                case ReactionMode.Silent:
-                    break;
-
-                case ReactionMode.Throw:
-                    throw new MongodmLazyLoadingException(
-                        $"Denied implicit lazy load on model type {modelType.Name}" +
-                        (memberName is null ? " from a domain method" : $", member {memberName}") +
-                        $": preload members with {nameof(LoadValuesAsync)}, or allow implicit lazy loads on the db context options");
-
-                default:
-                    bool firstOccurrence;
-                    lock (trackingLock)
-                        firstOccurrence = warnedImplicitLazyLoads.Add((modelType, memberName));
-                    if (firstOccurrence)
-                        logger.DbContextImplicitLazyLoad(engine.Options.DbName, modelType.Name, memberName);
-                    break;
-            }
-        }
-
-        public void OnMissingOriginDocument(IEntityModel summaryModel)
-        {
-            ArgumentNullException.ThrowIfNull(summaryModel);
-
-            if (summaryModel is not IReferenceable referenceable)
-                return;
-
-            var modelType = engine.ProxyGenerator.PurgeProxyType(summaryModel.GetType());
-            var sourceRepository = referenceable.SourceRepository;
-
-            switch (referenceable.MissingOriginDocument)
-            {
-                case ReactionMode.Silent:
-                    break;
-
-                case ReactionMode.Warn:
-                    /* Report the model type and its source repository, without the document id:
-                     * an id can be a natural identifier, and this level is enabled by default. */
-                    bool firstOccurrence;
-                    lock (trackingLock)
-                        firstOccurrence = warnedMissingOriginDocuments.Add((modelType, sourceRepository));
-                    if (firstOccurrence)
-                        logger.DbContextMissingOriginDocument(engine.Options.DbName, modelType.Name, sourceRepository.Name);
-                    break;
-
-                default:
-                    var modelId = TryGetIdMemberInfo(summaryModel.GetType()) is { } idMemberInfo
-                        ? ReflectionHelper.GetValue(summaryModel, idMemberInfo)
-                        : null;
-                    throw new MongodmMissingOriginDocumentException(
-                        $"Summary model of type {modelType.Name} with id {modelId ?? "null"} has no origin document " +
-                        $"on repository {sourceRepository.Name}: the referred document doesn't exist on its collection, " +
-                        "and its members can't be loaded. Fix the db inconsistency, or configure the reference to " +
-                        "tolerate a missing origin document");
-            }
-        }
-
-        public void RegisterLoadedModel(object modelId, IEntityModel model)
-        {
-            ArgumentNullException.ThrowIfNull(modelId);
-            ArgumentNullException.ThrowIfNull(model);
-
-            var repository = TryGetSourceRepository(model);
-            if (repository is null) //identity is meaningless without a repository
-                return;
-
-            lock (loadedModels)
-            {
-                /* Report only a model entering the identity map: an already loaded key belongs
-                 * to whoever entered it, and a scope registering it again doesn't own it. */
-                var loadedModelKey = (repository, modelId);
-                if (!loadedModels.ContainsKey(loadedModelKey))
-                    ReportToTransientModelsScopes(scope => scope.ReportLoadedModel(loadedModelKey));
-
-                loadedModels[loadedModelKey] = model;
-            }
-
-            logger.DbContextRegisteredLoadedModel(engine.Options.DbName, modelId.ToString()!, repository.Name);
-        }
-
-        public void ReplaceOutdatedLoadedModel(object modelId, IEntityModel outdatedModel, IEntityModel currentModel)
-        {
-            ArgumentNullException.ThrowIfNull(modelId);
-            ArgumentNullException.ThrowIfNull(outdatedModel);
-            ArgumentNullException.ThrowIfNull(currentModel);
-
-            // Validate that both instances belong to the identified document, before any state mutation.
-            /* The id reads stay legal on an invalidated instance: the id member is not
-             * proxied, being definitionally present and immutable. */
-            ValidateModelId(modelId, outdatedModel, nameof(outdatedModel));
-            ValidateModelId(modelId, currentModel, nameof(currentModel));
-
-            /* The runtime type of the outdated instance can't upgrade: flag it, so any
-             * application interaction with it fails loudly instead of proceeding with the
-             * wrong type, and drop it from the change tracking. The fresh instance becomes
-             * the loaded one for the document, served by the next loads. */
-            var currentModelType = engine.ProxyGenerator.PurgeProxyType(currentModel.GetType());
-            (outdatedModel as IProxyModel)?.SetOutdatedModelType(currentModelType);
-            RemoveModelTracking(outdatedModel);
-            RegisterLoadedModel(modelId, currentModel);
-
-            logger.DbContextReplacedOutdatedLoadedModel(
-                engine.Options.DbName,
-                modelId.ToString()!,
-                engine.ProxyGenerator.PurgeProxyType(outdatedModel.GetType()).Name,
-                currentModelType.Name);
+                    ((IProxyModelsDbContext)this).OnMissingOriginDocument(model);
         }
 
         public virtual async Task SaveChangesAsync(CancellationToken cancellationToken = default)
@@ -625,47 +478,6 @@ namespace Etherna.MongODM.Core
             TimeSpan? lockLeaseDuration = null) =>
             engine.DbMigrationManager.TryStartDbContextMigrationAsync(this, dryRun, stopAtFirstError, lockLeaseDuration);
 
-        public void RemoveModelTracking(IEntityModel model)
-        {
-            ArgumentNullException.ThrowIfNull(model);
-
-            bool removed;
-            lock (trackingLock)
-            {
-                changeCandidates.Remove(model);
-                modelSourceRepositories.Remove(model);
-                removed = modelBsonDocuments.Remove(model);
-            }
-
-            if (removed &&
-                TryGetSourceRepository(model) is { } repository)
-                logger.DbContextUnregisteredChangedModel(engine.Options.DbName, repository.ModelIdToString(model), repository.Name);
-        }
-
-        public void SetModelBsonDocument(IEntityModel model, BsonDocument bsonDocument)
-        {
-            ArgumentNullException.ThrowIfNull(model);
-            ArgumentNullException.ThrowIfNull(bsonDocument);
-
-            lock (trackingLock)
-            {
-                //report only a model entering the tracking: a model document update doesn't own it
-                if (!modelBsonDocuments.ContainsKey(model))
-                    ReportToTransientModelsScopes(scope => scope.ReportTrackedModel(model));
-
-                modelBsonDocuments[model] = bsonDocument;
-            }
-        }
-
-        public void SetModelSourceRepository(IEntityModel model, IRepository sourceRepository)
-        {
-            ArgumentNullException.ThrowIfNull(model);
-            ArgumentNullException.ThrowIfNull(sourceRepository);
-
-            lock (trackingLock)
-                modelSourceRepositories[model] = sourceRepository;
-        }
-
         public IDisposable StartTransientModelsScope()
         {
             /* An open scope collects what the flow registers while it runs, and evicts exactly
@@ -677,21 +489,6 @@ namespace Etherna.MongODM.Core
             lock (transientModelsScopes)
                 transientModelsScopes.Add(scope);
             return scope;
-        }
-
-        public IDisposable SuppressChangeTracking()
-        {
-            lock (trackingLock)
-                changeTrackingSuppressions++;
-            return new ChangeTrackingSuppression(this);
-        }
-
-        public BsonDocument? TryGetModelBsonDocument(IEntityModel model)
-        {
-            ArgumentNullException.ThrowIfNull(model);
-
-            lock (trackingLock)
-                return modelBsonDocuments.GetValueOrDefault(model);
         }
 
         public void UnregisterLoadedModel(object modelId, IEntityModel model)
@@ -719,6 +516,215 @@ namespace Etherna.MongODM.Core
         // Protected methods.
         protected virtual Task SeedAsync() =>
             Task.CompletedTask;
+
+        // Internals.
+        void IInternalDbContext.ClearChangeCandidate(IEntityModel model)
+        {
+            ArgumentNullException.ThrowIfNull(model);
+
+            lock (trackingLock)
+                changeCandidates.Remove(model);
+        }
+
+        void IInternalDbContext.RegisterLoadedModel(object modelId, IEntityModel model)
+        {
+            ArgumentNullException.ThrowIfNull(modelId);
+            ArgumentNullException.ThrowIfNull(model);
+
+            var repository = TryGetSourceRepository(model);
+            if (repository is null) //identity is meaningless without a repository
+                return;
+
+            lock (loadedModels)
+            {
+                /* Report only a model entering the identity map: an already loaded key belongs
+                 * to whoever entered it, and a scope registering it again doesn't own it. */
+                var loadedModelKey = (repository, modelId);
+                if (!loadedModels.ContainsKey(loadedModelKey))
+                    ReportToTransientModelsScopes(scope => scope.ReportLoadedModel(loadedModelKey));
+
+                loadedModels[loadedModelKey] = model;
+            }
+
+            logger.DbContextRegisteredLoadedModel(engine.Options.DbName, modelId.ToString()!, repository.Name);
+        }
+
+        void IInternalDbContext.RemoveModelTracking(IEntityModel model)
+        {
+            ArgumentNullException.ThrowIfNull(model);
+
+            bool removed;
+            lock (trackingLock)
+            {
+                changeCandidates.Remove(model);
+                modelSourceRepositories.Remove(model);
+                removed = modelBsonDocuments.Remove(model);
+            }
+
+            if (removed &&
+                TryGetSourceRepository(model) is { } repository)
+                logger.DbContextUnregisteredChangedModel(engine.Options.DbName, repository.ModelIdToString(model), repository.Name);
+        }
+
+        void IInternalDbContext.ReplaceOutdatedLoadedModel(object modelId, IEntityModel outdatedModel, IEntityModel currentModel)
+        {
+            ArgumentNullException.ThrowIfNull(modelId);
+            ArgumentNullException.ThrowIfNull(outdatedModel);
+            ArgumentNullException.ThrowIfNull(currentModel);
+
+            // Validate that both instances belong to the identified document, before any state mutation.
+            /* The id reads stay legal on an invalidated instance: the id member is not
+             * proxied, being definitionally present and immutable. */
+            ValidateModelId(modelId, outdatedModel, nameof(outdatedModel));
+            ValidateModelId(modelId, currentModel, nameof(currentModel));
+
+            /* The runtime type of the outdated instance can't upgrade: flag it, so any
+             * application interaction with it fails loudly instead of proceeding with the
+             * wrong type, and drop it from the change tracking. The fresh instance becomes
+             * the loaded one for the document, served by the next loads. */
+            var currentModelType = engine.ProxyGenerator.PurgeProxyType(currentModel.GetType());
+            (outdatedModel as IProxyModel)?.SetOutdatedModelType(currentModelType);
+            var internalDbContext = (IInternalDbContext)this;
+            internalDbContext.RemoveModelTracking(outdatedModel);
+            internalDbContext.RegisterLoadedModel(modelId, currentModel);
+
+            logger.DbContextReplacedOutdatedLoadedModel(
+                engine.Options.DbName,
+                modelId.ToString()!,
+                engine.ProxyGenerator.PurgeProxyType(outdatedModel.GetType()).Name,
+                currentModelType.Name);
+        }
+
+        void IInternalDbContext.SetModelBsonDocument(IEntityModel model, BsonDocument bsonDocument)
+        {
+            ArgumentNullException.ThrowIfNull(model);
+            ArgumentNullException.ThrowIfNull(bsonDocument);
+
+            lock (trackingLock)
+            {
+                //report only a model entering the tracking: a model document update doesn't own it
+                if (!modelBsonDocuments.ContainsKey(model))
+                    ReportToTransientModelsScopes(scope => scope.ReportTrackedModel(model));
+
+                modelBsonDocuments[model] = bsonDocument;
+            }
+        }
+
+        void IInternalDbContext.SetModelSourceRepository(IEntityModel model, IRepository sourceRepository)
+        {
+            ArgumentNullException.ThrowIfNull(model);
+            ArgumentNullException.ThrowIfNull(sourceRepository);
+
+            lock (trackingLock)
+                modelSourceRepositories[model] = sourceRepository;
+        }
+
+        BsonDocument? IInternalDbContext.TryGetModelBsonDocument(IEntityModel model)
+        {
+            ArgumentNullException.ThrowIfNull(model);
+
+            lock (trackingLock)
+                return modelBsonDocuments.GetValueOrDefault(model);
+        }
+
+        bool IProxyModelsDbContext.IsChangeTrackingSuppressed
+        {
+            get
+            {
+                lock (trackingLock)
+                    return changeTrackingSuppressions > 0;
+            }
+        }
+
+        void IProxyModelsDbContext.MarkChangeCandidate(IEntityModel model)
+        {
+            ArgumentNullException.ThrowIfNull(model);
+
+            bool marked;
+            lock (trackingLock)
+            {
+                /* Ignore the mark until the model has a model document: the member sets replayed
+                 * while deserializing run before the model document capture, and must not be tracked. Ignore
+                 * it while merging loaded data into a model too, keeping the merges out of the
+                 * unit of work. */
+                if (changeTrackingSuppressions > 0 || !modelBsonDocuments.ContainsKey(model))
+                    return;
+                marked = changeCandidates.Add(model);
+            }
+
+            if (marked &&
+                TryGetSourceRepository(model) is { } repository)
+                logger.DbContextRegisteredChangedModel(engine.Options.DbName, repository.ModelIdToString(model), repository.Name);
+        }
+
+        void IProxyModelsDbContext.OnImplicitLazyLoad(Type modelType, string? memberName)
+        {
+            ArgumentNullException.ThrowIfNull(modelType);
+
+            switch (engine.Options.ImplicitLazyLoad)
+            {
+                case ReactionMode.Silent:
+                    break;
+
+                case ReactionMode.Throw:
+                    throw new MongodmLazyLoadingException(
+                        $"Denied implicit lazy load on model type {modelType.Name}" +
+                        (memberName is null ? " from a domain method" : $", member {memberName}") +
+                        $": preload members with {nameof(LoadValuesAsync)}, or allow implicit lazy loads on the db context options");
+
+                default:
+                    bool firstOccurrence;
+                    lock (trackingLock)
+                        firstOccurrence = warnedImplicitLazyLoads.Add((modelType, memberName));
+                    if (firstOccurrence)
+                        logger.DbContextImplicitLazyLoad(engine.Options.DbName, modelType.Name, memberName);
+                    break;
+            }
+        }
+
+        void IProxyModelsDbContext.OnMissingOriginDocument(IEntityModel summaryModel)
+        {
+            ArgumentNullException.ThrowIfNull(summaryModel);
+
+            if (summaryModel is not IReferenceable referenceable)
+                return;
+
+            var modelType = engine.ProxyGenerator.PurgeProxyType(summaryModel.GetType());
+            var sourceRepository = referenceable.SourceRepository;
+
+            switch (referenceable.MissingOriginDocument)
+            {
+                case ReactionMode.Silent:
+                    break;
+
+                case ReactionMode.Warn:
+                    /* Report the model type and its source repository, without the document id:
+                     * an id can be a natural identifier, and this level is enabled by default. */
+                    bool firstOccurrence;
+                    lock (trackingLock)
+                        firstOccurrence = warnedMissingOriginDocuments.Add((modelType, sourceRepository));
+                    if (firstOccurrence)
+                        logger.DbContextMissingOriginDocument(engine.Options.DbName, modelType.Name, sourceRepository.Name);
+                    break;
+
+                default:
+                    var modelId = TryGetIdMemberInfo(summaryModel.GetType()) is { } idMemberInfo
+                        ? ReflectionHelper.GetValue(summaryModel, idMemberInfo)
+                        : null;
+                    throw new MongodmMissingOriginDocumentException(
+                        $"Summary model of type {modelType.Name} with id {modelId ?? "null"} has no origin document " +
+                        $"on repository {sourceRepository.Name}: the referred document doesn't exist on its collection, " +
+                        "and its members can't be loaded. Fix the db inconsistency, or configure the reference to " +
+                        "tolerate a missing origin document");
+            }
+        }
+
+        IDisposable IProxyModelsDbContext.SuppressChangeTracking()
+        {
+            lock (trackingLock)
+                changeTrackingSuppressions++;
+            return new ChangeTrackingSuppression(this);
+        }
 
         // Helpers.
         private void ReportToTransientModelsScopes(Action<TransientModelsScope> report)
@@ -839,7 +845,7 @@ namespace Etherna.MongODM.Core
                  * scope on a model tracked before it stays: its change is real application
                  * state, saved by the next changes save. */
                 foreach (var model in enteredTrackedModels.Cast<IEntityModel>())
-                    dbContext.RemoveModelTracking(model);
+                    ((IInternalDbContext)dbContext).RemoveModelTracking(model);
 
                 dbContext.logger.DbContextEvictedTransientModels(
                     dbContext.engine.Options.DbName,

@@ -151,12 +151,13 @@ namespace Etherna.MongODM.Core.Serialization.Serializers
                     ambientRepository is not null &&
                     ambientRepository.ModelType.IsAssignableFrom(typeof(TModel)))
                 {
+                    var internalDbContext = (IInternalDbContext)currentDbContext;
                     var loadedModel = currentDbContext.TryGetLoadedModel(ambientRepository, id);
                     if (loadedModel is null)
                     {
                         //capture the model document from the just deserialized document.
-                        currentDbContext.RegisterLoadedModel(id, (IEntityModel)model);
-                        currentDbContext.SetModelBsonDocument((IEntityModel)model, bsonDocument);
+                        internalDbContext.RegisterLoadedModel(id, (IEntityModel)model);
+                        internalDbContext.SetModelBsonDocument((IEntityModel)model, bsonDocument);
                     }
                     else if (loadedModel is TModel typedLoadedModel)
                     {
@@ -172,8 +173,8 @@ namespace Etherna.MongODM.Core.Serialization.Serializers
                              * and an instance type can't upgrade: the full document read is
                              * authoritative, so the fresh instance replaces the outdated one as
                              * the loaded model, and is returned by this and the next loads. */
-                            currentDbContext.ReplaceOutdatedLoadedModel(id, (IEntityModel)typedLoadedModel, (IEntityModel)model);
-                            currentDbContext.SetModelBsonDocument((IEntityModel)model, bsonDocument);
+                            internalDbContext.ReplaceOutdatedLoadedModel(id, (IEntityModel)typedLoadedModel, (IEntityModel)model);
+                            internalDbContext.SetModelBsonDocument((IEntityModel)model, bsonDocument);
                         }
                     }
                 }

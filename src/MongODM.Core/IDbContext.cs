@@ -12,7 +12,6 @@
 // You should have received a copy of the GNU Lesser General Public License along with MongODM.
 // If not, see <https://www.gnu.org/licenses/>.
 
-using Etherna.MongoDB.Bson;
 using Etherna.MongODM.Core.Domain.Models;
 using Etherna.MongODM.Core.Migration;
 using Etherna.MongODM.Core.Repositories;
@@ -63,13 +62,6 @@ namespace Etherna.MongODM.Core
         /// The scope independent engine serving this db context instance.
         /// </summary>
         IDbContextEngine Engine { get; }
-
-        /// <summary>
-        /// True while change tracking is suppressed on this db context instance (see
-        /// <see cref="SuppressChangeTracking"/>): the library internals are reading models
-        /// to merge or diff loaded data.
-        /// </summary>
-        bool IsChangeTrackingSuppressed { get; }
 
         /// <summary>
         /// True if it has been seeded.
@@ -189,69 +181,6 @@ namespace Etherna.MongODM.Core
             where TModel : class, IEntityModel;
 
         /// <summary>
-        /// Remove a model from the change candidates of this db context instance, after its
-        /// changes have been saved. Its model document is kept, so following mutations are tracked.
-        /// </summary>
-        /// <param name="model">The model to clear</param>
-        void ClearChangeCandidate(IEntityModel model);
-
-        /// <summary>
-        /// Flag a proxy model as a change candidate on this db context instance, invoked by
-        /// change tracking on a mutation. The mark is ignored until the model has a model document
-        /// (skipping the deserialization sets) and while change tracking is suppressed.
-        /// </summary>
-        /// <param name="model">The mutated model</param>
-        void MarkChangeCandidate(IEntityModel model);
-
-        /// <summary>
-        /// React to an implicit lazy load, before it runs, honoring
-        /// <see cref="Options.IDbContextOptions.ImplicitLazyLoad"/>: log a warning once per
-        /// member per scope, stay silent, or deny the load throwing
-        /// <see cref="Exceptions.MongodmLazyLoadingException"/>. Invoked by the proxy models.
-        /// </summary>
-        /// <param name="modelType">The summary model type</param>
-        /// <param name="memberName">The read member, null for an unanalyzed domain method</param>
-        void OnImplicitLazyLoad(Type modelType, string? memberName);
-
-        /// <summary>
-        /// React to a full load finding no origin document for a summary model, honoring the
-        /// <see cref="Options.ReactionMode"/> declared by the reference that
-        /// deserialized it: log a warning once per model type and source repository per scope,
-        /// stay silent, or report the db inconsistency throwing
-        /// <see cref="Exceptions.MongodmMissingOriginDocumentException"/>. Invoked by the proxy
-        /// models and by the explicit preloads.
-        /// </summary>
-        /// <param name="summaryModel">The summary model whose origin document is missing</param>
-        void OnMissingOriginDocument(IEntityModel summaryModel);
-
-        /// <summary>
-        /// Register a model instance as the loaded one for its document on this db context
-        /// instance. Following loads of the same document will return the same instance.
-        /// </summary>
-        /// <param name="modelId">The model document id</param>
-        /// <param name="model">The loaded model instance</param>
-        void RegisterLoadedModel(object modelId, IEntityModel model);
-
-        /// <summary>
-        /// Replace the loaded model instance of a document with a fresh one carrying the
-        /// current document type, invoked by the load deduplication when a full load finds
-        /// the document with another type of its hierarchy. The outdated instance leaves the
-        /// change tracking and starts denying any application interaction, throwing
-        /// <see cref="Exceptions.MongodmOutdatedModelTypeException"/>.
-        /// </summary>
-        /// <param name="modelId">The model document id</param>
-        /// <param name="outdatedModel">The loaded instance with the outdated type</param>
-        /// <param name="currentModel">The fresh instance with the current document type</param>
-        void ReplaceOutdatedLoadedModel(object modelId, IEntityModel outdatedModel, IEntityModel currentModel);
-
-        /// <summary>
-        /// Remove a model from the change tracking of this db context instance, dropping its
-        /// model document and its change candidate flag, keeping it out of the next changes save.
-        /// </summary>
-        /// <param name="model">The model to remove</param>
-        void RemoveModelTracking(IEntityModel model);
-
-        /// <summary>
         /// Save current model changes on db. With <see cref="Options.IDbContextOptions.EnableTransactionsWithReplicaSet"/>
         /// enabled and a deployment supporting transactions, the changed models of this db context
         /// save into a single implicit transaction; when a session is already ambient (e.g. into
@@ -348,24 +277,6 @@ namespace Etherna.MongODM.Core
             TimeSpan? lockLeaseDuration = null);
 
         /// <summary>
-        /// Set the model document of a model on this db context instance: the serialized
-        /// form its loaded members are diffed against at save. Captured at load and
-        /// create, and refreshed after each save.
-        /// </summary>
-        /// <param name="model">The tracked model</param>
-        /// <param name="bsonDocument">The serialized model document, diffed against at save</param>
-        void SetModelBsonDocument(IEntityModel model, BsonDocument bsonDocument);
-
-        /// <summary>
-        /// Bind a model to its source repository on this db context instance, for a tracked
-        /// model that can't carry it (a created or replaced non proxy instance), so its changes
-        /// save to the right repository even when the model type is handled by many repositories.
-        /// </summary>
-        /// <param name="model">The tracked model</param>
-        /// <param name="sourceRepository">The model source repository</param>
-        void SetModelSourceRepository(IEntityModel model, IRepository sourceRepository);
-
-        /// <summary>
         /// Start a scope keeping transient the models materialized inside it: at the scope
         /// dispose, every model loaded or tracked on this db context instance after the scope
         /// start evicts from the loaded models and the change tracking, discarding any unsaved
@@ -376,21 +287,6 @@ namespace Etherna.MongODM.Core
         /// </summary>
         /// <returns>The transient models scope</returns>
         IDisposable StartTransientModelsScope();
-
-        /// <summary>
-        /// Suppress change tracking on this db context instance until the returned scope is
-        /// disposed: mutations don't flag change candidates. Used while merging loaded data
-        /// into a model, keeping the merge out of the unit of work.
-        /// </summary>
-        /// <returns>The suppression scope</returns>
-        IDisposable SuppressChangeTracking();
-
-        /// <summary>
-        /// Try to get the model document of a model on this db context instance.
-        /// </summary>
-        /// <param name="model">The tracked model</param>
-        /// <returns>The model document, or null when the model is not tracked</returns>
-        BsonDocument? TryGetModelBsonDocument(IEntityModel model);
 
         /// <summary>
         /// Remove a model instance from the loaded models of this db context instance,

@@ -279,12 +279,13 @@ namespace Etherna.MongODM.Core.Serialization.Serializers
                     sourceDbContext is not null &&
                     sourceRepository is not null)
                 {
+                    var internalDbContext = (IInternalDbContext)sourceDbContext;
                     var loadedModel = sourceDbContext.TryGetLoadedModel(sourceRepository, id);
                     if (loadedModel is null)
                     {
                         //capture the model document from the just deserialized summary document.
-                        sourceDbContext.RegisterLoadedModel(id, model);
-                        sourceDbContext.SetModelBsonDocument(model, bsonDocument);
+                        internalDbContext.RegisterLoadedModel(id, model);
+                        internalDbContext.SetModelBsonDocument(model, bsonDocument);
                     }
                     else if (loadedModel is TModelBase typedLoadedModel)
                     {

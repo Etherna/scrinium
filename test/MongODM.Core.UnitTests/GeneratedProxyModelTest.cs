@@ -30,12 +30,15 @@ namespace Etherna.MongODM.Core
         // Fields.
         private readonly Mock<IDbContext> dbContextMock = new();
         private readonly FakeModelProxy proxyModel = new();
+        private readonly Mock<IProxyModelsDbContext> proxyModelsDbContextMock;
         private readonly Mock<IRepository> repositoryMock = new();
 
         // Constructor.
         public GeneratedProxyModelTest()
         {
-            dbContextMock.Setup(c => c.SuppressChangeTracking())
+            //the proxies invoke the db context through its proxy models surface
+            proxyModelsDbContextMock = dbContextMock.As<IProxyModelsDbContext>();
+            proxyModelsDbContextMock.Setup(c => c.SuppressChangeTracking())
                 .Returns(Mock.Of<IDisposable>());
             repositoryMock.Setup(r => r.DbContext)
                 .Returns(dbContextMock.Object);
@@ -50,7 +53,7 @@ namespace Etherna.MongODM.Core
             // Setup.
             repositoryMock.Setup(r => r.TryFindOneAsync("idVal", It.IsAny<CancellationToken>()))
                 .ReturnsAsync((object?)null);
-            dbContextMock.Setup(c => c.OnMissingOriginDocument(It.IsAny<IEntityModel>()))
+            proxyModelsDbContextMock.Setup(c => c.OnMissingOriginDocument(It.IsAny<IEntityModel>()))
                 .Throws(new MongodmMissingOriginDocumentException());
 
             proxyModel.Id = "idVal";
@@ -77,7 +80,7 @@ namespace Etherna.MongODM.Core
 
             // Assert.
             //the db context reacts to the db inconsistency, tolerating it here: nothing to load anymore
-            dbContextMock.Verify(c => c.OnMissingOriginDocument(proxyModel), Times.Once());
+            proxyModelsDbContextMock.Verify(c => c.OnMissingOriginDocument(proxyModel), Times.Once());
             Assert.Null(value);
             Assert.False(((IReferenceable)proxyModel).IsSummary);
         }
@@ -136,7 +139,7 @@ namespace Etherna.MongODM.Core
             _ = proxyModel.IntegerProp;
 
             // Assert.
-            dbContextMock.Verify(c => c.MarkChangeCandidate(It.IsAny<IEntityModel>()), Times.Never());
+            proxyModelsDbContextMock.Verify(c => c.MarkChangeCandidate(It.IsAny<IEntityModel>()), Times.Never());
         }
 
         [Fact]
@@ -250,7 +253,7 @@ namespace Etherna.MongODM.Core
             proxyModel.Id = "idVal";
             proxyModel.StringProp = "value";
             ((IProxyModel)proxyModel).SetOutdatedModelType(typeof(EvolvedFakeModel));
-            dbContextMock.Setup(c => c.IsChangeTrackingSuppressed)
+            proxyModelsDbContextMock.Setup(c => c.IsChangeTrackingSuppressed)
                 .Returns(true);
 
             // Action.
@@ -288,7 +291,7 @@ namespace Etherna.MongODM.Core
             // Assert.
             //the id member is not proxied: identity never joins the tracking bookkeeping
             Assert.DoesNotContain("Id", ((IReferenceable)proxyModel).SettedMemberNames);
-            dbContextMock.Verify(c => c.MarkChangeCandidate(It.IsAny<IEntityModel>()), Times.Never());
+            proxyModelsDbContextMock.Verify(c => c.MarkChangeCandidate(It.IsAny<IEntityModel>()), Times.Never());
         }
 
         [Fact]
@@ -299,7 +302,7 @@ namespace Etherna.MongODM.Core
 
             // Assert.
             Assert.Contains("StringProp", ((IReferenceable)proxyModel).SettedMemberNames);
-            dbContextMock.Verify(c => c.MarkChangeCandidate(proxyModel), Times.Once());
+            proxyModelsDbContextMock.Verify(c => c.MarkChangeCandidate(proxyModel), Times.Once());
         }
 
         // Nested types.

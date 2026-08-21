@@ -29,6 +29,13 @@
     <ProjectReference Include="..\MongODM.Core.Generators\MongODM.Core.Generators.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
   </ItemGroup>
 
+  <!-- Open the internal db context surface to the test projects, and to the Moq generated mocks. -->
+  <ItemGroup>
+    <InternalsVisibleTo Include="DynamicProxyGenAssembly2" />
+    <InternalsVisibleTo Include="MongODM.Core.UnitTests" />
+    <InternalsVisibleTo Include="MongODM.IntegrationTests" />
+  </ItemGroup>
+
   <!-- Pack the proxy models source generator into the package, applied to every consumer. -->
   <ItemGroup>
     <None Include="..\MongODM.Core.Generators\bin\$(Configuration)\netstandard2.0\Etherna.MongODM.Core.Generators.dll"
