@@ -18,24 +18,25 @@ using System.Threading;
 namespace Etherna.MongODM.Core.Utility
 {
     /// <summary>
-    /// An active lease of a <see cref="IDbContextLock"/>, renewed in background until its
+    /// An active lease of a <see cref="IResourceLock"/>, renewed in background until its
     /// disposal, that releases the lock. Dispose it as soon as the work under it ends: the
-    /// background renewals keep the lease alive as long as the lease object lives, so a lease
-    /// never disposed holds its lock indefinitely, denying every seeding and migration of the
-    /// db context on every application instance connected to the database.
+    /// background renewals keep the lease alive as long as the lease object lives, so a
+    /// lease never disposed holds its lock indefinitely, denying every work coordinated by
+    /// it on every application instance connected to the database.
     /// </summary>
-    public interface IDbContextLockLease : IAsyncDisposable
+    public interface IResourceLockLease : IAsyncDisposable
     {
         /// <summary>
         /// Cancelled when the lease can't be assumed alive anymore: a renewal found the lock
-        /// taken over by another claimer (or invalidated by another resume of the same owner),
-        /// or the renewals kept failing for the whole lease duration. Long running work under
-        /// the lease should observe it and abort.
+        /// taken over by another claimer (or invalidated by another resume of the same
+        /// owner), or the renewals kept failing for the whole lease duration. Long running
+        /// work under the lease should observe it and abort.
         /// </summary>
         CancellationToken LeaseLostToken { get; }
 
         /// <summary>
-        /// The owner identifier holding the lease.
+        /// The owner identifier holding the lease: the one of the resumed claim, or a
+        /// generated identifier for an acquired lease.
         /// </summary>
         string OwnerId { get; }
     }

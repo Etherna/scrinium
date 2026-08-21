@@ -37,7 +37,7 @@ namespace Etherna.MongODM.AspNetCore.Extensions
         /// to the lease duration of the seeding</param>
         /// <param name="lockLeaseDuration">Duration of the lock lease claimed by EACH seeding,
         /// forwarded to <see cref="IDbContext.SeedIfNeededAsync(TimeSpan?, TimeSpan?)"/> and
-        /// defaulted by it to <see cref="Core.Utility.DbContextLock.DefaultLeaseDuration"/>: how
+        /// defaulted by it to <see cref="Core.Utility.ResourceLock.DefaultLeaseDuration"/>: how
         /// long a db context stays locked if this application instance dies before its seeding
         /// completes</param>
         /// <returns>The application builder</returns>

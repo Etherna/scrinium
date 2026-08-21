@@ -244,6 +244,9 @@ namespace Etherna.MongODM.Core
             return model is IProxyModel { OutdatedModelType: not null };
         }
 
+        public Task<bool> IsResourceLockedAsync(string resourceNamespace, string resourceId) =>
+            engine.GetResourceLock(resourceNamespace, resourceId).IsLockedAsync();
+
         public Task LoadValuesAsync<TModel>(TModel model, params Expression<Func<TModel, object?>>[] members)
             where TModel : class, IEntityModel
         {
@@ -512,7 +515,7 @@ namespace Etherna.MongODM.Core
              * re-reading the seeding state from the db, instead of seeding again. A dead owner
              * stops renewing its lease, whose expiration unblocks the claim. */
             var lockOwnerId = Guid.NewGuid().ToString();
-            var effectiveLockLeaseDuration = lockLeaseDuration ?? DbContextLock.DefaultLeaseDuration;
+            var effectiveLockLeaseDuration = lockLeaseDuration ?? ResourceLock.DefaultLeaseDuration;
             /* Without an explicit wait, the lease duration of this seeding bounds it: a dead
              * owner's lease always expires inside it, so only a live owner working longer fails
              * the seeding. */
@@ -543,7 +546,7 @@ namespace Etherna.MongODM.Core
             // Resume the claim into a renewed lease, releasing the claim if it can't be resumed.
             /* A claim nobody owns would deny every seeding and migration of the db context,
              * on every application instance, until its lease expiration. */
-            IDbContextLockLease lockLease;
+            IResourceLockLease lockLease;
             try
             {
                 lockLease = await engine.DbContextLock.TryResumeClaimAsync(lockOwnerId).ConfigureAwait(false)
@@ -593,6 +596,13 @@ namespace Etherna.MongODM.Core
                 await lockLease.DisposeAsync().ConfigureAwait(false);
             }
         }
+
+        public Task<IResourceLockLease?> TryAcquireResourceLockAsync(
+            string resourceNamespace,
+            string resourceId,
+            ResourceLockMode mode = ResourceLockMode.Exclusive,
+            TimeSpan? leaseDuration = null) =>
+            engine.GetResourceLock(resourceNamespace, resourceId).TryAcquireAsync(mode, leaseDuration);
 
         public IEntityModel? TryGetLoadedModel(IRepository repository, object modelId)
         {

@@ -20,7 +20,7 @@ namespace Etherna.MongODM.Core.Extensions
 {
     /*
      * Always group similar log delegates by type, always use incremental event ids.
-     * Last event id is: 74
+     * Last event id is: 75
      */
     public static class LoggerExtensions
     {
@@ -353,18 +353,6 @@ namespace Etherna.MongODM.Core.Extensions
                 new EventId(43, nameof(DbContextImplicitLazyLoad)),
                 "DbContext {DbName} implicitly lazy loaded model type {ModelType} reading member {MemberName}: prefer an explicit preload with LoadValuesAsync");
 
-        private static readonly Action<ILogger, string, string, Exception> _dbContextLockLeaseRenewalFailed =
-            LoggerMessage.Define<string, string>(
-                LogLevel.Warning,
-                new EventId(52, nameof(DbContextLockLeaseRenewalFailed)),
-                "Db context lock {LockId} lease renewal failed for owner {OwnerId}: retrying until the lease expiration");
-
-        private static readonly Action<ILogger, string, string, Exception> _dbContextLockReleaseFailed =
-            LoggerMessage.Define<string, string>(
-                LogLevel.Warning,
-                new EventId(53, nameof(DbContextLockReleaseFailed)),
-                "Db context lock {LockId} release failed for owner {OwnerId}: the lease will expire on its own");
-
         private static readonly Action<ILogger, string, string, string, Exception> _dbContextMissingOriginDocument =
             LoggerMessage.Define<string, string, string>(
                 LogLevel.Warning,
@@ -407,6 +395,12 @@ namespace Etherna.MongODM.Core.Extensions
                 new EventId(44, nameof(DbContextReplacedOutdatedLoadedModel)),
                 "DbContext {DbName} replaced outdated loaded model with Id {ModelId}: its document changed type from {OutdatedModelType} to {CurrentModelType}");
 
+        private static readonly Action<ILogger, string, Exception> _lockCollectionTtlIndexCreationFailed =
+            LoggerMessage.Define<string>(
+                LogLevel.Warning,
+                new EventId(75, nameof(LockCollectionTtlIndexCreationFailed)),
+                "DbContext {DbName} couldn't create the TTL index of its lock collection: the abandoned lock documents won't be garbage collected");
+
         private static readonly Action<ILogger, string, string, Type, Exception> _mapRegistryFoundNotPropagatedReferencePath =
             LoggerMessage.Define<string, string, Type>(
                 LogLevel.Warning,
@@ -425,6 +419,18 @@ namespace Etherna.MongODM.Core.Extensions
                 new EventId(61, nameof(ReferenceSerializerUnrecognizedSchemaId)),
                 "ReferenceSerializer of DbContext {DbName} deserialized a reference document of model type {ModelType} reading only its id: its model map schema id {SchemaId} is not recognized, and no fallback is configured, so every other member lazy loads from the origin document");
 
+        private static readonly Action<ILogger, string, string, Exception> _resourceLockLeaseRenewalFailed =
+            LoggerMessage.Define<string, string>(
+                LogLevel.Warning,
+                new EventId(52, nameof(ResourceLockLeaseRenewalFailed)),
+                "Resource lock {LockId} lease renewal failed for owner {OwnerId}: retrying until the lease expiration");
+
+        private static readonly Action<ILogger, string, string, Exception> _resourceLockReleaseFailed =
+            LoggerMessage.Define<string, string>(
+                LogLevel.Warning,
+                new EventId(53, nameof(ResourceLockReleaseFailed)),
+                "Resource lock {LockId} release failed for owner {OwnerId}: the lease will expire on its own");
+
         private static readonly Action<ILogger, Type, string, string, Exception> _updateDocDependenciesTaskSkippedOnDeletedModel =
             LoggerMessage.Define<Type, string, string>(
                 LogLevel.Warning,
@@ -438,17 +444,17 @@ namespace Etherna.MongODM.Core.Extensions
                 "UpdateDocDependenciesTask skipped on DbContext {DbContextType}: reference repository {ReferenceRepositoryName} doesn't exist in the current configuration");
 
         //*** ERROR LOGS ***
-        private static readonly Action<ILogger, string, string, Exception> _dbContextLockLeaseLost =
-            LoggerMessage.Define<string, string>(
-                LogLevel.Error,
-                new EventId(51, nameof(DbContextLockLeaseLost)),
-                "Db context lock {LockId} lease lost by owner {OwnerId}: another claimer may already hold the lock");
-
         private static readonly Action<ILogger, string, string, Exception> _dbMigrationFailed =
             LoggerMessage.Define<string, string>(
                 LogLevel.Error,
                 new EventId(42, nameof(DbMigrationFailed)),
                 "Db migration operation {DbMigrationOpId} of DbContext {DbName} failed");
+
+        private static readonly Action<ILogger, string, string, Exception> _resourceLockLeaseLost =
+            LoggerMessage.Define<string, string>(
+                LogLevel.Error,
+                new EventId(51, nameof(ResourceLockLeaseLost)),
+                "Resource lock {LockId} lease lost by owner {OwnerId}: another claimer may already hold the lock");
 
         //*** FATAL LOGS ***
 
@@ -470,15 +476,6 @@ namespace Etherna.MongODM.Core.Extensions
 
         public static void DbContextInitialized(this ILogger logger, string dbName) =>
             _dbContextInitialized(logger, dbName, null!);
-
-        public static void DbContextLockLeaseLost(this ILogger logger, string lockId, string ownerId) =>
-            _dbContextLockLeaseLost(logger, lockId, ownerId, null!);
-
-        public static void DbContextLockLeaseRenewalFailed(this ILogger logger, string lockId, string ownerId, Exception exception) =>
-            _dbContextLockLeaseRenewalFailed(logger, lockId, ownerId, exception);
-
-        public static void DbContextLockReleaseFailed(this ILogger logger, string lockId, string ownerId, Exception exception) =>
-            _dbContextLockReleaseFailed(logger, lockId, ownerId, exception);
 
         public static void DbContextMissingOriginDocument(this ILogger logger, string dbName, string modelType, string repositoryName) =>
             _dbContextMissingOriginDocument(logger, dbName, modelType, repositoryName, null!);
@@ -576,6 +573,9 @@ namespace Etherna.MongODM.Core.Extensions
         public static void DiscriminatorRegistryInitialized(this ILogger logger, string dbName) =>
             _discriminatorRegistryInitialized(logger, dbName, null!);
 
+        public static void LockCollectionTtlIndexCreationFailed(this ILogger logger, string dbName, Exception exception) =>
+            _lockCollectionTtlIndexCreationFailed(logger, dbName, exception);
+
         public static void MapRegistryFoundNotPropagatedReferencePath(this ILogger logger, string dbName, string elementPath, Type modelType) =>
             _mapRegistryFoundNotPropagatedReferencePath(logger, dbName, elementPath, modelType, null!);
 
@@ -647,6 +647,15 @@ namespace Etherna.MongODM.Core.Extensions
 
         public static void RepositoryUpsertedDocument(this ILogger logger, string repositoryName, string dbName, bool inserted) =>
             _repositoryUpsertedDocument(logger, repositoryName, dbName, inserted, null!);
+
+        public static void ResourceLockLeaseLost(this ILogger logger, string lockId, string ownerId) =>
+            _resourceLockLeaseLost(logger, lockId, ownerId, null!);
+
+        public static void ResourceLockLeaseRenewalFailed(this ILogger logger, string lockId, string ownerId, Exception exception) =>
+            _resourceLockLeaseRenewalFailed(logger, lockId, ownerId, exception);
+
+        public static void ResourceLockReleaseFailed(this ILogger logger, string lockId, string ownerId, Exception exception) =>
+            _resourceLockReleaseFailed(logger, lockId, ownerId, exception);
 
         public static void SchemaRegistryInitialized(this ILogger logger, string dbName) =>
             _schemaRegistryInitialized(logger, dbName, null!);

@@ -16,6 +16,7 @@ using Etherna.MongoDB.Bson;
 using Etherna.MongODM.Core.Domain.Models;
 using Etherna.MongODM.Core.Migration;
 using Etherna.MongODM.Core.Repositories;
+using Etherna.MongODM.Core.Utility;
 using System;
 using System.Collections.Generic;
 using System.Linq.Expressions;
@@ -134,6 +135,17 @@ namespace Etherna.MongODM.Core
         Task<DbMigrationOperation> GetMigrationAsync(string migrateOperationId);
 
         Task<DbMigrationOperation?> IsMigrationRunningAsync();
+
+        /// <summary>
+        /// Tell if a live lease, exclusive or shared, holds the lock of an application
+        /// resource. A lease whose expiration is passed doesn't lock anything: the next
+        /// acquisition takes it over.
+        /// </summary>
+        /// <param name="resourceNamespace">The namespace of the resource, one per lock kind;
+        /// it can't contain the <c>/</c> separator</param>
+        /// <param name="resourceId">The resource identifier inside its namespace</param>
+        /// <returns>True if the resource lock is held by a live lease</returns>
+        Task<bool> IsResourceLockedAsync(string resourceNamespace, string resourceId);
 
         /// <summary>
         /// True if the member is already loaded on the model: always true on a full model,
@@ -263,7 +275,7 @@ namespace Etherna.MongODM.Core
         /// the whole work of the other owner (a seeding, a migration, or a diagnostic dry
         /// run), so it must be generous enough for it: startup seeding blocks on it</param>
         /// <param name="lockLeaseDuration">Duration of the lock lease claimed by THIS seeding,
-        /// defaulted to <see cref="Utility.DbContextLock.DefaultLeaseDuration"/>: how long the
+        /// defaulted to <see cref="Utility.ResourceLock.DefaultLeaseDuration"/>: how long the
         /// db context stays locked if this application instance dies before the seeding
         /// completes. It doesn't have to cover the seeding duration, since the lease is renewed
         /// in background while the seeding runs</param>
@@ -271,6 +283,35 @@ namespace Etherna.MongODM.Core
         /// <exception cref="Exceptions.MongodmDbSeedingException">The seed failed, or the db
         /// context lock stayed held by another owner for the whole wait timeout</exception>
         Task<bool> SeedIfNeededAsync(TimeSpan? lockWaitTimeout = null, TimeSpan? lockLeaseDuration = null);
+
+        /// <summary>
+        /// Try to acquire the lock of an application resource, atomically on the server,
+        /// across every application instance connected to the database. An exclusive
+        /// acquisition admits a single holder, denied by any live lease; a shared one admits
+        /// any number of holders, each with its own renewed lease, denied only by a live
+        /// exclusive lease, and a dead shared holder expires alone, without affecting the
+        /// others. An expired lease is taken over. The returned lease keeps renewing in
+        /// background, signalling on <see cref="IResourceLockLease.LeaseLostToken"/> when it
+        /// can't be assumed alive anymore, until its disposal releases this holder. The
+        /// resource id lives in the namespace the application chooses, so locks of different
+        /// kinds never collide; a read-only db context denies the lock, since claiming it
+        /// would write on a database owned by another application.
+        /// </summary>
+        /// <param name="resourceNamespace">The namespace of the resource, one per lock kind;
+        /// it can't contain the <c>/</c> separator</param>
+        /// <param name="resourceId">The resource identifier inside its namespace</param>
+        /// <param name="mode">The acquisition mode: a single exclusive holder, or shared
+        /// holders coexisting on the resource</param>
+        /// <param name="leaseDuration">Duration of the acquired lease, defaulted to
+        /// <see cref="ResourceLock.DefaultLeaseDuration"/>: how long this holder locks the
+        /// resource if its process dies before releasing it. It doesn't have to cover the
+        /// work running under the lease, kept renewed in background</param>
+        /// <returns>The active lease, or null when a live lease denies the acquisition</returns>
+        Task<IResourceLockLease?> TryAcquireResourceLockAsync(
+            string resourceNamespace,
+            string resourceId,
+            ResourceLockMode mode = ResourceLockMode.Exclusive,
+            TimeSpan? leaseDuration = null);
 
         /// <summary>
         /// Try to get the model instance already loaded on this db context instance for a
@@ -293,7 +334,7 @@ namespace Etherna.MongODM.Core
         /// <param name="stopAtFirstError">If true, abort a documents migration at its first
         /// failing document, instead of skipping it and processing every other document</param>
         /// <param name="lockLeaseDuration">Duration of the lock lease claimed by this start,
-        /// defaulted to <see cref="Utility.DbContextLock.DefaultLeaseDuration"/>: how long the
+        /// defaulted to <see cref="Utility.ResourceLock.DefaultLeaseDuration"/>: how long the
         /// db context stays locked if this application instance dies before the migration
         /// completes, and how long the claim survives waiting for the background task runner to
         /// pick the operation up, the only window nothing renews it. It doesn't have to cover

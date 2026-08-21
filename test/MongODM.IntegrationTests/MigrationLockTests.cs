@@ -114,11 +114,11 @@ namespace Etherna.MongODM.IntegrationTests
                 ForeignOwnerId, claimedLeaseDuration));
 
             //the lock of the other process: it claimed nothing, it only resumes the claim
-            var otherInstanceLock = new DbContextLock(
+            var otherInstanceLock = new ResourceLock(
                 await AccessLockCollectionAsync(Task.FromResult),
                 migrationsDbContext.Engine.Identifier,
                 AsyncLocalContext.Instance,
-                new LoggerFactory().CreateLogger<DbContextLock>());
+                new LoggerFactory().CreateLogger<ResourceLock>());
 
             // Action.
             var lease = await otherInstanceLock.TryResumeClaimAsync(ForeignOwnerId);
