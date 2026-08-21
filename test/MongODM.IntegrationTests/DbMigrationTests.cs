@@ -14,6 +14,7 @@
 
 using Etherna.MongoDB.Bson;
 using Etherna.MongoDB.Driver;
+using Etherna.MongODM.Core;
 using Etherna.MongODM.Core.Domain.Models;
 using Etherna.MongODM.Core.Domain.Models.DbMigrationOpAgg;
 using Etherna.MongODM.Core.ExecContext.AsyncLocal;
@@ -469,7 +470,7 @@ namespace Etherna.MongODM.IntegrationTests
             foreach (var scannedNote in scannedNotes)
             {
                 Assert.Null(migrationsDbContext.TryGetLoadedModel(migrationsDbContext.Notes, scannedNote.Id));
-                Assert.Null(migrationsDbContext.TryGetModelBsonDocument(scannedNote));
+                Assert.Null(((IInternalDbContext)migrationsDbContext).TryGetModelBsonDocument(scannedNote));
             }
             Assert.Empty(migrationsDbContext.ChangedModelsList);
 
@@ -523,7 +524,7 @@ namespace Etherna.MongODM.IntegrationTests
 
             //the control note, entered before the scan, is still the loaded and tracked instance
             Assert.Same(loadedNote, migrationsDbContext.TryGetLoadedModel(migrationsDbContext.Notes, note.Id));
-            Assert.NotNull(migrationsDbContext.TryGetModelBsonDocument(loadedNote));
+            Assert.NotNull(((IInternalDbContext)migrationsDbContext).TryGetModelBsonDocument(loadedNote));
 
             //the callback saves persisted through the scan evictions, reading from a fresh scope
             using var verifyScope = fixture.ServiceProvider.CreateScope();

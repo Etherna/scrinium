@@ -363,6 +363,7 @@ namespace Etherna.MongODM.Core
                 .Returns<object>(Task.FromResult);
 
             var dbContextMock = new Mock<IDbContext>();
+            var internalDbContextMock = dbContextMock.As<IInternalDbContext>();
             dbContextMock.Setup(c => c.Engine)
                 .Returns(dbContextEngineMock.Object);
             var repositoryMock = new Mock<IRepository>();
@@ -377,8 +378,8 @@ namespace Etherna.MongODM.Core
 
             // Assert.
             Assert.NotNull(result);
-            dbContextMock.Verify(c => c.RegisterLoadedModel("idVal", result), Times.Once());
-            dbContextMock.Verify(c => c.SetModelBsonDocument(result, It.IsAny<BsonDocument>()), Times.Once());
+            internalDbContextMock.Verify(c => c.RegisterLoadedModel("idVal", result), Times.Once());
+            internalDbContextMock.Verify(c => c.SetModelBsonDocument(result, It.IsAny<BsonDocument>()), Times.Once());
         }
 
         [Fact]
@@ -406,6 +407,7 @@ namespace Etherna.MongODM.Core
 
             var outdatedModel = new DerivedFakeModel { Id = "idVal" };
             var dbContextMock = new Mock<IDbContext>();
+            var internalDbContextMock = dbContextMock.As<IInternalDbContext>();
             dbContextMock.Setup(c => c.Engine)
                 .Returns(dbContextEngineMock.Object);
             var repositoryMock = new Mock<IRepository>();
@@ -423,8 +425,8 @@ namespace Etherna.MongODM.Core
             // Assert.
             Assert.NotNull(result);
             Assert.NotSame(outdatedModel, result);
-            dbContextMock.Verify(c => c.ReplaceOutdatedLoadedModel("idVal", outdatedModel, result), Times.Once());
-            dbContextMock.Verify(c => c.SetModelBsonDocument(result, It.IsAny<BsonDocument>()), Times.Once());
+            internalDbContextMock.Verify(c => c.ReplaceOutdatedLoadedModel("idVal", outdatedModel, result), Times.Once());
+            internalDbContextMock.Verify(c => c.SetModelBsonDocument(result, It.IsAny<BsonDocument>()), Times.Once());
         }
 
         [Theory]
@@ -505,6 +507,7 @@ namespace Etherna.MongODM.Core
 
             var loadedModel = new FakeModel { Id = "idVal", StringProp = "already loaded" };
             var dbContextMock = new Mock<IDbContext>();
+            var internalDbContextMock = dbContextMock.As<IInternalDbContext>();
             dbContextMock.Setup(c => c.Engine)
                 .Returns(dbContextEngineMock.Object);
             var repositoryMock = new Mock<IRepository>();
@@ -521,7 +524,7 @@ namespace Etherna.MongODM.Core
 
             // Assert.
             Assert.Same(loadedModel, result);
-            dbContextMock.Verify(c => c.RegisterLoadedModel(It.IsAny<object>(), It.IsAny<IEntityModel>()), Times.Never());
+            internalDbContextMock.Verify(c => c.RegisterLoadedModel(It.IsAny<object>(), It.IsAny<IEntityModel>()), Times.Never());
         }
 
         [Fact]

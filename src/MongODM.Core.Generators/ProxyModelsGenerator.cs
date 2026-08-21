@@ -298,7 +298,7 @@ namespace Etherna.MongODM.Core.Generators
 
             // Fields.
             b.AppendLine("        // Fields.");
-            b.AppendLine("        private global::Etherna.MongODM.Core.IDbContext? proxyDbContext;");
+            b.AppendLine("        private global::Etherna.MongODM.Core.ProxyModels.IProxyModelsDbContext? proxyDbContext;");
             b.AppendLine("        private bool proxyIsSummary;");
             b.AppendLine("        private global::Etherna.MongODM.Core.Options.ReactionMode proxyMissingOriginDocument =");
             b.AppendLine("            global::Etherna.MongODM.Core.Options.ReactionMode.Throw;");
@@ -348,6 +348,11 @@ namespace Etherna.MongODM.Core.Generators
             b.AppendLine("            global::System.Linq.Enumerable.ToArray(proxySettedMemberNames.Keys);");
             b.AppendLine("        global::Etherna.MongODM.Core.Repositories.IRepository global::Etherna.MongODM.Core.ProxyModels.IReferenceable.SourceRepository => proxySourceRepository;");
             b.AppendLine();
+            b.AppendLine("        // Private properties.");
+            b.AppendLine("        //the proxy models surface of the db context owning the source repository");
+            b.AppendLine("        private global::Etherna.MongODM.Core.ProxyModels.IProxyModelsDbContext ProxySourceDbContext =>");
+            b.AppendLine("            (global::Etherna.MongODM.Core.ProxyModels.IProxyModelsDbContext)proxySourceRepository.DbContext;");
+            b.AppendLine();
 
             // Methods.
             b.AppendLine("        // Methods.");
@@ -374,7 +379,8 @@ namespace Etherna.MongODM.Core.Generators
             b.AppendLine("            global::Etherna.MongODM.Core.IDbContext? dbContext,");
             b.AppendLine("            global::Etherna.MongODM.Core.Repositories.IRepository sourceRepository)");
             b.AppendLine("        {");
-            b.AppendLine("            proxyDbContext = dbContext;");
+            b.AppendLine("            //the binding is fail-fast: a db context serving proxies implements their surface");
+            b.AppendLine("            proxyDbContext = (global::Etherna.MongODM.Core.ProxyModels.IProxyModelsDbContext?)dbContext;");
             b.AppendLine("            proxySourceRepository = sourceRepository;");
             b.AppendLine("        }");
             b.AppendLine();
@@ -407,7 +413,7 @@ namespace Etherna.MongODM.Core.Generators
             b.AppendLine("            /* Merging two summaries is additive only: copy just the members that the current");
             b.AppendLine("             * model doesn't have at all. Suppress change tracking on the merge: the copied");
             b.AppendLine("             * members are loaded data, not changes to persist. */");
-            b.AppendLine("            using (proxySourceRepository.DbContext.SuppressChangeTracking())");
+            b.AppendLine("            using (ProxySourceDbContext.SuppressChangeTracking())");
             b.AppendLine("            {");
             b.AppendLine("                var summaryModelMemberNames = global::System.Linq.Enumerable.ToHashSet(summaryReferenceable.SettedMemberNames);");
             foreach (var property in info.WritableProperties.OrderBy(p => p.Name))
@@ -446,7 +452,7 @@ namespace Etherna.MongODM.Core.Generators
             b.AppendLine("                /* Copy from the full model every member not already loaded, or loaded from a");
             b.AppendLine("                 * summary: a full document read is authoritative. Suppress change tracking on");
             b.AppendLine("                 * the merge: the copied members are loaded data, not changes to persist. */");
-            b.AppendLine("                using (proxySourceRepository.DbContext.SuppressChangeTracking())");
+            b.AppendLine("                using (ProxySourceDbContext.SuppressChangeTracking())");
             b.AppendLine("                {");
             foreach (var property in info.WritableProperties.OrderBy(p => p.Name))
             {
@@ -524,7 +530,7 @@ namespace Etherna.MongODM.Core.Generators
                 b.AppendLine("                throw new global::System.InvalidOperationException(\"model or id can't be null\");");
             }
             b.AppendLine("            // React to the implicit lazy load, honoring the db context options.");
-            b.AppendLine($"            proxySourceRepository.DbContext.OnImplicitLazyLoad(typeof({info.ModelFullName}), triggeringMemberName);");
+            b.AppendLine($"            ProxySourceDbContext.OnImplicitLazyLoad(typeof({info.ModelFullName}), triggeringMemberName);");
             b.AppendLine();
             b.AppendLine("            // Merge the full document to the current model, with a sync over async load.");
             b.AppendLine($"            var task = proxySourceRepository.TryFindOneAsync(base.{info.IdPropertyName}!);");
@@ -537,7 +543,7 @@ namespace Etherna.MongODM.Core.Generators
             b.AppendLine("                /* The origin document doesn't exist anymore: react to the db inconsistency,");
             b.AppendLine("                 * honoring the mode of the reference that deserialized this summary. Tolerating");
             b.AppendLine("                 * it, there is nothing to load, and the model gives up the summary state. */");
-            b.AppendLine("                proxySourceRepository.DbContext.OnMissingOriginDocument(this);");
+            b.AppendLine("                ProxySourceDbContext.OnMissingOriginDocument(this);");
             b.AppendLine("                MergeProxyFullModel(null);");
             b.AppendLine("            }");
             b.AppendLine("            //else: document of another type of the hierarchy, this instance is outdated");

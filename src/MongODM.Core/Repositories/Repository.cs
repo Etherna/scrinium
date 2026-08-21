@@ -83,6 +83,9 @@ namespace Etherna.MongODM.Core.Repositories
         public Type ModelType => typeof(TModel);
         public string Name => options.Name;
 
+        // Private properties.
+        private IInternalDbContext InternalDbContext => (IInternalDbContext)DbContext;
+
         // Public methods.
         public Task AccessToCollectionAsync(
             Func<IMongoCollection<TModel>, Task> action,
@@ -242,7 +245,7 @@ namespace Etherna.MongODM.Core.Repositories
             await DeleteOnDBAsync(model, additionalFilters ?? [], cancellationToken).ConfigureAwait(false);
 
             // Remove from pending changes and loaded models.
-            DbContext.RemoveModelTracking(model);
+            InternalDbContext.RemoveModelTracking(model);
             DbContext.UnregisterLoadedModel(model.Id!, model);
 
             // Propagate the delete to the documents referencing the model.
@@ -600,7 +603,7 @@ namespace Etherna.MongODM.Core.Repositories
             if (model is not TModel castedModel)
                 throw new MongodmInvalidEntityTypeException("Invalid model type");
 
-            var modelDocument = DbContext.TryGetModelBsonDocument(model);
+            var modelDocument = InternalDbContext.TryGetModelBsonDocument(model);
             if (modelDocument is null)
             {
                 //no model document to diff against: persist with a whole document replace.
@@ -645,7 +648,7 @@ namespace Etherna.MongODM.Core.Repositories
                 IReadOnlyCollection<(IEntityModel Model, IRepository? SourceRepository)> discoveredNewModels;
                 using (var newModelsCollector = new NewReferredModelsCollector(DbContext.Engine.ExecutionContext))
                 {
-                    using (DbContext.SuppressChangeTracking())
+                    using (InternalDbContext.SuppressChangeTracking())
                         foreach (var memberMap in membersToDiff)
                         {
                             var memberValue = memberMap.Getter(castedModel);
@@ -681,7 +684,7 @@ namespace Etherna.MongODM.Core.Repositories
             // No change detected: nothing to persist.
             if (update.ElementCount == 0)
             {
-                DbContext.ClearChangeCandidate(model);
+                InternalDbContext.ClearChangeCandidate(model);
                 logger.RepositorySavedModelChanges(Name, DbContext.Engine.Options.DbName, castedModel.Id!.ToString()!);
                 return;
             }
@@ -735,17 +738,17 @@ namespace Etherna.MongODM.Core.Repositories
             if (model is IReferenceable { IsSummary: true } referenceableModel)
                 referenceableModel.MergeFullModel(updatedModel);
             else
-                RefreshModel(DbContext, castedModel, updatedModel);
+                RefreshModel(InternalDbContext, castedModel, updatedModel);
 
             // Refresh the model document: the saved model now matches the persisted document.
             if (TrySerializeModelBsonDocument(castedModel) is { } newModelDocument)
-                DbContext.SetModelBsonDocument(model, newModelDocument);
+                InternalDbContext.SetModelBsonDocument(model, newModelDocument);
 
             // Update dependent documents.
             DbContext.Engine.DbMaintainer.OnUpdatedModel<TKey>(castedModel, changedMembers, this);
 
             // Clear the change candidate.
-            DbContext.ClearChangeCandidate(model);
+            InternalDbContext.ClearChangeCandidate(model);
 
             logger.RepositorySavedModelChanges(Name, DbContext.Engine.Options.DbName, castedModel.Id!.ToString()!);
         }
@@ -935,7 +938,7 @@ namespace Etherna.MongODM.Core.Repositories
                  * of work and of next loads deduplication. */
                 if (oldDocument is not null)
                 {
-                    DbContext.RemoveModelTracking(oldDocument);
+                    InternalDbContext.RemoveModelTracking(oldDocument);
                     DbContext.UnregisterLoadedModel(oldDocument.Id!, oldDocument);
                 }
 
@@ -1179,8 +1182,8 @@ namespace Etherna.MongODM.Core.Repositories
                 foreach (var model in models)
                     if (TrySerializeModelBsonDocument(model) is { } modelDocument)
                     {
-                        DbContext.SetModelBsonDocument(model, modelDocument);
-                        DbContext.SetModelSourceRepository(model, this);
+                        InternalDbContext.SetModelBsonDocument(model, modelDocument);
+                        InternalDbContext.SetModelSourceRepository(model, this);
                     }
         }
 
@@ -1251,7 +1254,7 @@ namespace Etherna.MongODM.Core.Repositories
             //reading the model members to serialize must not flag it a change candidate.
             using var newModelsCollector = new NewReferredModelsCollector(DbContext.Engine.ExecutionContext);
             using (new DbExecutionContextHandler(DbContext))
-            using (DbContext.SuppressChangeTracking())
+            using (InternalDbContext.SuppressChangeTracking())
             using (var bsonWriter = new BsonDocumentWriter([]))
             {
                 var context = BsonSerializationContext.CreateRoot(bsonWriter);
@@ -1263,7 +1266,7 @@ namespace Etherna.MongODM.Core.Repositories
             return newModelsCollector.Models;
         }
 
-        private static void RefreshModel(IDbContext dbContext, TModel model, TModel updatedModel)
+        private static void RefreshModel(IProxyModelsDbContext dbContext, TModel model, TModel updatedModel)
         {
             /* Suppress change tracking on the refresh: the copied members are the just persisted
              * document state, not changes to persist. */
@@ -1395,7 +1398,7 @@ namespace Etherna.MongODM.Core.Repositories
 
             //reading the model members to serialize must not flag it a change candidate.
             var wrapper = new BsonDocument();
-            using (DbContext.SuppressChangeTracking())
+            using (InternalDbContext.SuppressChangeTracking())
             using (var bsonWriter = new BsonDocumentWriter(wrapper))
             {
                 var context = BsonSerializationContext.CreateRoot(bsonWriter);
@@ -1529,10 +1532,10 @@ namespace Etherna.MongODM.Core.Repositories
                 // Refresh the change tracking: the replaced document is now the model state.
                 if (TrySerializeModelBsonDocument(model) is { } newModelDocument)
                 {
-                    DbContext.SetModelBsonDocument(model, newModelDocument);
-                    DbContext.SetModelSourceRepository(model, this);
+                    InternalDbContext.SetModelBsonDocument(model, newModelDocument);
+                    InternalDbContext.SetModelSourceRepository(model, this);
                 }
-                DbContext.ClearChangeCandidate(model);
+                InternalDbContext.ClearChangeCandidate(model);
 
                 logger.RepositoryReplacedDocument(Name, DbContext.Engine.Options.DbName, model.Id!.ToString()!);
             }).ConfigureAwait(false);

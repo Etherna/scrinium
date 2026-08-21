@@ -46,6 +46,8 @@ namespace Etherna.MongODM.Core
         // Fields.
         private readonly FakeDbContext dbContext;
         private readonly IDbContextEngine engine;
+        //the internal facing surface of the db context under test, explicitly implemented
+        private readonly IInternalDbContext internalDbContext;
 
         private readonly Mock<ICluster> clusterMock = new();
         private readonly Mock<IMongoCollection<FakeModel>> collectionMock = new();
@@ -115,6 +117,7 @@ namespace Etherna.MongODM.Core
                 .Returns(clusterMock.Object);
 
             dbContext = new FakeDbContext();
+            internalDbContext = dbContext;
             engine = dbContext.BuildEngine(
                 dependenciesMock.Object,
                 mongoClientMock.Object,
@@ -138,7 +141,7 @@ namespace Etherna.MongODM.Core
 
             // Action and assert.
             var exception = Assert.Throws<MongodmLazyLoadingException>(
-                () => dbContext.OnImplicitLazyLoad(typeof(FakeModel), "StringProp"));
+                () => internalDbContext.OnImplicitLazyLoad(typeof(FakeModel), "StringProp"));
             Assert.Contains(nameof(FakeModel), exception.Message, StringComparison.Ordinal);
             Assert.Contains("StringProp", exception.Message, StringComparison.Ordinal);
         }
@@ -152,8 +155,8 @@ namespace Etherna.MongODM.Core
             options.ImplicitLazyLoad = mode;
 
             // Action, asserting no throw.
-            dbContext.OnImplicitLazyLoad(typeof(FakeModel), "StringProp");
-            dbContext.OnImplicitLazyLoad(typeof(FakeModel), "StringProp"); //repeated: warn dedups per scope
+            internalDbContext.OnImplicitLazyLoad(typeof(FakeModel), "StringProp");
+            internalDbContext.OnImplicitLazyLoad(typeof(FakeModel), "StringProp"); //repeated: warn dedups per scope
         }
 
         [Fact]
@@ -165,7 +168,7 @@ namespace Etherna.MongODM.Core
 
             // Action and assert.
             var exception = Assert.Throws<MongodmMissingOriginDocumentException>(
-                () => dbContext.OnMissingOriginDocument(model));
+                () => internalDbContext.OnMissingOriginDocument(model));
             Assert.Contains(nameof(FakeModel), exception.Message, StringComparison.Ordinal);
             Assert.Contains("id", exception.Message, StringComparison.Ordinal);
             Assert.Contains(dbContext.FakeModels.Name, exception.Message, StringComparison.Ordinal);
@@ -181,8 +184,8 @@ namespace Etherna.MongODM.Core
             ((IReferenceable)model).SetAsSummary([], mode);
 
             // Action, asserting no throw.
-            dbContext.OnMissingOriginDocument(model);
-            dbContext.OnMissingOriginDocument(model); //repeated: warn dedups per scope
+            internalDbContext.OnMissingOriginDocument(model);
+            internalDbContext.OnMissingOriginDocument(model); //repeated: warn dedups per scope
         }
 
         [Fact]
@@ -388,7 +391,7 @@ namespace Etherna.MongODM.Core
             var model = new FakeModel { Id = "id" };
 
             // Action.
-            dbContext.RegisterLoadedModel("id", model);
+            internalDbContext.RegisterLoadedModel("id", model);
 
             // Assert.
             Assert.Same(model, dbContext.TryGetLoadedModel(dbContext.FakeModels, "id"));
@@ -407,10 +410,10 @@ namespace Etherna.MongODM.Core
             // Setup.
             var outdatedModel = NewBoundProxy("id");
             var currentModel = NewBoundProxy("id");
-            dbContext.RegisterLoadedModel("id", outdatedModel);
+            internalDbContext.RegisterLoadedModel("id", outdatedModel);
 
             // Action.
-            dbContext.ReplaceOutdatedLoadedModel("id", outdatedModel, currentModel);
+            internalDbContext.ReplaceOutdatedLoadedModel("id", outdatedModel, currentModel);
 
             // Assert.
             //the fresh instance becomes the loaded one, and only the outdated one is flagged
@@ -425,11 +428,11 @@ namespace Etherna.MongODM.Core
             // Setup.
             var outdatedModel = NewBoundProxy("id");
             var currentModel = NewBoundProxy("otherId");
-            dbContext.RegisterLoadedModel("id", outdatedModel);
+            internalDbContext.RegisterLoadedModel("id", outdatedModel);
 
             // Action.
             var exception = Assert.Throws<ArgumentException>(
-                () => dbContext.ReplaceOutdatedLoadedModel("id", outdatedModel, currentModel));
+                () => internalDbContext.ReplaceOutdatedLoadedModel("id", outdatedModel, currentModel));
 
             // Assert.
             //the mismatch fails fast, before any state mutation
@@ -447,20 +450,20 @@ namespace Etherna.MongODM.Core
             // Action.
             using (dbContext.StartTransientModelsScope())
             {
-                dbContext.RegisterLoadedModel("id", model);
-                dbContext.SetModelBsonDocument(model, []);
-                dbContext.MarkChangeCandidate(model);
+                internalDbContext.RegisterLoadedModel("id", model);
+                internalDbContext.SetModelBsonDocument(model, []);
+                internalDbContext.MarkChangeCandidate(model);
 
                 //inside the scope the model loads and tracks normally
                 Assert.Same(model, dbContext.TryGetLoadedModel(dbContext.FakeModels, "id"));
-                Assert.NotNull(dbContext.TryGetModelBsonDocument(model));
+                Assert.NotNull(internalDbContext.TryGetModelBsonDocument(model));
                 Assert.Contains(model, dbContext.ChangedModelsList);
             }
 
             // Assert.
             //the scope end evicted the model from the loaded models and the change tracking
             Assert.Null(dbContext.TryGetLoadedModel(dbContext.FakeModels, "id"));
-            Assert.Null(dbContext.TryGetModelBsonDocument(model));
+            Assert.Null(internalDbContext.TryGetModelBsonDocument(model));
             Assert.Empty(dbContext.ChangedModelsList);
         }
 
@@ -469,21 +472,21 @@ namespace Etherna.MongODM.Core
         {
             // Setup.
             var model = NewBoundProxy("id");
-            dbContext.RegisterLoadedModel("id", model);
-            dbContext.SetModelBsonDocument(model, []);
+            internalDbContext.RegisterLoadedModel("id", model);
+            internalDbContext.SetModelBsonDocument(model, []);
 
             // Action.
             var updatedDocument = new BsonDocument("updated", true);
             using (dbContext.StartTransientModelsScope())
             {
-                dbContext.SetModelBsonDocument(model, updatedDocument);
-                dbContext.MarkChangeCandidate(model);
+                internalDbContext.SetModelBsonDocument(model, updatedDocument);
+                internalDbContext.MarkChangeCandidate(model);
             }
 
             // Assert.
             //the model entered before the scope keeps its state, updates inside the scope included
             Assert.Same(model, dbContext.TryGetLoadedModel(dbContext.FakeModels, "id"));
-            Assert.Same(updatedDocument, dbContext.TryGetModelBsonDocument(model));
+            Assert.Same(updatedDocument, internalDbContext.TryGetModelBsonDocument(model));
             Assert.Contains(model, dbContext.ChangedModelsList);
         }
 
@@ -979,7 +982,7 @@ namespace Etherna.MongODM.Core
         private static ClusterDescription NewClusterDescription(ClusterType type) =>
             new(new ClusterId(0), false, null, type, []);
 
-        private static void MarkModelChanged(IDbContext targetDbContext, IEntityModel model)
+        private static void MarkModelChanged(IInternalDbContext targetDbContext, IEntityModel model)
         {
             //track the model with a model document, then flag it changed, like a mutation would
             targetDbContext.SetModelBsonDocument(model, []);
