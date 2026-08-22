@@ -892,38 +892,16 @@ namespace Etherna.MongODM.Core.Repositories
                 }
 
                 // Update "update" definition with OnInsert instructions.
-                /* The on insert instructions set whole top level elements, so an updated field
-                 * inside one of them would make two operators write the same branch, and the
-                 * server refuses the update altogether ("Updating the path 'a.b' would create
-                 * a conflict at 'a'"): the updated fields are excluded by their first path
-                 * segment, the top level element containing them. */
-                var skipFieldsNames = updatedFields
+                var updatedPaths = updatedFields
                     .Select(f => f.Render(new((IBsonSerializer<TModel>)serializer, DbContext.Engine.SerializerRegistry)))
-                    .Select(f => f.FieldName.Split('.').First())
+                    .Select(f => f.FieldName.Split('.'))
                     .ToArray();
-                var onInsertElements = modelBsonDoc[0].AsBsonDocument.Elements
-                    .Where(element => element.Name != IdElementName &&          //exclude ID
-                                      !skipFieldsNames.Contains(element.Name))  //and fields to skip
+                var onInsertUpdate = ComposeOnInsertFields(
+                        modelBsonDoc[0].AsBsonDocument.Elements.Where(element => element.Name != IdElementName),
+                        null,
+                        updatedPaths)
+                    .Select(field => Builders<TModel>.Update.SetOnInsert(field.Name, field.Value))
                     .ToArray();
-
-                /* The serialized element names compose the $setOnInsert field names verbatim,
-                 * and an update field name containing a '.' addresses a nested field: the same
-                 * model an insert would write with a literal dotted element, an upsert would
-                 * write nested, silently. There is no way to address a literal dotted field in
-                 * an update path, so the upsert refuses the model instead of writing another
-                 * document than the one it was given. */
-                foreach (var element in onInsertElements)
-                {
-                    if (element.Name.Contains('.', StringComparison.InvariantCulture))
-                        throw new InvalidOperationException(
-                            $"Can't upsert on collection \"{Name}\": the model of type {typeof(TModel).Name} " +
-                            $"serializes the element \"{element.Name}\", and an update field name containing " +
-                            "a '.' addresses a nested field, so the upsert would write a document different " +
-                            "from the one an insert writes");
-                }
-
-                var onInsertUpdate = onInsertElements
-                    .Select(element => Builders<TModel>.Update.SetOnInsert(element.Name, element.Value));
                 var upsertUpdate = Builders<TModel>.Update.Combine(onInsertUpdate.Append(updateDefinition));
 
                 // Exec on db.
@@ -1185,6 +1163,79 @@ namespace Etherna.MongODM.Core.Repositories
                         InternalDbContext.SetModelBsonDocument(model, modelDocument);
                         InternalDbContext.SetModelSourceRepository(model, this);
                     }
+        }
+
+        /// <summary>
+        /// Compose the $setOnInsert fields from the serialized elements of an on insert model.
+        /// </summary>
+        /// <param name="elements">The serialized elements of a document level</param>
+        /// <param name="fieldNamePrefix">The field name of the document, null at the root</param>
+        /// <param name="updatedPaths">The updated field paths, relative to the document</param>
+        /// <returns>The on insert field names and values</returns>
+        private IEnumerable<(string Name, BsonValue Value)> ComposeOnInsertFields(
+            IEnumerable<BsonElement> elements,
+            string? fieldNamePrefix,
+            IEnumerable<string[]> updatedPaths)
+        {
+            /* The on insert instructions set the serialized elements whole, except the ones an
+             * updated field navigates into: two operators writing the same branch make the
+             * server refuse the update altogether ("Updating the path 'a.b' would create a
+             * conflict at 'a'"), so such an element splits into its sub elements, down to the
+             * updated field, which stays out alone. An updated field navigating into a value
+             * that can't split (an array, for instance) keeps the whole value out. */
+            foreach (var element in elements)
+            {
+                var enteringPaths = updatedPaths
+                    .Where(path => path[0] == element.Name)
+                    .ToArray();
+                var fieldName = fieldNamePrefix is null ? element.Name : $"{fieldNamePrefix}.{element.Name}";
+
+                var elementLocation = fieldNamePrefix is null ? "" : $" inside \"{fieldNamePrefix}\"";
+
+                if (enteringPaths.Length == 0)
+                {
+                    /* The serialized element names compose the $setOnInsert field names, so they
+                     * have to be usable as segments of an update path. An update field name
+                     * containing a '.' addresses a nested field: the same model an insert would
+                     * write with a literal dotted element, an upsert would write nested, silently.
+                     * There is no way to address a literal dotted field in an update path, so the
+                     * upsert refuses the model instead of writing another document than the one it
+                     * was given. An empty name has no valid update path at all. */
+                    if (element.Name.Contains('.', StringComparison.InvariantCulture))
+                        throw new InvalidOperationException(
+                            $"Can't upsert on collection \"{Name}\": the model of type {typeof(TModel).Name} " +
+                            $"serializes the element \"{element.Name}\"{elementLocation}, and an update " +
+                            "field name containing a '.' addresses a nested field, so the upsert would " +
+                            "write a document different from the one an insert writes");
+                    if (element.Name.Length == 0)
+                        throw new InvalidOperationException(
+                            $"Can't upsert on collection \"{Name}\": the model of type {typeof(TModel).Name} " +
+                            $"serializes an element with an empty name{elementLocation}, and an update " +
+                            "field name can't have an empty segment, so the upsert can't write it");
+
+                    yield return (fieldName, element.Value);
+                }
+                else if (enteringPaths.All(path => path.Length > 1))
+                {
+                    /* Only a document splits: an updated field navigating into any other value
+                     * would leave the element out, and the update alone would create a nested
+                     * document in its place on insert — a value of another type, that the model
+                     * can't even read back when it maps an array. */
+                    if (element.Value is not BsonDocument subDocument)
+                        throw new InvalidOperationException(
+                            $"Can't upsert on collection \"{Name}\": the model of type {typeof(TModel).Name} " +
+                            $"serializes the element \"{element.Name}\"{elementLocation} as a " +
+                            $"{element.Value.BsonType} value, and an updated field navigates into it, " +
+                            "so the upsert would insert a nested document in its place, different " +
+                            "from the one an insert writes");
+
+                    foreach (var field in ComposeOnInsertFields(
+                        subDocument.Elements,
+                        fieldName,
+                        enteringPaths.Select(path => path[1..])))
+                        yield return field;
+                }
+            }
         }
 
         private async Task CreateNewReferredModelsAsync(

@@ -36,24 +36,15 @@ namespace Etherna.MongODM.Core.Repositories
     {
         // Internal classes.
         /// <summary>
-        /// A mapped custom serializer emitting the given element names, as a class map with an
-        /// own extra elements member does with the keys of its bag.
+        /// A mapped custom serializer emitting the given document whatever the model: its
+        /// element names play the ones a class map emits, the keys of an own extra elements
+        /// bag included.
         /// </summary>
-        public sealed class FakeElementNamesSerializer(params string[] elementNames)
+        public sealed class FakeDocumentSerializer(BsonDocument document)
             : SerializerBase<FakeModel>
         {
-            public override void Serialize(BsonSerializationContext context, BsonSerializationArgs args, FakeModel value)
-            {
-                ArgumentNullException.ThrowIfNull(context);
-
-                context.Writer.WriteStartDocument();
-                foreach (var elementName in elementNames)
-                {
-                    context.Writer.WriteName(elementName);
-                    context.Writer.WriteInt32(42);
-                }
-                context.Writer.WriteEndDocument();
-            }
+            public override void Serialize(BsonSerializationContext context, BsonSerializationArgs args, FakeModel value) =>
+                BsonDocumentSerializer.Instance.Serialize(context, document);
         }
 
         // Fields.
@@ -303,7 +294,8 @@ namespace Etherna.MongODM.Core.Repositories
         public async Task UpsertComposesTheOnInsertFieldsFromTheSerializedModelElements()
         {
             // Setup.
-            var modelSerializer = new FakeElementNamesSerializer("_id", "IntegerProp", "StringProp");
+            var modelSerializer = new FakeDocumentSerializer(
+                new BsonDocument { { "_id", 42 }, { "IntegerProp", 42 }, { "StringProp", 42 } });
             mapRegistryMock.Setup(r => r.GetMappedSerializer(typeof(FakeModel)))
                 .Returns(modelSerializer);
             var upsertUpdates = CaptureUpsertUpdates();
@@ -326,6 +318,165 @@ namespace Etherna.MongODM.Core.Repositories
         }
 
         [Fact]
+        public async Task UpsertKeepsANestedOnInsertFieldNameNavigatingNestedDocumentsInsideAWholeElement()
+        {
+            /* A sub document set whole carries its element names as values, like an insert
+             * writes them: only the names composing an update field name are constrained. */
+
+            // Setup.
+            var modelSerializer = new FakeDocumentSerializer(new BsonDocument
+            {
+                { "_id", 42 },
+                { "IntegerProp", 42 },
+                { "Counters", new BsonDocument { { "likes.total", 5 } } }
+            });
+            mapRegistryMock.Setup(r => r.GetMappedSerializer(typeof(FakeModel)))
+                .Returns(modelSerializer);
+            var upsertUpdates = CaptureUpsertUpdates();
+            var repository = BuildRepository();
+
+            // Action.
+            await repository.UpsertIncrementAsync(
+                Builders<FakeModel>.Filter.Empty,
+                new StringFieldDefinition<FakeModel, int>("IntegerProp"),
+                1,
+                new FakeModel());
+
+            // Assert.
+            Assert.Equal(
+                """{ "$setOnInsert" : { "Counters" : { "likes.total" : 5 } }, "$inc" : { "IntegerProp" : 1 } }""",
+                upsertUpdates.Single()
+                    .Render(new(modelSerializer, serializerRegistry))
+                    .ToJson());
+        }
+
+        [Fact]
+        public async Task UpsertKeepsAnOnInsertFieldNameStartingWithTheOperatorPrefix()
+        {
+            /* A '$' prefixed name inside a $setOnInsert isn't read as an operator: the server
+             * stores the field with that name, like an insert of the same model would. */
+
+            // Setup.
+            var modelSerializer = new FakeDocumentSerializer(
+                new BsonDocument { { "_id", 42 }, { "IntegerProp", 42 }, { "$where", 42 } });
+            mapRegistryMock.Setup(r => r.GetMappedSerializer(typeof(FakeModel)))
+                .Returns(modelSerializer);
+            var upsertUpdates = CaptureUpsertUpdates();
+            var repository = BuildRepository();
+
+            // Action.
+            await repository.UpsertIncrementAsync(
+                Builders<FakeModel>.Filter.Empty,
+                new StringFieldDefinition<FakeModel, int>("IntegerProp"),
+                1,
+                new FakeModel());
+
+            // Assert.
+            Assert.Equal(
+                """{ "$setOnInsert" : { "$where" : 42 }, "$inc" : { "IntegerProp" : 1 } }""",
+                upsertUpdates.Single()
+                    .Render(new(modelSerializer, serializerRegistry))
+                    .ToJson());
+        }
+
+        [Fact]
+        public async Task UpsertKeepsOutTheWholeOnInsertElementAnUpdatedFieldWrites()
+        {
+            /* An updated field writing a whole sub document leaves no sub element to set on
+             * insert: any of them would conflict with the update. */
+
+            // Setup.
+            var modelSerializer = new FakeDocumentSerializer(new BsonDocument
+            {
+                { "_id", 42 },
+                { "Subject", "song" },
+                { "Counters", new BsonDocument { { "plays", 3 }, { "likes", 5 } } }
+            });
+            mapRegistryMock.Setup(r => r.GetMappedSerializer(typeof(FakeModel)))
+                .Returns(modelSerializer);
+            var upsertUpdates = CaptureUpsertUpdates();
+            var repository = BuildRepository();
+
+            // Action.
+            await repository.UpsertSetFieldAsync(
+                Builders<FakeModel>.Filter.Empty,
+                new StringFieldDefinition<FakeModel, BsonDocument>("Counters"),
+                new BsonDocument { { "plays", 0 } },
+                new FakeModel());
+
+            // Assert.
+            Assert.Equal(
+                """{ "$setOnInsert" : { "Subject" : "song" }, "$set" : { "Counters" : { "plays" : 0 } } }""",
+                upsertUpdates.Single()
+                    .Render(new(modelSerializer, serializerRegistry))
+                    .ToJson());
+        }
+
+        [Fact]
+        public async Task UpsertRejectsAnEmptyOnInsertFieldName()
+        {
+            /* An empty name has no update path addressing it: the server refuses the whole
+             * update, the one on an existing document included. */
+
+            // Setup.
+            mapRegistryMock.Setup(r => r.GetMappedSerializer(typeof(FakeModel)))
+                .Returns(new FakeDocumentSerializer(new BsonDocument
+                {
+                    { "_id", 42 },
+                    { "Counters", new BsonDocument { { "plays", 3 }, { "", 5 } } }
+                }));
+            var upsertUpdates = CaptureUpsertUpdates();
+            var repository = BuildRepository();
+
+            // Action.
+            var exception = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                repository.UpsertIncrementAsync(
+                    Builders<FakeModel>.Filter.Empty,
+                    new StringFieldDefinition<FakeModel, int>("Counters.plays"),
+                    1,
+                    new FakeModel()));
+
+            // Assert.
+            Assert.Contains("fakeModels", exception.Message, StringComparison.Ordinal);
+            Assert.Contains(nameof(FakeModel), exception.Message, StringComparison.Ordinal);
+            Assert.Contains("empty name", exception.Message, StringComparison.Ordinal);
+            Assert.Contains("\"Counters\"", exception.Message, StringComparison.Ordinal);
+            Assert.Empty(upsertUpdates);
+        }
+
+        [Fact]
+        public async Task UpsertRejectsANestedOnInsertFieldNameNavigatingNestedDocuments()
+        {
+            /* The element names of a split sub document compose update field names like the
+             * top level ones do, and a dotted one is ambiguous the same way. */
+
+            // Setup.
+            mapRegistryMock.Setup(r => r.GetMappedSerializer(typeof(FakeModel)))
+                .Returns(new FakeDocumentSerializer(new BsonDocument
+                {
+                    { "_id", 42 },
+                    { "Counters", new BsonDocument { { "plays", 3 }, { "likes.total", 5 } } }
+                }));
+            var upsertUpdates = CaptureUpsertUpdates();
+            var repository = BuildRepository();
+
+            // Action.
+            var exception = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                repository.UpsertIncrementAsync(
+                    Builders<FakeModel>.Filter.Empty,
+                    new StringFieldDefinition<FakeModel, int>("Counters.plays"),
+                    1,
+                    new FakeModel()));
+
+            // Assert.
+            Assert.Contains("fakeModels", exception.Message, StringComparison.Ordinal);
+            Assert.Contains(nameof(FakeModel), exception.Message, StringComparison.Ordinal);
+            Assert.Contains("\"likes.total\"", exception.Message, StringComparison.Ordinal);
+            Assert.Contains("\"Counters\"", exception.Message, StringComparison.Ordinal);
+            Assert.Empty(upsertUpdates);
+        }
+
+        [Fact]
         public async Task UpsertRejectsAnOnInsertFieldNameNavigatingNestedDocuments()
         {
             /* The on insert field names come from the serialized model elements, and the
@@ -334,7 +485,8 @@ namespace Etherna.MongODM.Core.Repositories
 
             // Setup.
             mapRegistryMock.Setup(r => r.GetMappedSerializer(typeof(FakeModel)))
-                .Returns(new FakeElementNamesSerializer("_id", "IntegerProp", "nested.field"));
+                .Returns(new FakeDocumentSerializer(
+                    new BsonDocument { { "_id", 42 }, { "IntegerProp", 42 }, { "nested.field", 42 } }));
             var upsertUpdates = CaptureUpsertUpdates();
             var repository = BuildRepository();
 
@@ -354,28 +506,80 @@ namespace Etherna.MongODM.Core.Repositories
         }
 
         [Fact]
-        public async Task UpsertKeepsAnOnInsertFieldNameStartingWithTheOperatorPrefix()
+        public async Task UpsertRejectsAnOnInsertValueAnUpdatedFieldNavigatesInto()
         {
-            /* A '$' prefixed name inside a $setOnInsert isn't read as an operator: the server
-             * stores the field with that name, like an insert of the same model would. */
+            /* A path inside an array isn't an independent branch the value can split on, and
+             * the array can't stay whole beside it: without the model value, the update alone
+             * would insert a document where the model maps an array. */
 
             // Setup.
-            var modelSerializer = new FakeElementNamesSerializer("_id", "IntegerProp", "$where");
+            mapRegistryMock.Setup(r => r.GetMappedSerializer(typeof(FakeModel)))
+                .Returns(new FakeDocumentSerializer(new BsonDocument
+                {
+                    { "_id", 42 },
+                    { "Subject", "song" },
+                    { "Tags", new BsonArray { "rock", "jazz" } }
+                }));
+            var upsertUpdates = CaptureUpsertUpdates();
+            var repository = BuildRepository();
+
+            // Action.
+            var exception = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                repository.UpsertSetFieldAsync(
+                    Builders<FakeModel>.Filter.Empty,
+                    new StringFieldDefinition<FakeModel, string>("Tags.0"),
+                    "pop",
+                    new FakeModel()));
+
+            // Assert.
+            Assert.Contains("fakeModels", exception.Message, StringComparison.Ordinal);
+            Assert.Contains(nameof(FakeModel), exception.Message, StringComparison.Ordinal);
+            Assert.Contains("\"Tags\"", exception.Message, StringComparison.Ordinal);
+            Assert.Contains("Array", exception.Message, StringComparison.Ordinal);
+            Assert.Empty(upsertUpdates);
+        }
+
+        [Fact]
+        public async Task UpsertSplitsTheOnInsertElementsTheUpdatedFieldsNavigateInto()
+        {
+            /* The on insert instructions can't set whole an element the update writes inside,
+             * or the server refuses the update as a conflict: the element splits into its sub
+             * elements, following every updated field navigating into it, and the updated
+             * fields stay out alone. */
+
+            // Setup.
+            var modelSerializer = new FakeDocumentSerializer(new BsonDocument
+            {
+                { "_id", 42 },
+                { "Subject", "song" },
+                {
+                    "Counters", new BsonDocument
+                    {
+                        { "plays", 3 },
+                        { "daily", new BsonDocument { { "mon", 1 }, { "tue", 2 } } }
+                    }
+                }
+            });
             mapRegistryMock.Setup(r => r.GetMappedSerializer(typeof(FakeModel)))
                 .Returns(modelSerializer);
             var upsertUpdates = CaptureUpsertUpdates();
             var repository = BuildRepository();
 
             // Action.
-            await repository.UpsertIncrementAsync(
+            await repository.UpsertAsync(
                 Builders<FakeModel>.Filter.Empty,
-                new StringFieldDefinition<FakeModel, int>("IntegerProp"),
-                1,
-                new FakeModel());
+                Builders<FakeModel>.Update.Combine(
+                    Builders<FakeModel>.Update.Inc<int>("Counters.plays", 1),
+                    Builders<FakeModel>.Update.Inc<int>("Counters.daily.mon", 1)),
+                new FakeModel(),
+                [
+                    new StringFieldDefinition<FakeModel, int>("Counters.plays"),
+                    new StringFieldDefinition<FakeModel, int>("Counters.daily.mon")
+                ]);
 
             // Assert.
             Assert.Equal(
-                """{ "$setOnInsert" : { "$where" : 42 }, "$inc" : { "IntegerProp" : 1 } }""",
+                """{ "$setOnInsert" : { "Subject" : "song", "Counters.daily.tue" : 2 }, "$inc" : { "Counters.plays" : 1, "Counters.daily.mon" : 1 } }""",
                 upsertUpdates.Single()
                     .Render(new(modelSerializer, serializerRegistry))
                     .ToJson());

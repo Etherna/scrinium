@@ -39,6 +39,7 @@ namespace Etherna.MongODM.IntegrationTests
         IRepository<RoyaltyAudit, string> RoyaltyAudits { get; }
         IRepository<Royalty, string> Royalties { get; }
         IRepository<TagBag, string> TagBags { get; }
+        IRepository<Tally, string> Tallies { get; }
         IRepository<Track, string> Tracks { get; }
     }
 
@@ -70,10 +71,11 @@ namespace Etherna.MongODM.IntegrationTests
         public IRepository<RoyaltyAudit, string> RoyaltyAudits { get; } = new Repository<RoyaltyAudit, string>("royaltyAudits");
         public IRepository<Royalty, string> Royalties { get; } = new Repository<Royalty, string>("royalties");
         public IRepository<TagBag, string> TagBags { get; } = new Repository<TagBag, string>("tagBags");
+        public IRepository<Tally, string> Tallies { get; } = new Repository<Tally, string>("tallies");
         public IRepository<Track, string> Tracks { get; } = new Repository<Track, string>("tracks");
 
         // Protected properties.
         protected override IEnumerable<IModelMapsCollector> ModelMapsCollectors =>
-            [new AccountMap(), new BlogMap(), new BookmarkMap(), new CatalogMap(), new DuetMap(), new ItemMap(), new MessageMap(), new MixtapeMap(), new PostMap(), new ReviewMap(), new RoyaltyAuditMap(), new RoyaltyMap(), new TagBagMap(), new TrackMap()];
+            [new AccountMap(), new BlogMap(), new BookmarkMap(), new CatalogMap(), new DuetMap(), new ItemMap(), new MessageMap(), new MixtapeMap(), new PostMap(), new ReviewMap(), new RoyaltyAuditMap(), new RoyaltyMap(), new TagBagMap(), new TallyMap(), new TrackMap()];
     }
 }

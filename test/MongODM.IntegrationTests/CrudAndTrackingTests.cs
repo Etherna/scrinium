@@ -14,11 +14,14 @@
 
 using Etherna.MongoDB.Bson;
 using Etherna.MongoDB.Driver;
+using Etherna.MongoDB.Driver.Linq;
 using Etherna.MongODM.Core.ExecContext.AsyncLocal;
 using Etherna.MongODM.IntegrationTests.Fixtures;
 using Etherna.MongODM.IntegrationTests.Models;
 using Microsoft.Extensions.DependencyInjection;
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
 using Xunit;
 
@@ -228,5 +231,65 @@ namespace Etherna.MongODM.IntegrationTests
             Assert.Same(firstLoadedPost, secondLoadedPost);
             Assert.Same(firstLoadedPost, dbContext.TryGetLoadedModel(dbContext.Posts, post.Id!));
         }
+
+        [Fact]
+        public async Task UpsertWithNestedUpdatedFieldsInsertsTheDocumentAnInsertWrites()
+        {
+            /* The on insert instructions can't set whole an element that an updated field
+             * navigates into, or the server refuses the update as a conflict: the element
+             * splits into its sub elements, so the document created by the upsert keeps the
+             * siblings of the nested updated fields, the ones MongODM writes included. */
+
+            // Setup.
+            using var contextHandler = AsyncLocalContext.Instance.InitAsyncLocalContext();
+            var talliesCollection = dbContext.Engine.Database.GetCollection<BsonDocument>("tallies");
+            var insertedTally = new Tally(
+                "song",
+                new Dictionary<string, int> { ["plays"] = 1, ["likes"] = 1, ["shares"] = 4 },
+                new Score(10, "song score"));
+            await dbContext.Tallies.CreateAsync(insertedTally);
+            var rawInsertedTally = await talliesCollection.Find(
+                Builders<BsonDocument>.Filter.Eq("Subject", "song")).SingleAsync();
+            await dbContext.Tallies.DeleteAsync(insertedTally);
+
+            // Action.
+            /* The on insert model is the document to insert when absent, so it carries the
+             * values the update applies: two counters of the same dictionary, and a member of
+             * the embedded score. */
+            var oldDocument = await dbContext.Tallies.UpsertAsync(
+                Builders<Tally>.Filter.Eq(t => t.Subject, "song"),
+                Builders<Tally>.Update.Combine(
+                    Builders<Tally>.Update.Inc(t => t.Counters["plays"], 1),
+                    Builders<Tally>.Update.Inc(t => t.Counters["likes"], 1),
+                    Builders<Tally>.Update.Set(t => t.Score.Total, 10)),
+                new Tally(
+                    "song",
+                    new Dictionary<string, int> { ["plays"] = 1, ["likes"] = 1, ["shares"] = 4 },
+                    new Score(10, "song score")),
+                [
+                    new ExpressionFieldDefinition<Tally, int>(t => t.Counters["plays"]),
+                    new ExpressionFieldDefinition<Tally, int>(t => t.Counters["likes"]),
+                    new ExpressionFieldDefinition<Tally, int>(t => t.Score.Total)
+                ]);
+
+            // Assert.
+            Assert.Null(oldDocument);
+            var rawUpsertedTally = await talliesCollection.Find(
+                Builders<BsonDocument>.Filter.Eq("Subject", "song")).SingleAsync();
+            /* The upsert creates the same document an insert writes, but its identity. The
+             * server writes the update fields in its own order, so the elements compare
+             * sorted by name at every level. */
+            rawInsertedTally.Remove("_id");
+            rawUpsertedTally.Remove("_id");
+            Assert.Equal(SortElements(rawInsertedTally), SortElements(rawUpsertedTally));
+        }
+
+        // Helpers.
+        private static BsonDocument SortElements(BsonDocument document) =>
+            new(document.Elements
+                .OrderBy(element => element.Name, StringComparer.Ordinal)
+                .Select(element => element.Value is BsonDocument subDocument ?
+                    new BsonElement(element.Name, SortElements(subDocument)) :
+                    element));
     }
 }
