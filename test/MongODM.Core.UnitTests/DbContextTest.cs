@@ -28,6 +28,7 @@ using Etherna.MongODM.Core.Utility;
 using Moq;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -600,6 +601,246 @@ namespace Etherna.MongODM.Core
             }
 
             await Task.WhenAll(Process1(), Process2());
+        }
+
+        [Theory]
+        [InlineData(false)]
+        [InlineData(true)]
+        public async Task ExclusiveAccessDrainsTheInFlightOperations(bool isWriteOperation)
+        {
+            /* An operation admitted a moment before the window opens keeps running against
+             * the collection: the window completes it before starting the exclusive work,
+             * instead of running beside it. */
+
+            // Setup.
+            var operationGate = new TaskCompletionSource();
+            if (isWriteOperation)
+                collectionMock.Setup(c => c.InsertOneAsync(It.IsAny<FakeModel>(), It.IsAny<InsertOneOptions>(), It.IsAny<CancellationToken>()))
+                    .Returns(operationGate.Task);
+            else
+                collectionMock.Setup(c => c.FindAsync(It.IsAny<FilterDefinition<FakeModel>>(), It.IsAny<FindOptions<FakeModel, FakeModel>>(), It.IsAny<CancellationToken>()))
+                    .Returns(async () =>
+                    {
+                        await operationGate.Task;
+                        return NewEmptyCursor();
+                    });
+            var collection = engine.GetMongoCollection<FakeModel>("fakeModels");
+            var inFlightOperations = ((IInternalDbContextEngine)engine).InFlightOperations;
+            var operationStarted = new TaskCompletionSource();
+
+            async Task OperationFlow()
+            {
+                using var flowContext = AsyncLocalContext.Instance.InitAsyncLocalContext();
+
+                //admitted before the window: the operation stays in flight on the gate
+                Task operationTask = isWriteOperation
+                    ? collection.InsertOneAsync(new FakeModel())
+                    : collection.FindAsync(Builders<FakeModel>.Filter.Empty);
+                operationStarted.SetResult();
+                await operationTask;
+            }
+            async Task WindowFlow()
+            {
+                using var flowContext = AsyncLocalContext.Instance.InitAsyncLocalContext();
+
+                await operationStarted.Task.WaitAsync(HandoverBound);
+                await engine.RunWithExclusiveAccessAsync(() =>
+                {
+                    //the drain left no admitted operation in flight beside the exclusive work
+                    Assert.Equal(0, isWriteOperation
+                        ? inFlightOperations.WritesCount
+                        : inFlightOperations.ReadsCount);
+                    return Task.CompletedTask;
+                });
+            }
+
+            // Action.
+            var operationFlowTask = OperationFlow();
+            var windowFlowTask = WindowFlow();
+
+            //release the gate only once the window is open, so the drain really waits
+            await operationStarted.Task.WaitAsync(HandoverBound);
+            var flagsStopwatch = Stopwatch.StartNew();
+            while (!engine.IsExclusiveWriteEnabled)
+            {
+                //a window already closed can only have run beside the operation: surface its assert
+                if (windowFlowTask.IsCompleted)
+                {
+                    await windowFlowTask;
+                    Assert.Fail("The window closed while the admitted operation was still in flight");
+                }
+                Assert.True(flagsStopwatch.Elapsed < HandoverBound);
+                await Task.Delay(1);
+            }
+            Assert.False(windowFlowTask.IsCompleted);
+            operationGate.SetResult();
+            await Task.WhenAll(operationFlowTask, windowFlowTask).WaitAsync(HandoverBound);
+
+            // Assert.
+            //the exits balanced the enters
+            Assert.Equal(0, inFlightOperations.ReadsCount);
+            Assert.Equal(0, inFlightOperations.WritesCount);
+        }
+
+        [Fact]
+        public async Task ExclusiveAccessWithoutReadLockDoesNotDrainInFlightReads()
+        {
+            /* With the reads left open they keep flowing during the whole window, so their
+             * count has no zero to wait for: the window drains the writes only, and the
+             * admitted read keeps running beside the exclusive work, like any read
+             * starting inside the window would. */
+
+            // Setup.
+            //a wrongly awaited read would otherwise fail the window only at the default timeout
+            options.ExclusiveAccessDrainTimeout = TimeSpan.FromSeconds(2);
+            var operationGate = new TaskCompletionSource();
+            collectionMock.Setup(c => c.FindAsync(It.IsAny<FilterDefinition<FakeModel>>(), It.IsAny<FindOptions<FakeModel, FakeModel>>(), It.IsAny<CancellationToken>()))
+                .Returns(async () =>
+                {
+                    await operationGate.Task;
+                    return NewEmptyCursor();
+                });
+            var collection = engine.GetMongoCollection<FakeModel>("fakeModels");
+            using var contextHandler = AsyncLocalContext.Instance.InitAsyncLocalContext();
+
+            // Action.
+            var readTask = collection.FindAsync(Builders<FakeModel>.Filter.Empty);
+            await engine.RunWithExclusiveAccessAsync(() =>
+            {
+                //the window opened with the read still in flight
+                Assert.False(readTask.IsCompleted);
+                return Task.CompletedTask;
+            }, lockOnRead: false);
+
+            // Assert.
+            operationGate.SetResult();
+            await readTask.WaitAsync(HandoverBound);
+        }
+
+        [Fact]
+        public async Task ExclusiveAccessDrainFailsWhenAnOperationOutlivesTheTimeout()
+        {
+            /* Running the exclusive work beside an operation still in flight would break
+             * the exclusivity the window declares: an operation outliving the drain
+             * timeout denies the window, and the engine returns to normal access. */
+
+            // Setup.
+            options.ExclusiveAccessDrainTimeout = TimeSpan.FromMilliseconds(200);
+            var operationGate = new TaskCompletionSource();
+            collectionMock.Setup(c => c.InsertOneAsync(It.IsAny<FakeModel>(), It.IsAny<InsertOneOptions>(), It.IsAny<CancellationToken>()))
+                .Returns(operationGate.Task);
+            var collection = engine.GetMongoCollection<FakeModel>("fakeModels");
+            using var contextHandler = AsyncLocalContext.Instance.InitAsyncLocalContext();
+            var exclusiveWorkRan = false;
+
+            // Action.
+            var operationTask = collection.InsertOneAsync(new FakeModel());
+            var timeoutException = await Assert.ThrowsAsync<TimeoutException>(() =>
+                engine.RunWithExclusiveAccessAsync(() =>
+                {
+                    exclusiveWorkRan = true;
+                    return Task.CompletedTask;
+                }).WaitAsync(HandoverBound));
+
+            // Assert.
+            //the exclusive work never ran beside the in flight write
+            Assert.False(exclusiveWorkRan);
+            //the failure names the db context and the operations left in flight
+            Assert.Contains(nameof(FakeDbContext), timeoutException.Message, StringComparison.Ordinal);
+            Assert.Contains("1 writes", timeoutException.Message, StringComparison.Ordinal);
+            //the engine returns to normal access
+            Assert.False(engine.IsExclusiveReadEnabled);
+            Assert.False(engine.IsExclusiveWriteEnabled);
+
+            //with the operation completed, the next window opens normally
+            operationGate.SetResult();
+            await operationTask.WaitAsync(HandoverBound);
+            await engine.RunWithExclusiveAccessAsync(() =>
+            {
+                exclusiveWorkRan = true;
+                return Task.CompletedTask;
+            });
+            Assert.True(exclusiveWorkRan);
+        }
+
+        [Fact]
+        public async Task ExclusiveAccessDoesNotDrainAllowanceAdmittedOperations()
+        {
+            /* The flows admitted by an exclusive access allowance are the ones meant to
+             * work during the window, like the dashboard status reads during a migration:
+             * an operation they leave in flight doesn't hold the next window back. */
+
+            // Setup.
+            //a wrongly counted operation would otherwise fail the second window only at the default timeout
+            options.ExclusiveAccessDrainTimeout = TimeSpan.FromSeconds(2);
+            var operationGate = new TaskCompletionSource();
+            collectionMock.Setup(c => c.FindAsync(It.IsAny<FilterDefinition<FakeModel>>(), It.IsAny<FindOptions<FakeModel, FakeModel>>(), It.IsAny<CancellationToken>()))
+                .Returns(async () =>
+                {
+                    await operationGate.Task;
+                    return NewEmptyCursor();
+                });
+            var collection = engine.GetMongoCollection<FakeModel>("fakeModels");
+            using var contextHandler = AsyncLocalContext.Instance.InitAsyncLocalContext();
+
+            // Action and assert.
+            Task<IAsyncCursor<FakeModel>>? allowanceReadTask = null;
+            await engine.RunWithExclusiveAccessAsync(() =>
+            {
+                //admitted by the allowance of this flow, and left in flight past the window
+                allowanceReadTask = collection.FindAsync(Builders<FakeModel>.Filter.Empty);
+                return Task.CompletedTask;
+            });
+            await engine.RunWithExclusiveAccessAsync(() =>
+            {
+                //the next window doesn't wait for it
+                Assert.False(allowanceReadTask!.IsCompleted);
+                return Task.CompletedTask;
+            });
+
+            operationGate.SetResult();
+            await allowanceReadTask!.WaitAsync(HandoverBound);
+        }
+
+        [Fact]
+        public async Task ExclusiveAccessDrainSeesNoResidueOfFailedAndDeniedOperations()
+        {
+            /* A failed operation exits its count with its fault, and a denied one with its
+             * denial: neither leaves a residue the next drain would wait for. */
+
+            // Setup.
+            //a residue would otherwise fail the window only at the default timeout
+            options.ExclusiveAccessDrainTimeout = TimeSpan.FromSeconds(2);
+            collectionMock.Setup(c => c.InsertOneAsync(It.IsAny<FakeModel>(), It.IsAny<InsertOneOptions>(), It.IsAny<CancellationToken>()))
+                .ThrowsAsync(new InvalidOperationException("fake driver failure"));
+            var collection = engine.GetMongoCollection<FakeModel>("fakeModels");
+            using var contextHandler = AsyncLocalContext.Instance.InitAsyncLocalContext();
+
+            // Action.
+            //the driver failure surfaces from the operation
+            await Assert.ThrowsAsync<InvalidOperationException>(() => collection.InsertOneAsync(new FakeModel()));
+
+            //a foreign flow gets denied during the window
+            async Task DeniedFlow()
+            {
+                using var deniedFlowContext = AsyncLocalContext.Instance.InitAsyncLocalContext();
+                await Assert.ThrowsAsync<UnauthorizedAccessException>(() => collection.InsertOneAsync(new FakeModel()));
+            }
+            await engine.RunWithExclusiveAccessAsync(() => DeniedFlow());
+
+            //no residue: the next window opens without waiting
+            var windowRan = false;
+            await engine.RunWithExclusiveAccessAsync(() =>
+            {
+                windowRan = true;
+                return Task.CompletedTask;
+            });
+
+            // Assert.
+            Assert.True(windowRan);
+            var inFlightOperations = ((IInternalDbContextEngine)engine).InFlightOperations;
+            Assert.Equal(0, inFlightOperations.ReadsCount);
+            Assert.Equal(0, inFlightOperations.WritesCount);
         }
 
         [Fact]

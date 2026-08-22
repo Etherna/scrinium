@@ -20,7 +20,7 @@ namespace Etherna.MongODM.Core.Extensions
 {
     /*
      * Always group similar log delegates by type, always use incremental event ids.
-     * Last event id is: 75
+     * Last event id is: 76
      */
     public static class LoggerExtensions
     {
@@ -38,6 +38,12 @@ namespace Etherna.MongODM.Core.Extensions
                 LogLevel.Trace,
                 new EventId(59, nameof(DbContextEvictedTransientModels)),
                 "DbContext {DbName} evicted at a transient models scope end {LoadedModelsCount} loaded models and {TrackedModelsCount} tracked models");
+
+        private static readonly Action<ILogger, string, int, int, Exception> _dbContextExclusiveAccessDrainingInFlightOperations =
+            LoggerMessage.Define<string, int, int>(
+                LogLevel.Debug,
+                new EventId(76, nameof(DbContextExclusiveAccessDrainingInFlightOperations)),
+                "DbContext {DbName} exclusive access is draining the in flight operations: {ReadsCount} reads and {WritesCount} writes still running");
 
         private static readonly Action<ILogger, string, string, string, Exception> _dbContextRegisteredChangedModel =
             LoggerMessage.Define<string, string, string>(
@@ -470,6 +476,9 @@ namespace Etherna.MongODM.Core.Extensions
 
         public static void DbContextEvictedTransientModels(this ILogger logger, string dbName, int loadedModelsCount, int trackedModelsCount) =>
             _dbContextEvictedTransientModels(logger, dbName, loadedModelsCount, trackedModelsCount, null!);
+
+        public static void DbContextExclusiveAccessDrainingInFlightOperations(this ILogger logger, string dbName, int readsCount, int writesCount) =>
+            _dbContextExclusiveAccessDrainingInFlightOperations(logger, dbName, readsCount, writesCount, null!);
 
         public static void DbContextImplicitLazyLoad(this ILogger logger, string dbName, string modelType, string? memberName) =>
             _dbContextImplicitLazyLoad(logger, dbName, modelType, memberName, null!);

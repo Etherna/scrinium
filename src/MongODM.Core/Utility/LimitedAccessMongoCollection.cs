@@ -33,6 +33,13 @@ namespace Etherna.MongODM.Core.Utility
      * The session-less overloads forward with a null session. Change stream watches and
      * estimated document counts stay session-less: they can't run in transactions.
      *
+     * Every member enters an operation scope verifying its access permission, and counting
+     * the operation in flight on the engine until it completes — the span of the forwarded
+     * call, closed when its task completes: the exclusive access window drains the counted
+     * operations before starting its work. The operations admitted by an exclusive access
+     * allowance don't stay counted, being the ones meant to work during the window, and
+     * the cursors already handed out iterate past their originating call.
+     *
      * A read-only collection denies any write operation, index management included: the
      * write permission verification throws UnauthorizedAccessException. Reads keep
      * working, exclusive access permitting.
@@ -63,12 +70,16 @@ namespace Etherna.MongODM.Core.Utility
         bool isReadOnly)
         : IMongoCollection<TDocument>
     {
+        // Fields.
+        private readonly InFlightOperationsCounter inFlightOperations =
+            ((IInternalDbContextEngine)dbContextEngine).InFlightOperations;
+
         // Properties.
         public CollectionNamespace CollectionNamespace
         {
             get
             {
-                VerifyReadPermission();
+                using var _ = EnterReadOperation();
                 return mongoCollection.CollectionNamespace;
             }
         }
@@ -76,7 +87,7 @@ namespace Etherna.MongODM.Core.Utility
         {
             get
             {
-                VerifyReadPermission();
+                using var _ = EnterReadOperation();
                 return new LimitedAccessMongoDatabase(dbContextEngine, mongoCollection.Database, isReadOnly);
             }
         }
@@ -84,7 +95,7 @@ namespace Etherna.MongODM.Core.Utility
         {
             get
             {
-                VerifyReadPermission();
+                using var _ = EnterReadOperation();
                 return mongoCollection.DocumentSerializer;
             }
         }
@@ -92,29 +103,29 @@ namespace Etherna.MongODM.Core.Utility
         {
             get
             {
-                VerifyReadPermission();
+                using var _ = EnterReadOperation();
                 return new LimitedAccessMongoIndexManager<TDocument>(
                     mongoCollection.Indexes,
-                    VerifyReadPermission,
-                    VerifyIndexWritePermission);
+                    EnterReadOperation,
+                    EnterIndexWriteOperation);
             }
         }
         public IMongoSearchIndexManager SearchIndexes
         {
             get
             {
-                VerifyReadPermission();
+                using var _ = EnterReadOperation();
                 return new LimitedAccessMongoSearchIndexManager(
                     mongoCollection.SearchIndexes,
-                    VerifyReadPermission,
-                    VerifyIndexWritePermission);
+                    EnterReadOperation,
+                    EnterIndexWriteOperation);
             }
         }
         public MongoCollectionSettings Settings
         {
             get
             {
-                VerifyReadPermission();
+                using var _ = EnterReadOperation();
                 return mongoCollection.Settings;
             }
         }
@@ -132,7 +143,7 @@ namespace Etherna.MongODM.Core.Utility
             AggregateOptions? options = null,
             CancellationToken cancellationToken = new())
         {
-            VerifyAggregatePermission(pipeline);
+            using var _ = EnterAggregateOperation(pipeline);
             return (session ?? TryGetAmbientSession()) is { } effectiveSession
                 ? mongoCollection.Aggregate(effectiveSession, pipeline, options, cancellationToken)
                 : mongoCollection.Aggregate(pipeline, options, cancellationToken);
@@ -144,16 +155,16 @@ namespace Etherna.MongODM.Core.Utility
             CancellationToken cancellationToken = new()) =>
             AggregateAsync(null, pipeline, options, cancellationToken);
 
-        public Task<IAsyncCursor<TResult>> AggregateAsync<TResult>(
+        public async Task<IAsyncCursor<TResult>> AggregateAsync<TResult>(
             IClientSessionHandle? session,
             PipelineDefinition<TDocument, TResult> pipeline,
             AggregateOptions? options = null,
             CancellationToken cancellationToken = new())
         {
-            VerifyAggregatePermission(pipeline);
+            using var _ = EnterAggregateOperation(pipeline);
             return (session ?? TryGetAmbientSession()) is { } effectiveSession
-                ? mongoCollection.AggregateAsync(effectiveSession, pipeline, options, cancellationToken)
-                : mongoCollection.AggregateAsync(pipeline, options, cancellationToken);
+                ? await mongoCollection.AggregateAsync(effectiveSession, pipeline, options, cancellationToken).ConfigureAwait(false)
+                : await mongoCollection.AggregateAsync(pipeline, options, cancellationToken).ConfigureAwait(false);
         }
 
         public void AggregateToCollection<TResult>(
@@ -168,8 +179,7 @@ namespace Etherna.MongODM.Core.Utility
             AggregateOptions? options = null,
             CancellationToken cancellationToken = new())
         {
-            VerifyWritePermission();
-            VerifyDryRunSimulable("Aggregate to collection");
+            using var _ = EnterWriteOperation("Aggregate to collection");
             if ((session ?? TryGetAmbientSession()) is { } effectiveSession)
                 mongoCollection.AggregateToCollection(effectiveSession, pipeline, options, cancellationToken);
             else
@@ -182,17 +192,17 @@ namespace Etherna.MongODM.Core.Utility
             CancellationToken cancellationToken = new()) =>
             AggregateToCollectionAsync(null, pipeline, options, cancellationToken);
 
-        public Task AggregateToCollectionAsync<TResult>(
+        public async Task AggregateToCollectionAsync<TResult>(
             IClientSessionHandle? session,
             PipelineDefinition<TDocument, TResult> pipeline,
             AggregateOptions? options = null,
             CancellationToken cancellationToken = new())
         {
-            VerifyWritePermission();
-            VerifyDryRunSimulable("Aggregate to collection");
-            return (session ?? TryGetAmbientSession()) is { } effectiveSession
-                ? mongoCollection.AggregateToCollectionAsync(effectiveSession, pipeline, options, cancellationToken)
-                : mongoCollection.AggregateToCollectionAsync(pipeline, options, cancellationToken);
+            using var _ = EnterWriteOperation("Aggregate to collection");
+            if ((session ?? TryGetAmbientSession()) is { } effectiveSession)
+                await mongoCollection.AggregateToCollectionAsync(effectiveSession, pipeline, options, cancellationToken).ConfigureAwait(false);
+            else
+                await mongoCollection.AggregateToCollectionAsync(pipeline, options, cancellationToken).ConfigureAwait(false);
         }
 
         public BulkWriteResult<TDocument> BulkWrite(
@@ -207,7 +217,7 @@ namespace Etherna.MongODM.Core.Utility
             BulkWriteOptions? options = null,
             CancellationToken cancellationToken = new())
         {
-            VerifyWritePermission();
+            using var _ = EnterWriteOperation();
             if (IsDryRun())
                 return SimulateBulkWrite(requests);
             return (session ?? TryGetAmbientSession()) is { } effectiveSession
@@ -221,18 +231,18 @@ namespace Etherna.MongODM.Core.Utility
             CancellationToken cancellationToken = new()) =>
             BulkWriteAsync(null, requests, options, cancellationToken);
 
-        public Task<BulkWriteResult<TDocument>> BulkWriteAsync(
+        public async Task<BulkWriteResult<TDocument>> BulkWriteAsync(
             IClientSessionHandle? session,
             IEnumerable<WriteModel<TDocument>> requests,
             BulkWriteOptions? options = null,
             CancellationToken cancellationToken = new())
         {
-            VerifyWritePermission();
+            using var _ = EnterWriteOperation();
             if (IsDryRun())
-                return Task.FromResult(SimulateBulkWrite(requests));
+                return SimulateBulkWrite(requests);
             return (session ?? TryGetAmbientSession()) is { } effectiveSession
-                ? mongoCollection.BulkWriteAsync(effectiveSession, requests, options, cancellationToken)
-                : mongoCollection.BulkWriteAsync(requests, options, cancellationToken);
+                ? await mongoCollection.BulkWriteAsync(effectiveSession, requests, options, cancellationToken).ConfigureAwait(false)
+                : await mongoCollection.BulkWriteAsync(requests, options, cancellationToken).ConfigureAwait(false);
         }
 
         [Obsolete("Use CountDocuments or EstimatedDocumentCount instead.")]
@@ -249,7 +259,7 @@ namespace Etherna.MongODM.Core.Utility
             CountOptions? options = null,
             CancellationToken cancellationToken = new())
         {
-            VerifyReadPermission();
+            using var _ = EnterReadOperation();
             return (session ?? TryGetAmbientSession()) is { } effectiveSession
                 ? mongoCollection.Count(effectiveSession, filter, options, cancellationToken)
                 : mongoCollection.Count(filter, options, cancellationToken);
@@ -263,16 +273,16 @@ namespace Etherna.MongODM.Core.Utility
             CountAsync(null, filter, options, cancellationToken);
 
         [Obsolete("Use CountDocuments or EstimatedDocumentCount instead.")]
-        public Task<long> CountAsync(
+        public async Task<long> CountAsync(
             IClientSessionHandle? session,
             FilterDefinition<TDocument> filter,
             CountOptions? options = null,
             CancellationToken cancellationToken = new())
         {
-            VerifyReadPermission();
+            using var _ = EnterReadOperation();
             return (session ?? TryGetAmbientSession()) is { } effectiveSession
-                ? mongoCollection.CountAsync(effectiveSession, filter, options, cancellationToken)
-                : mongoCollection.CountAsync(filter, options, cancellationToken);
+                ? await mongoCollection.CountAsync(effectiveSession, filter, options, cancellationToken).ConfigureAwait(false)
+                : await mongoCollection.CountAsync(filter, options, cancellationToken).ConfigureAwait(false);
         }
 
         public long CountDocuments(
@@ -287,7 +297,7 @@ namespace Etherna.MongODM.Core.Utility
             CountOptions? options = null,
             CancellationToken cancellationToken = new())
         {
-            VerifyReadPermission();
+            using var _ = EnterReadOperation();
             return (session ?? TryGetAmbientSession()) is { } effectiveSession
                 ? mongoCollection.CountDocuments(effectiveSession, filter, options, cancellationToken)
                 : mongoCollection.CountDocuments(filter, options, cancellationToken);
@@ -299,16 +309,16 @@ namespace Etherna.MongODM.Core.Utility
             CancellationToken cancellationToken = new()) =>
             CountDocumentsAsync(null, filter, options, cancellationToken);
 
-        public Task<long> CountDocumentsAsync(
+        public async Task<long> CountDocumentsAsync(
             IClientSessionHandle? session,
             FilterDefinition<TDocument> filter,
             CountOptions? options = null,
             CancellationToken cancellationToken = new())
         {
-            VerifyReadPermission();
+            using var _ = EnterReadOperation();
             return (session ?? TryGetAmbientSession()) is { } effectiveSession
-                ? mongoCollection.CountDocumentsAsync(effectiveSession, filter, options, cancellationToken)
-                : mongoCollection.CountDocumentsAsync(filter, options, cancellationToken);
+                ? await mongoCollection.CountDocumentsAsync(effectiveSession, filter, options, cancellationToken).ConfigureAwait(false)
+                : await mongoCollection.CountDocumentsAsync(filter, options, cancellationToken).ConfigureAwait(false);
         }
 
         public DeleteResult DeleteMany(
@@ -328,7 +338,7 @@ namespace Etherna.MongODM.Core.Utility
             DeleteOptions? options = null,
             CancellationToken cancellationToken = new())
         {
-            VerifyWritePermission();
+            using var _ = EnterWriteOperation();
             if (IsDryRun())
             {
                 SimulateWrite(filter);
@@ -350,21 +360,21 @@ namespace Etherna.MongODM.Core.Utility
             CancellationToken cancellationToken = new()) =>
             DeleteManyAsync(null, filter, options, cancellationToken);
 
-        public Task<DeleteResult> DeleteManyAsync(
+        public async Task<DeleteResult> DeleteManyAsync(
             IClientSessionHandle? session,
             FilterDefinition<TDocument> filter,
             DeleteOptions? options = null,
             CancellationToken cancellationToken = new())
         {
-            VerifyWritePermission();
+            using var _ = EnterWriteOperation();
             if (IsDryRun())
             {
                 SimulateWrite(filter);
-                return Task.FromResult<DeleteResult>(new DeleteResult.Acknowledged(0));
+                return new DeleteResult.Acknowledged(0);
             }
             return (session ?? TryGetAmbientSession()) is { } effectiveSession
-                ? mongoCollection.DeleteManyAsync(effectiveSession, filter, options, cancellationToken)
-                : mongoCollection.DeleteManyAsync(filter, options, cancellationToken);
+                ? await mongoCollection.DeleteManyAsync(effectiveSession, filter, options, cancellationToken).ConfigureAwait(false)
+                : await mongoCollection.DeleteManyAsync(filter, options, cancellationToken).ConfigureAwait(false);
         }
 
         public DeleteResult DeleteOne(
@@ -384,7 +394,7 @@ namespace Etherna.MongODM.Core.Utility
             DeleteOptions? options = null,
             CancellationToken cancellationToken = new())
         {
-            VerifyWritePermission();
+            using var _ = EnterWriteOperation();
             if (IsDryRun())
             {
                 SimulateWrite(filter);
@@ -406,21 +416,21 @@ namespace Etherna.MongODM.Core.Utility
             CancellationToken cancellationToken = new()) =>
             DeleteOneAsync(null, filter, options, cancellationToken);
 
-        public Task<DeleteResult> DeleteOneAsync(
+        public async Task<DeleteResult> DeleteOneAsync(
             IClientSessionHandle? session,
             FilterDefinition<TDocument> filter,
             DeleteOptions? options = null,
             CancellationToken cancellationToken = new())
         {
-            VerifyWritePermission();
+            using var _ = EnterWriteOperation();
             if (IsDryRun())
             {
                 SimulateWrite(filter);
-                return Task.FromResult<DeleteResult>(new DeleteResult.Acknowledged(1));
+                return new DeleteResult.Acknowledged(1);
             }
             return (session ?? TryGetAmbientSession()) is { } effectiveSession
-                ? mongoCollection.DeleteOneAsync(effectiveSession, filter, options, cancellationToken)
-                : mongoCollection.DeleteOneAsync(filter, options, cancellationToken);
+                ? await mongoCollection.DeleteOneAsync(effectiveSession, filter, options, cancellationToken).ConfigureAwait(false)
+                : await mongoCollection.DeleteOneAsync(filter, options, cancellationToken).ConfigureAwait(false);
         }
 
         public IAsyncCursor<TField> Distinct<TField>(
@@ -437,7 +447,7 @@ namespace Etherna.MongODM.Core.Utility
             DistinctOptions? options = null,
             CancellationToken cancellationToken = new())
         {
-            VerifyReadPermission();
+            using var _ = EnterReadOperation();
             return (session ?? TryGetAmbientSession()) is { } effectiveSession
                 ? mongoCollection.Distinct(effectiveSession, field, filter, options, cancellationToken)
                 : mongoCollection.Distinct(field, filter, options, cancellationToken);
@@ -450,17 +460,17 @@ namespace Etherna.MongODM.Core.Utility
             CancellationToken cancellationToken = new()) =>
             DistinctAsync(null, field, filter, options, cancellationToken);
 
-        public Task<IAsyncCursor<TField>> DistinctAsync<TField>(
+        public async Task<IAsyncCursor<TField>> DistinctAsync<TField>(
             IClientSessionHandle? session,
             FieldDefinition<TDocument, TField> field,
             FilterDefinition<TDocument> filter,
             DistinctOptions? options = null,
             CancellationToken cancellationToken = new())
         {
-            VerifyReadPermission();
+            using var _ = EnterReadOperation();
             return (session ?? TryGetAmbientSession()) is { } effectiveSession
-                ? mongoCollection.DistinctAsync(effectiveSession, field, filter, options, cancellationToken)
-                : mongoCollection.DistinctAsync(field, filter, options, cancellationToken);
+                ? await mongoCollection.DistinctAsync(effectiveSession, field, filter, options, cancellationToken).ConfigureAwait(false)
+                : await mongoCollection.DistinctAsync(field, filter, options, cancellationToken).ConfigureAwait(false);
         }
 
         public IAsyncCursor<TItem> DistinctMany<TItem>(
@@ -477,7 +487,7 @@ namespace Etherna.MongODM.Core.Utility
             DistinctOptions? options = null,
             CancellationToken cancellationToken = new())
         {
-            VerifyReadPermission();
+            using var _ = EnterReadOperation();
             return (session ?? TryGetAmbientSession()) is { } effectiveSession
                 ? mongoCollection.DistinctMany(effectiveSession, field, filter, options, cancellationToken)
                 : mongoCollection.DistinctMany(field, filter, options, cancellationToken);
@@ -490,33 +500,33 @@ namespace Etherna.MongODM.Core.Utility
             CancellationToken cancellationToken = new()) =>
             DistinctManyAsync(null, field, filter, options, cancellationToken);
 
-        public Task<IAsyncCursor<TItem>> DistinctManyAsync<TItem>(
+        public async Task<IAsyncCursor<TItem>> DistinctManyAsync<TItem>(
             IClientSessionHandle? session,
             FieldDefinition<TDocument, IEnumerable<TItem>> field,
             FilterDefinition<TDocument> filter,
             DistinctOptions? options = null,
             CancellationToken cancellationToken = new())
         {
-            VerifyReadPermission();
+            using var _ = EnterReadOperation();
             return (session ?? TryGetAmbientSession()) is { } effectiveSession
-                ? mongoCollection.DistinctManyAsync(effectiveSession, field, filter, options, cancellationToken)
-                : mongoCollection.DistinctManyAsync(field, filter, options, cancellationToken);
+                ? await mongoCollection.DistinctManyAsync(effectiveSession, field, filter, options, cancellationToken).ConfigureAwait(false)
+                : await mongoCollection.DistinctManyAsync(field, filter, options, cancellationToken).ConfigureAwait(false);
         }
 
         public long EstimatedDocumentCount(
             EstimatedDocumentCountOptions? options = null,
             CancellationToken cancellationToken = new())
         {
-            VerifyReadPermission();
+            using var _ = EnterReadOperation();
             return mongoCollection.EstimatedDocumentCount(options, cancellationToken);
         }
 
-        public Task<long> EstimatedDocumentCountAsync(
+        public async Task<long> EstimatedDocumentCountAsync(
             EstimatedDocumentCountOptions? options = null,
             CancellationToken cancellationToken = new())
         {
-            VerifyReadPermission();
-            return mongoCollection.EstimatedDocumentCountAsync(options, cancellationToken);
+            using var _ = EnterReadOperation();
+            return await mongoCollection.EstimatedDocumentCountAsync(options, cancellationToken).ConfigureAwait(false);
         }
 
         public IAsyncCursor<TProjection> FindSync<TProjection>(
@@ -531,7 +541,7 @@ namespace Etherna.MongODM.Core.Utility
             FindOptions<TDocument, TProjection>? options = null,
             CancellationToken cancellationToken = new())
         {
-            VerifyReadPermission();
+            using var _ = EnterReadOperation();
             return (session ?? TryGetAmbientSession()) is { } effectiveSession
                 ? mongoCollection.FindSync(effectiveSession, filter, options, cancellationToken)
                 : mongoCollection.FindSync(filter, options, cancellationToken);
@@ -543,16 +553,16 @@ namespace Etherna.MongODM.Core.Utility
             CancellationToken cancellationToken = new()) =>
             FindAsync(null, filter, options, cancellationToken);
 
-        public Task<IAsyncCursor<TProjection>> FindAsync<TProjection>(
+        public async Task<IAsyncCursor<TProjection>> FindAsync<TProjection>(
             IClientSessionHandle? session,
             FilterDefinition<TDocument> filter,
             FindOptions<TDocument, TProjection>? options = null,
             CancellationToken cancellationToken = new())
         {
-            VerifyReadPermission();
+            using var _ = EnterReadOperation();
             return (session ?? TryGetAmbientSession()) is { } effectiveSession
-                ? mongoCollection.FindAsync(effectiveSession, filter, options, cancellationToken)
-                : mongoCollection.FindAsync(filter, options, cancellationToken);
+                ? await mongoCollection.FindAsync(effectiveSession, filter, options, cancellationToken).ConfigureAwait(false)
+                : await mongoCollection.FindAsync(filter, options, cancellationToken).ConfigureAwait(false);
         }
 
         public TProjection FindOneAndDelete<TProjection>(
@@ -567,7 +577,7 @@ namespace Etherna.MongODM.Core.Utility
             FindOneAndDeleteOptions<TDocument, TProjection>? options = null,
             CancellationToken cancellationToken = new())
         {
-            VerifyWritePermission();
+            using var _ = EnterWriteOperation();
             if (IsDryRun())
             {
                 SimulateWrite(filter);
@@ -584,21 +594,21 @@ namespace Etherna.MongODM.Core.Utility
             CancellationToken cancellationToken = new()) =>
             FindOneAndDeleteAsync(null, filter, options, cancellationToken);
 
-        public Task<TProjection> FindOneAndDeleteAsync<TProjection>(
+        public async Task<TProjection> FindOneAndDeleteAsync<TProjection>(
             IClientSessionHandle? session,
             FilterDefinition<TDocument> filter,
             FindOneAndDeleteOptions<TDocument, TProjection>? options = null,
             CancellationToken cancellationToken = new())
         {
-            VerifyWritePermission();
+            using var _ = EnterWriteOperation();
             if (IsDryRun())
             {
                 SimulateWrite(filter);
-                return Task.FromResult<TProjection>(default!);
+                return default!;
             }
             return (session ?? TryGetAmbientSession()) is { } effectiveSession
-                ? mongoCollection.FindOneAndDeleteAsync(effectiveSession, filter, options, cancellationToken)
-                : mongoCollection.FindOneAndDeleteAsync(filter, options, cancellationToken);
+                ? await mongoCollection.FindOneAndDeleteAsync(effectiveSession, filter, options, cancellationToken).ConfigureAwait(false)
+                : await mongoCollection.FindOneAndDeleteAsync(filter, options, cancellationToken).ConfigureAwait(false);
         }
 
         public TProjection FindOneAndReplace<TProjection>(
@@ -615,7 +625,7 @@ namespace Etherna.MongODM.Core.Utility
             FindOneAndReplaceOptions<TDocument, TProjection>? options = null,
             CancellationToken cancellationToken = new())
         {
-            VerifyWritePermission();
+            using var _ = EnterWriteOperation();
             if (IsDryRun())
             {
                 SimulateWrite(filter, documents: [replacement]);
@@ -633,22 +643,22 @@ namespace Etherna.MongODM.Core.Utility
             CancellationToken cancellationToken = new()) =>
             FindOneAndReplaceAsync(null, filter, replacement, options, cancellationToken);
 
-        public Task<TProjection> FindOneAndReplaceAsync<TProjection>(
+        public async Task<TProjection> FindOneAndReplaceAsync<TProjection>(
             IClientSessionHandle? session,
             FilterDefinition<TDocument> filter,
             TDocument replacement,
             FindOneAndReplaceOptions<TDocument, TProjection>? options = null,
             CancellationToken cancellationToken = new())
         {
-            VerifyWritePermission();
+            using var _ = EnterWriteOperation();
             if (IsDryRun())
             {
                 SimulateWrite(filter, documents: [replacement]);
-                return Task.FromResult<TProjection>(default!);
+                return default!;
             }
             return (session ?? TryGetAmbientSession()) is { } effectiveSession
-                ? mongoCollection.FindOneAndReplaceAsync(effectiveSession, filter, replacement, options, cancellationToken)
-                : mongoCollection.FindOneAndReplaceAsync(filter, replacement, options, cancellationToken);
+                ? await mongoCollection.FindOneAndReplaceAsync(effectiveSession, filter, replacement, options, cancellationToken).ConfigureAwait(false)
+                : await mongoCollection.FindOneAndReplaceAsync(filter, replacement, options, cancellationToken).ConfigureAwait(false);
         }
 
         public TProjection FindOneAndUpdate<TProjection>(
@@ -665,7 +675,7 @@ namespace Etherna.MongODM.Core.Utility
             FindOneAndUpdateOptions<TDocument, TProjection>? options = null,
             CancellationToken cancellationToken = new())
         {
-            VerifyWritePermission();
+            using var _ = EnterWriteOperation();
             if (IsDryRun())
             {
                 SimulateWrite(filter, update);
@@ -683,22 +693,22 @@ namespace Etherna.MongODM.Core.Utility
             CancellationToken cancellationToken = new()) =>
             FindOneAndUpdateAsync(null, filter, update, options, cancellationToken);
 
-        public Task<TProjection> FindOneAndUpdateAsync<TProjection>(
+        public async Task<TProjection> FindOneAndUpdateAsync<TProjection>(
             IClientSessionHandle? session,
             FilterDefinition<TDocument> filter,
             UpdateDefinition<TDocument> update,
             FindOneAndUpdateOptions<TDocument, TProjection>? options = null,
             CancellationToken cancellationToken = new())
         {
-            VerifyWritePermission();
+            using var _ = EnterWriteOperation();
             if (IsDryRun())
             {
                 SimulateWrite(filter, update);
-                return Task.FromResult<TProjection>(default!);
+                return default!;
             }
             return (session ?? TryGetAmbientSession()) is { } effectiveSession
-                ? mongoCollection.FindOneAndUpdateAsync(effectiveSession, filter, update, options, cancellationToken)
-                : mongoCollection.FindOneAndUpdateAsync(filter, update, options, cancellationToken);
+                ? await mongoCollection.FindOneAndUpdateAsync(effectiveSession, filter, update, options, cancellationToken).ConfigureAwait(false)
+                : await mongoCollection.FindOneAndUpdateAsync(filter, update, options, cancellationToken).ConfigureAwait(false);
         }
 
         public void InsertOne(
@@ -713,7 +723,7 @@ namespace Etherna.MongODM.Core.Utility
             InsertOneOptions? options = null,
             CancellationToken cancellationToken = new())
         {
-            VerifyWritePermission();
+            using var _ = EnterWriteOperation();
             if (IsDryRun())
             {
                 SimulateWrite(documents: [document]);
@@ -738,21 +748,22 @@ namespace Etherna.MongODM.Core.Utility
             CancellationToken cancellationToken = new()) =>
             InsertOneAsync(null, document, options, cancellationToken);
 
-        public Task InsertOneAsync(
+        public async Task InsertOneAsync(
             IClientSessionHandle? session,
             TDocument document,
             InsertOneOptions? options = null,
             CancellationToken cancellationToken = new())
         {
-            VerifyWritePermission();
+            using var _ = EnterWriteOperation();
             if (IsDryRun())
             {
                 SimulateWrite(documents: [document]);
-                return Task.CompletedTask;
+                return;
             }
-            return (session ?? TryGetAmbientSession()) is { } effectiveSession
-                ? mongoCollection.InsertOneAsync(effectiveSession, document, options, cancellationToken)
-                : mongoCollection.InsertOneAsync(document, options, cancellationToken);
+            if ((session ?? TryGetAmbientSession()) is { } effectiveSession)
+                await mongoCollection.InsertOneAsync(effectiveSession, document, options, cancellationToken).ConfigureAwait(false);
+            else
+                await mongoCollection.InsertOneAsync(document, options, cancellationToken).ConfigureAwait(false);
         }
 
         public void InsertMany(
@@ -767,7 +778,7 @@ namespace Etherna.MongODM.Core.Utility
             InsertManyOptions? options = null,
             CancellationToken cancellationToken = new())
         {
-            VerifyWritePermission();
+            using var _ = EnterWriteOperation();
             if (IsDryRun())
             {
                 SimulateWrite(documents: documents);
@@ -785,21 +796,22 @@ namespace Etherna.MongODM.Core.Utility
             CancellationToken cancellationToken = new()) =>
             InsertManyAsync(null, documents, options, cancellationToken);
 
-        public Task InsertManyAsync(
+        public async Task InsertManyAsync(
             IClientSessionHandle? session,
             IEnumerable<TDocument> documents,
             InsertManyOptions? options = null,
             CancellationToken cancellationToken = new())
         {
-            VerifyWritePermission();
+            using var _ = EnterWriteOperation();
             if (IsDryRun())
             {
                 SimulateWrite(documents: documents);
-                return Task.CompletedTask;
+                return;
             }
-            return (session ?? TryGetAmbientSession()) is { } effectiveSession
-                ? mongoCollection.InsertManyAsync(effectiveSession, documents, options, cancellationToken)
-                : mongoCollection.InsertManyAsync(documents, options, cancellationToken);
+            if ((session ?? TryGetAmbientSession()) is { } effectiveSession)
+                await mongoCollection.InsertManyAsync(effectiveSession, documents, options, cancellationToken).ConfigureAwait(false);
+            else
+                await mongoCollection.InsertManyAsync(documents, options, cancellationToken).ConfigureAwait(false);
         }
 
         [Obsolete("Use Aggregation pipeline instead.")]
@@ -818,15 +830,9 @@ namespace Etherna.MongODM.Core.Utility
             MapReduceOptions<TDocument, TResult>? options = null,
             CancellationToken cancellationToken = new())
         {
-            if ((options?.OutputOptions ?? MapReduceOutputOptions.Inline) == MapReduceOutputOptions.Inline)
-            {
-                VerifyReadPermission();
-            }
-            else
-            {
-                VerifyWritePermission();
-                VerifyDryRunSimulable("Map reduce with an output collection");
-            }
+            using var _ = (options?.OutputOptions ?? MapReduceOutputOptions.Inline) == MapReduceOutputOptions.Inline
+                ? EnterReadOperation()
+                : EnterWriteOperation("Map reduce with an output collection");
             return (session ?? TryGetAmbientSession()) is { } effectiveSession
                 ? mongoCollection.MapReduce(effectiveSession, map, reduce, options, cancellationToken)
                 : mongoCollection.MapReduce(map, reduce, options, cancellationToken);
@@ -841,31 +847,25 @@ namespace Etherna.MongODM.Core.Utility
             MapReduceAsync(null, map, reduce, options, cancellationToken);
 
         [Obsolete("Use Aggregation pipeline instead.")]
-        public Task<IAsyncCursor<TResult>> MapReduceAsync<TResult>(
+        public async Task<IAsyncCursor<TResult>> MapReduceAsync<TResult>(
             IClientSessionHandle? session,
             BsonJavaScript map,
             BsonJavaScript reduce,
             MapReduceOptions<TDocument, TResult>? options = null,
             CancellationToken cancellationToken = new())
         {
-            if ((options?.OutputOptions ?? MapReduceOutputOptions.Inline) == MapReduceOutputOptions.Inline)
-            {
-                VerifyReadPermission();
-            }
-            else
-            {
-                VerifyWritePermission();
-                VerifyDryRunSimulable("Map reduce with an output collection");
-            }
+            using var _ = (options?.OutputOptions ?? MapReduceOutputOptions.Inline) == MapReduceOutputOptions.Inline
+                ? EnterReadOperation()
+                : EnterWriteOperation("Map reduce with an output collection");
             return (session ?? TryGetAmbientSession()) is { } effectiveSession
-                ? mongoCollection.MapReduceAsync(effectiveSession, map, reduce, options, cancellationToken)
-                : mongoCollection.MapReduceAsync(map, reduce, options, cancellationToken);
+                ? await mongoCollection.MapReduceAsync(effectiveSession, map, reduce, options, cancellationToken).ConfigureAwait(false)
+                : await mongoCollection.MapReduceAsync(map, reduce, options, cancellationToken).ConfigureAwait(false);
         }
 
         public IFilteredMongoCollection<TDerivedDocument> OfType<TDerivedDocument>()
             where TDerivedDocument : TDocument
         {
-            VerifyReadPermission();
+            using var _ = EnterReadOperation();
             return new LimitedAccessFilteredMongoCollection<TDerivedDocument>(
                 dbContextEngine,
                 mongoCollection.OfType<TDerivedDocument>(),
@@ -894,7 +894,7 @@ namespace Etherna.MongODM.Core.Utility
             ReplaceOptions? options = null,
             CancellationToken cancellationToken = new())
         {
-            VerifyWritePermission();
+            using var _ = EnterWriteOperation();
             if (IsDryRun())
             {
                 SimulateWrite(filter, documents: [replacement]);
@@ -913,7 +913,7 @@ namespace Etherna.MongODM.Core.Utility
             UpdateOptions options,
             CancellationToken cancellationToken = new())
         {
-            VerifyWritePermission();
+            using var _ = EnterWriteOperation();
             if (IsDryRun())
             {
                 SimulateWrite(filter, documents: [replacement]);
@@ -939,41 +939,41 @@ namespace Etherna.MongODM.Core.Utility
             CancellationToken cancellationToken = new()) =>
             ReplaceOneAsync(null, filter, replacement, options, cancellationToken);
 
-        public Task<ReplaceOneResult> ReplaceOneAsync(
+        public async Task<ReplaceOneResult> ReplaceOneAsync(
             IClientSessionHandle? session,
             FilterDefinition<TDocument> filter,
             TDocument replacement,
             ReplaceOptions? options = null,
             CancellationToken cancellationToken = new())
         {
-            VerifyWritePermission();
+            using var _ = EnterWriteOperation();
             if (IsDryRun())
             {
                 SimulateWrite(filter, documents: [replacement]);
-                return Task.FromResult<ReplaceOneResult>(new ReplaceOneResult.Acknowledged(1, 1, null));
+                return new ReplaceOneResult.Acknowledged(1, 1, null);
             }
             return (session ?? TryGetAmbientSession()) is { } effectiveSession
-                ? mongoCollection.ReplaceOneAsync(effectiveSession, filter, replacement, options, cancellationToken)
-                : mongoCollection.ReplaceOneAsync(filter, replacement, options, cancellationToken);
+                ? await mongoCollection.ReplaceOneAsync(effectiveSession, filter, replacement, options, cancellationToken).ConfigureAwait(false)
+                : await mongoCollection.ReplaceOneAsync(filter, replacement, options, cancellationToken).ConfigureAwait(false);
         }
 
         [Obsolete("Use the overload that takes a ReplaceOptions instead of an UpdateOptions.")]
-        public Task<ReplaceOneResult> ReplaceOneAsync(
+        public async Task<ReplaceOneResult> ReplaceOneAsync(
             IClientSessionHandle? session,
             FilterDefinition<TDocument> filter,
             TDocument replacement,
             UpdateOptions options,
             CancellationToken cancellationToken = new())
         {
-            VerifyWritePermission();
+            using var _ = EnterWriteOperation();
             if (IsDryRun())
             {
                 SimulateWrite(filter, documents: [replacement]);
-                return Task.FromResult<ReplaceOneResult>(new ReplaceOneResult.Acknowledged(1, 1, null));
+                return new ReplaceOneResult.Acknowledged(1, 1, null);
             }
             return (session ?? TryGetAmbientSession()) is { } effectiveSession
-                ? mongoCollection.ReplaceOneAsync(effectiveSession, filter, replacement, options, cancellationToken)
-                : mongoCollection.ReplaceOneAsync(filter, replacement, options, cancellationToken);
+                ? await mongoCollection.ReplaceOneAsync(effectiveSession, filter, replacement, options, cancellationToken).ConfigureAwait(false)
+                : await mongoCollection.ReplaceOneAsync(filter, replacement, options, cancellationToken).ConfigureAwait(false);
         }
 
         public UpdateResult UpdateMany(
@@ -990,7 +990,7 @@ namespace Etherna.MongODM.Core.Utility
             UpdateOptions? options = null,
             CancellationToken cancellationToken = new())
         {
-            VerifyWritePermission();
+            using var _ = EnterWriteOperation();
             if (IsDryRun())
             {
                 SimulateWrite(filter, update);
@@ -1008,22 +1008,22 @@ namespace Etherna.MongODM.Core.Utility
             CancellationToken cancellationToken = new()) =>
             UpdateManyAsync(null, filter, update, options, cancellationToken);
 
-        public Task<UpdateResult> UpdateManyAsync(
+        public async Task<UpdateResult> UpdateManyAsync(
             IClientSessionHandle? session,
             FilterDefinition<TDocument> filter,
             UpdateDefinition<TDocument> update,
             UpdateOptions? options = null,
             CancellationToken cancellationToken = new())
         {
-            VerifyWritePermission();
+            using var _ = EnterWriteOperation();
             if (IsDryRun())
             {
                 SimulateWrite(filter, update);
-                return Task.FromResult<UpdateResult>(new UpdateResult.Acknowledged(0, 0, null));
+                return new UpdateResult.Acknowledged(0, 0, null);
             }
             return (session ?? TryGetAmbientSession()) is { } effectiveSession
-                ? mongoCollection.UpdateManyAsync(effectiveSession, filter, update, options, cancellationToken)
-                : mongoCollection.UpdateManyAsync(filter, update, options, cancellationToken);
+                ? await mongoCollection.UpdateManyAsync(effectiveSession, filter, update, options, cancellationToken).ConfigureAwait(false)
+                : await mongoCollection.UpdateManyAsync(filter, update, options, cancellationToken).ConfigureAwait(false);
         }
 
         public UpdateResult UpdateOne(
@@ -1040,7 +1040,7 @@ namespace Etherna.MongODM.Core.Utility
             UpdateOptions? options = null,
             CancellationToken cancellationToken = new())
         {
-            VerifyWritePermission();
+            using var _ = EnterWriteOperation();
             if (IsDryRun())
             {
                 SimulateWrite(filter, update);
@@ -1058,22 +1058,22 @@ namespace Etherna.MongODM.Core.Utility
             CancellationToken cancellationToken = new()) =>
             UpdateOneAsync(null, filter, update, options, cancellationToken);
 
-        public Task<UpdateResult> UpdateOneAsync(
+        public async Task<UpdateResult> UpdateOneAsync(
             IClientSessionHandle? session,
             FilterDefinition<TDocument> filter,
             UpdateDefinition<TDocument> update,
             UpdateOptions? options = null,
             CancellationToken cancellationToken = new())
         {
-            VerifyWritePermission();
+            using var _ = EnterWriteOperation();
             if (IsDryRun())
             {
                 SimulateWrite(filter, update);
-                return Task.FromResult<UpdateResult>(new UpdateResult.Acknowledged(1, 1, null));
+                return new UpdateResult.Acknowledged(1, 1, null);
             }
             return (session ?? TryGetAmbientSession()) is { } effectiveSession
-                ? mongoCollection.UpdateOneAsync(effectiveSession, filter, update, options, cancellationToken)
-                : mongoCollection.UpdateOneAsync(filter, update, options, cancellationToken);
+                ? await mongoCollection.UpdateOneAsync(effectiveSession, filter, update, options, cancellationToken).ConfigureAwait(false)
+                : await mongoCollection.UpdateOneAsync(filter, update, options, cancellationToken).ConfigureAwait(false);
         }
 
         public IChangeStreamCursor<TResult> Watch<TResult>(
@@ -1081,7 +1081,7 @@ namespace Etherna.MongODM.Core.Utility
             ChangeStreamOptions? options = null,
             CancellationToken cancellationToken = new())
         {
-            VerifyReadPermission();
+            using var _ = EnterReadOperation();
             return mongoCollection.Watch(pipeline, options, cancellationToken);
         }
 
@@ -1091,27 +1091,27 @@ namespace Etherna.MongODM.Core.Utility
             ChangeStreamOptions? options = null,
             CancellationToken cancellationToken = new())
         {
-            VerifyReadPermission();
+            using var _ = EnterReadOperation();
             return mongoCollection.Watch(session, pipeline, options, cancellationToken);
         }
 
-        public Task<IChangeStreamCursor<TResult>> WatchAsync<TResult>(
+        public async Task<IChangeStreamCursor<TResult>> WatchAsync<TResult>(
             PipelineDefinition<ChangeStreamDocument<TDocument>, TResult> pipeline,
             ChangeStreamOptions? options = null,
             CancellationToken cancellationToken = new())
         {
-            VerifyReadPermission();
-            return mongoCollection.WatchAsync(pipeline, options, cancellationToken);
+            using var _ = EnterReadOperation();
+            return await mongoCollection.WatchAsync(pipeline, options, cancellationToken).ConfigureAwait(false);
         }
 
-        public Task<IChangeStreamCursor<TResult>> WatchAsync<TResult>(
+        public async Task<IChangeStreamCursor<TResult>> WatchAsync<TResult>(
             IClientSessionHandle session,
             PipelineDefinition<ChangeStreamDocument<TDocument>, TResult> pipeline,
             ChangeStreamOptions? options = null,
             CancellationToken cancellationToken = new())
         {
-            VerifyReadPermission();
-            return mongoCollection.WatchAsync(session, pipeline, options, cancellationToken);
+            using var _ = EnterReadOperation();
+            return await mongoCollection.WatchAsync(session, pipeline, options, cancellationToken).ConfigureAwait(false);
         }
 
         public IMongoCollection<TDocument> WithReadConcern(ReadConcern readConcern)
@@ -1133,6 +1133,75 @@ namespace Etherna.MongODM.Core.Utility
         }
 
         // Helpers.
+        /* The driver executes an aggregation whose rendered pipeline ends in a $out or
+         * $merge stage as a write into the named collection: detect it with the same
+         * signal, rendering the pipeline and inspecting its last stage, and guard it as
+         * an aggregate to collection. Any other pipeline is a pure read. */
+        private InFlightOperationScope EnterAggregateOperation<TResult>(PipelineDefinition<TDocument, TResult> pipeline)
+        {
+            ArgumentNullException.ThrowIfNull(pipeline);
+
+            var renderArgs = new RenderArgs<TDocument>(mongoCollection.DocumentSerializer, dbContextEngine.SerializerRegistry);
+            var lastStageName = pipeline.Render(renderArgs).Documents.LastOrDefault()?.GetElement(0).Name;
+            return lastStageName is "$out" or "$merge"
+                ? EnterWriteOperation("Aggregate to collection")
+                : EnterReadOperation();
+        }
+
+        private InFlightOperationScope EnterIndexWriteOperation() =>
+            EnterWriteOperation("Index management");
+
+        /* Counting enters before the exclusive flags read: an operation admitted with the
+         * flags off is always visible to the drain of the window flipping them, so it
+         * either gets denied or gets drained — never runs unseen beside the exclusive
+         * work. The same flag read that admits the operation decides whether it counts:
+         * denied operations and the ones admitted by an exclusive access allowance (the
+         * flows meant to work during the window) exit right away. */
+        private protected InFlightOperationScope EnterReadOperation()
+        {
+            inFlightOperations.EnterRead();
+            var isCounted = true;
+            if (dbContextEngine.IsExclusiveReadEnabled)
+            {
+                inFlightOperations.ExitRead();
+                if (!ExclusiveAccessHandler.IsExclusiveAccessAllowed(dbContextEngine))
+                    throw new UnauthorizedAccessException("Read access is not allowed");
+                isCounted = false;
+            }
+            return new InFlightOperationScope(inFlightOperations, isWriteOperation: false, isCounted);
+        }
+
+        private InFlightOperationScope EnterWriteOperation(string? dryRunDeniedOperation = null)
+        {
+            if (isReadOnly)
+                throw new UnauthorizedAccessException("Collection is read only");
+
+            inFlightOperations.EnterWrite();
+            var isCounted = true;
+            if (dbContextEngine.IsExclusiveWriteEnabled)
+            {
+                inFlightOperations.ExitWrite();
+                if (!ExclusiveAccessHandler.IsExclusiveAccessAllowed(dbContextEngine))
+                    throw new UnauthorizedAccessException("Write access is not allowed");
+                isCounted = false;
+            }
+            var scope = new InFlightOperationScope(inFlightOperations, isWriteOperation: true, isCounted);
+
+            if (dryRunDeniedOperation is not null)
+            {
+                try
+                {
+                    VerifyDryRunSimulable(dryRunDeniedOperation);
+                }
+                catch
+                {
+                    scope.Dispose();
+                    throw;
+                }
+            }
+            return scope;
+        }
+
         private bool IsDryRun() =>
             dbContextEngine.ExecutionContext.Items is not null &&
             DryRunHandler.IsDryRunEnabled(dbContextEngine.ExecutionContext);
@@ -1178,54 +1247,10 @@ namespace Etherna.MongODM.Core.Utility
         private IClientSessionHandle? TryGetAmbientSession() =>
             DbSessionHandler.TryGetCurrentSession(dbContextEngine);
 
-        /* The driver executes an aggregation whose rendered pipeline ends in a $out or
-         * $merge stage as a write into the named collection: detect it with the same
-         * signal, rendering the pipeline and inspecting its last stage, and guard it as
-         * an aggregate to collection. Any other pipeline is a pure read. */
-        private void VerifyAggregatePermission<TResult>(PipelineDefinition<TDocument, TResult> pipeline)
-        {
-            ArgumentNullException.ThrowIfNull(pipeline);
-
-            var renderArgs = new RenderArgs<TDocument>(mongoCollection.DocumentSerializer, dbContextEngine.SerializerRegistry);
-            var lastStageName = pipeline.Render(renderArgs).Documents.LastOrDefault()?.GetElement(0).Name;
-            if (lastStageName is "$out" or "$merge")
-            {
-                VerifyWritePermission();
-                VerifyDryRunSimulable("Aggregate to collection");
-            }
-            else
-            {
-                VerifyReadPermission();
-            }
-        }
-
         private void VerifyDryRunSimulable(string operationDescription)
         {
             if (IsDryRun())
                 throw new InvalidOperationException($"{operationDescription} can't be simulated by a dry run");
-        }
-
-        private void VerifyIndexWritePermission()
-        {
-            VerifyWritePermission();
-            VerifyDryRunSimulable("Index management");
-        }
-
-        private protected void VerifyReadPermission()
-        {
-            if (dbContextEngine.IsExclusiveReadEnabled &&
-                !ExclusiveAccessHandler.IsExclusiveAccessAllowed(dbContextEngine))
-                throw new UnauthorizedAccessException("Read access is not allowed");
-        }
-
-        private void VerifyWritePermission()
-        {
-            if (isReadOnly)
-                throw new UnauthorizedAccessException("Collection is read only");
-
-            if (dbContextEngine.IsExclusiveWriteEnabled &&
-                !ExclusiveAccessHandler.IsExclusiveAccessAllowed(dbContextEngine))
-                throw new UnauthorizedAccessException("Write access is not allowed");
         }
     }
 }

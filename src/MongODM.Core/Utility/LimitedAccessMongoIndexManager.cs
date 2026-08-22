@@ -23,13 +23,14 @@ using System.Threading.Tasks;
 namespace Etherna.MongODM.Core.Utility
 {
     /* Index management operations are writes on the collection: index creations and drops
-     * verify the write permission of the owning collection, listings and metadata reads
-     * verify the read one. Sessions pass verbatim: index operations can't run in
+     * enter the write operation scope of the owning collection, listings and metadata
+     * reads the read one, counting in flight on the engine until they complete like any
+     * guarded operation. Sessions pass verbatim: index operations can't run in
      * transactions, so no ambient session resolves. */
     internal sealed class LimitedAccessMongoIndexManager<TDocument>(
         IMongoIndexManager<TDocument> indexManager,
-        Action verifyReadPermission,
-        Action verifyWritePermission)
+        Func<InFlightOperationScope> enterReadOperation,
+        Func<InFlightOperationScope> enterWriteOperation)
         : IMongoIndexManager<TDocument>
     {
         // Properties.
@@ -37,7 +38,7 @@ namespace Etherna.MongODM.Core.Utility
         {
             get
             {
-                verifyReadPermission();
+                using var _ = enterReadOperation();
                 return indexManager.CollectionNamespace;
             }
         }
@@ -45,7 +46,7 @@ namespace Etherna.MongODM.Core.Utility
         {
             get
             {
-                verifyReadPermission();
+                using var _ = enterReadOperation();
                 return indexManager.DocumentSerializer;
             }
         }
@@ -53,7 +54,7 @@ namespace Etherna.MongODM.Core.Utility
         {
             get
             {
-                verifyReadPermission();
+                using var _ = enterReadOperation();
                 return indexManager.Settings;
             }
         }
@@ -63,7 +64,7 @@ namespace Etherna.MongODM.Core.Utility
             IEnumerable<CreateIndexModel<TDocument>> models,
             CancellationToken cancellationToken = default)
         {
-            verifyWritePermission();
+            using var _ = enterWriteOperation();
             return indexManager.CreateMany(models, cancellationToken);
         }
 
@@ -72,7 +73,7 @@ namespace Etherna.MongODM.Core.Utility
             CreateManyIndexesOptions options,
             CancellationToken cancellationToken = default)
         {
-            verifyWritePermission();
+            using var _ = enterWriteOperation();
             return indexManager.CreateMany(models, options, cancellationToken);
         }
 
@@ -81,7 +82,7 @@ namespace Etherna.MongODM.Core.Utility
             IEnumerable<CreateIndexModel<TDocument>> models,
             CancellationToken cancellationToken = default)
         {
-            verifyWritePermission();
+            using var _ = enterWriteOperation();
             return indexManager.CreateMany(session, models, cancellationToken);
         }
 
@@ -91,44 +92,44 @@ namespace Etherna.MongODM.Core.Utility
             CreateManyIndexesOptions options,
             CancellationToken cancellationToken = default)
         {
-            verifyWritePermission();
+            using var _ = enterWriteOperation();
             return indexManager.CreateMany(session, models, options, cancellationToken);
         }
 
-        public Task<IEnumerable<string>> CreateManyAsync(
+        public async Task<IEnumerable<string>> CreateManyAsync(
             IEnumerable<CreateIndexModel<TDocument>> models,
             CancellationToken cancellationToken = default)
         {
-            verifyWritePermission();
-            return indexManager.CreateManyAsync(models, cancellationToken);
+            using var _ = enterWriteOperation();
+            return await indexManager.CreateManyAsync(models, cancellationToken).ConfigureAwait(false);
         }
 
-        public Task<IEnumerable<string>> CreateManyAsync(
+        public async Task<IEnumerable<string>> CreateManyAsync(
             IEnumerable<CreateIndexModel<TDocument>> models,
             CreateManyIndexesOptions options,
             CancellationToken cancellationToken = default)
         {
-            verifyWritePermission();
-            return indexManager.CreateManyAsync(models, options, cancellationToken);
+            using var _ = enterWriteOperation();
+            return await indexManager.CreateManyAsync(models, options, cancellationToken).ConfigureAwait(false);
         }
 
-        public Task<IEnumerable<string>> CreateManyAsync(
+        public async Task<IEnumerable<string>> CreateManyAsync(
             IClientSessionHandle session,
             IEnumerable<CreateIndexModel<TDocument>> models,
             CancellationToken cancellationToken = default)
         {
-            verifyWritePermission();
-            return indexManager.CreateManyAsync(session, models, cancellationToken);
+            using var _ = enterWriteOperation();
+            return await indexManager.CreateManyAsync(session, models, cancellationToken).ConfigureAwait(false);
         }
 
-        public Task<IEnumerable<string>> CreateManyAsync(
+        public async Task<IEnumerable<string>> CreateManyAsync(
             IClientSessionHandle session,
             IEnumerable<CreateIndexModel<TDocument>> models,
             CreateManyIndexesOptions options,
             CancellationToken cancellationToken = default)
         {
-            verifyWritePermission();
-            return indexManager.CreateManyAsync(session, models, options, cancellationToken);
+            using var _ = enterWriteOperation();
+            return await indexManager.CreateManyAsync(session, models, options, cancellationToken).ConfigureAwait(false);
         }
 
         public string CreateOne(
@@ -136,7 +137,7 @@ namespace Etherna.MongODM.Core.Utility
             CreateOneIndexOptions? options = null,
             CancellationToken cancellationToken = default)
         {
-            verifyWritePermission();
+            using var _ = enterWriteOperation();
             return indexManager.CreateOne(model, options, cancellationToken);
         }
 
@@ -146,7 +147,7 @@ namespace Etherna.MongODM.Core.Utility
             CreateIndexOptions? options = null,
             CancellationToken cancellationToken = default)
         {
-            verifyWritePermission();
+            using var _ = enterWriteOperation();
             return indexManager.CreateOne(keys, options, cancellationToken);
         }
 
@@ -156,7 +157,7 @@ namespace Etherna.MongODM.Core.Utility
             CreateOneIndexOptions? options = null,
             CancellationToken cancellationToken = default)
         {
-            verifyWritePermission();
+            using var _ = enterWriteOperation();
             return indexManager.CreateOne(session, model, options, cancellationToken);
         }
 
@@ -167,53 +168,53 @@ namespace Etherna.MongODM.Core.Utility
             CreateIndexOptions? options = null,
             CancellationToken cancellationToken = default)
         {
-            verifyWritePermission();
+            using var _ = enterWriteOperation();
             return indexManager.CreateOne(session, keys, options, cancellationToken);
         }
 
-        public Task<string> CreateOneAsync(
+        public async Task<string> CreateOneAsync(
             CreateIndexModel<TDocument> model,
             CreateOneIndexOptions? options = null,
             CancellationToken cancellationToken = default)
         {
-            verifyWritePermission();
-            return indexManager.CreateOneAsync(model, options, cancellationToken);
+            using var _ = enterWriteOperation();
+            return await indexManager.CreateOneAsync(model, options, cancellationToken).ConfigureAwait(false);
         }
 
         [Obsolete("Use CreateOneAsync with a CreateIndexModel instead.")]
-        public Task<string> CreateOneAsync(
+        public async Task<string> CreateOneAsync(
             IndexKeysDefinition<TDocument> keys,
             CreateIndexOptions? options = null,
             CancellationToken cancellationToken = default)
         {
-            verifyWritePermission();
-            return indexManager.CreateOneAsync(keys, options, cancellationToken);
+            using var _ = enterWriteOperation();
+            return await indexManager.CreateOneAsync(keys, options, cancellationToken).ConfigureAwait(false);
         }
 
-        public Task<string> CreateOneAsync(
+        public async Task<string> CreateOneAsync(
             IClientSessionHandle session,
             CreateIndexModel<TDocument> model,
             CreateOneIndexOptions? options = null,
             CancellationToken cancellationToken = default)
         {
-            verifyWritePermission();
-            return indexManager.CreateOneAsync(session, model, options, cancellationToken);
+            using var _ = enterWriteOperation();
+            return await indexManager.CreateOneAsync(session, model, options, cancellationToken).ConfigureAwait(false);
         }
 
         [Obsolete("Use CreateOneAsync with a CreateIndexModel instead.")]
-        public Task<string> CreateOneAsync(
+        public async Task<string> CreateOneAsync(
             IClientSessionHandle session,
             IndexKeysDefinition<TDocument> keys,
             CreateIndexOptions? options = null,
             CancellationToken cancellationToken = default)
         {
-            verifyWritePermission();
-            return indexManager.CreateOneAsync(session, keys, options, cancellationToken);
+            using var _ = enterWriteOperation();
+            return await indexManager.CreateOneAsync(session, keys, options, cancellationToken).ConfigureAwait(false);
         }
 
         public void DropAll(CancellationToken cancellationToken = default)
         {
-            verifyWritePermission();
+            using var _ = enterWriteOperation();
             indexManager.DropAll(cancellationToken);
         }
 
@@ -221,7 +222,7 @@ namespace Etherna.MongODM.Core.Utility
             DropIndexOptions options,
             CancellationToken cancellationToken = default)
         {
-            verifyWritePermission();
+            using var _ = enterWriteOperation();
             indexManager.DropAll(options, cancellationToken);
         }
 
@@ -229,7 +230,7 @@ namespace Etherna.MongODM.Core.Utility
             IClientSessionHandle session,
             CancellationToken cancellationToken = default)
         {
-            verifyWritePermission();
+            using var _ = enterWriteOperation();
             indexManager.DropAll(session, cancellationToken);
         }
 
@@ -238,46 +239,46 @@ namespace Etherna.MongODM.Core.Utility
             DropIndexOptions options,
             CancellationToken cancellationToken = default)
         {
-            verifyWritePermission();
+            using var _ = enterWriteOperation();
             indexManager.DropAll(session, options, cancellationToken);
         }
 
-        public Task DropAllAsync(CancellationToken cancellationToken = default)
+        public async Task DropAllAsync(CancellationToken cancellationToken = default)
         {
-            verifyWritePermission();
-            return indexManager.DropAllAsync(cancellationToken);
+            using var _ = enterWriteOperation();
+            await indexManager.DropAllAsync(cancellationToken).ConfigureAwait(false);
         }
 
-        public Task DropAllAsync(
+        public async Task DropAllAsync(
             DropIndexOptions options,
             CancellationToken cancellationToken = default)
         {
-            verifyWritePermission();
-            return indexManager.DropAllAsync(options, cancellationToken);
+            using var _ = enterWriteOperation();
+            await indexManager.DropAllAsync(options, cancellationToken).ConfigureAwait(false);
         }
 
-        public Task DropAllAsync(
+        public async Task DropAllAsync(
             IClientSessionHandle session,
             CancellationToken cancellationToken = default)
         {
-            verifyWritePermission();
-            return indexManager.DropAllAsync(session, cancellationToken);
+            using var _ = enterWriteOperation();
+            await indexManager.DropAllAsync(session, cancellationToken).ConfigureAwait(false);
         }
 
-        public Task DropAllAsync(
+        public async Task DropAllAsync(
             IClientSessionHandle session,
             DropIndexOptions options,
             CancellationToken cancellationToken = default)
         {
-            verifyWritePermission();
-            return indexManager.DropAllAsync(session, options, cancellationToken);
+            using var _ = enterWriteOperation();
+            await indexManager.DropAllAsync(session, options, cancellationToken).ConfigureAwait(false);
         }
 
         public void DropOne(
             string name,
             CancellationToken cancellationToken = default)
         {
-            verifyWritePermission();
+            using var _ = enterWriteOperation();
             indexManager.DropOne(name, cancellationToken);
         }
 
@@ -286,7 +287,7 @@ namespace Etherna.MongODM.Core.Utility
             DropIndexOptions options,
             CancellationToken cancellationToken = default)
         {
-            verifyWritePermission();
+            using var _ = enterWriteOperation();
             indexManager.DropOne(name, options, cancellationToken);
         }
 
@@ -295,7 +296,7 @@ namespace Etherna.MongODM.Core.Utility
             string name,
             CancellationToken cancellationToken = default)
         {
-            verifyWritePermission();
+            using var _ = enterWriteOperation();
             indexManager.DropOne(session, name, cancellationToken);
         }
 
@@ -305,49 +306,49 @@ namespace Etherna.MongODM.Core.Utility
             DropIndexOptions options,
             CancellationToken cancellationToken = default)
         {
-            verifyWritePermission();
+            using var _ = enterWriteOperation();
             indexManager.DropOne(session, name, options, cancellationToken);
         }
 
-        public Task DropOneAsync(
+        public async Task DropOneAsync(
             string name,
             CancellationToken cancellationToken = default)
         {
-            verifyWritePermission();
-            return indexManager.DropOneAsync(name, cancellationToken);
+            using var _ = enterWriteOperation();
+            await indexManager.DropOneAsync(name, cancellationToken).ConfigureAwait(false);
         }
 
-        public Task DropOneAsync(
+        public async Task DropOneAsync(
             string name,
             DropIndexOptions options,
             CancellationToken cancellationToken = default)
         {
-            verifyWritePermission();
-            return indexManager.DropOneAsync(name, options, cancellationToken);
+            using var _ = enterWriteOperation();
+            await indexManager.DropOneAsync(name, options, cancellationToken).ConfigureAwait(false);
         }
 
-        public Task DropOneAsync(
+        public async Task DropOneAsync(
             IClientSessionHandle session,
             string name,
             CancellationToken cancellationToken = default)
         {
-            verifyWritePermission();
-            return indexManager.DropOneAsync(session, name, cancellationToken);
+            using var _ = enterWriteOperation();
+            await indexManager.DropOneAsync(session, name, cancellationToken).ConfigureAwait(false);
         }
 
-        public Task DropOneAsync(
+        public async Task DropOneAsync(
             IClientSessionHandle session,
             string name,
             DropIndexOptions options,
             CancellationToken cancellationToken = default)
         {
-            verifyWritePermission();
-            return indexManager.DropOneAsync(session, name, options, cancellationToken);
+            using var _ = enterWriteOperation();
+            await indexManager.DropOneAsync(session, name, options, cancellationToken).ConfigureAwait(false);
         }
 
         public IAsyncCursor<BsonDocument> List(CancellationToken cancellationToken = default)
         {
-            verifyReadPermission();
+            using var _ = enterReadOperation();
             return indexManager.List(cancellationToken);
         }
 
@@ -355,7 +356,7 @@ namespace Etherna.MongODM.Core.Utility
             ListIndexesOptions options,
             CancellationToken cancellationToken = default)
         {
-            verifyReadPermission();
+            using var _ = enterReadOperation();
             return indexManager.List(options, cancellationToken);
         }
 
@@ -363,7 +364,7 @@ namespace Etherna.MongODM.Core.Utility
             IClientSessionHandle session,
             CancellationToken cancellationToken = default)
         {
-            verifyReadPermission();
+            using var _ = enterReadOperation();
             return indexManager.List(session, cancellationToken);
         }
 
@@ -372,39 +373,39 @@ namespace Etherna.MongODM.Core.Utility
             ListIndexesOptions? options = null,
             CancellationToken cancellationToken = default)
         {
-            verifyReadPermission();
+            using var _ = enterReadOperation();
             return indexManager.List(session, options, cancellationToken);
         }
 
-        public Task<IAsyncCursor<BsonDocument>> ListAsync(CancellationToken cancellationToken = default)
+        public async Task<IAsyncCursor<BsonDocument>> ListAsync(CancellationToken cancellationToken = default)
         {
-            verifyReadPermission();
-            return indexManager.ListAsync(cancellationToken);
+            using var _ = enterReadOperation();
+            return await indexManager.ListAsync(cancellationToken).ConfigureAwait(false);
         }
 
-        public Task<IAsyncCursor<BsonDocument>> ListAsync(
+        public async Task<IAsyncCursor<BsonDocument>> ListAsync(
             ListIndexesOptions options,
             CancellationToken cancellationToken = default)
         {
-            verifyReadPermission();
-            return indexManager.ListAsync(options, cancellationToken);
+            using var _ = enterReadOperation();
+            return await indexManager.ListAsync(options, cancellationToken).ConfigureAwait(false);
         }
 
-        public Task<IAsyncCursor<BsonDocument>> ListAsync(
+        public async Task<IAsyncCursor<BsonDocument>> ListAsync(
             IClientSessionHandle session,
             CancellationToken cancellationToken = default)
         {
-            verifyReadPermission();
-            return indexManager.ListAsync(session, cancellationToken);
+            using var _ = enterReadOperation();
+            return await indexManager.ListAsync(session, cancellationToken).ConfigureAwait(false);
         }
 
-        public Task<IAsyncCursor<BsonDocument>> ListAsync(
+        public async Task<IAsyncCursor<BsonDocument>> ListAsync(
             IClientSessionHandle session,
             ListIndexesOptions? options = null,
             CancellationToken cancellationToken = default)
         {
-            verifyReadPermission();
-            return indexManager.ListAsync(session, options, cancellationToken);
+            using var _ = enterReadOperation();
+            return await indexManager.ListAsync(session, options, cancellationToken).ConfigureAwait(false);
         }
     }
 }

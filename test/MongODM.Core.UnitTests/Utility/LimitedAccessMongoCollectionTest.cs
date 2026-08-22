@@ -32,6 +32,7 @@ namespace Etherna.MongODM.Core.Utility
         private readonly Mock<IMongoCollection<FakeModel>> collectionMock = new();
         private readonly Mock<IDbContextEngine> engineMock = new();
         private readonly Mock<IMongoIndexManager<FakeModel>> indexManagerMock = new();
+        private readonly InFlightOperationsCounter inFlightOperations = new();
         private readonly Mock<IMongoSearchIndexManager> searchIndexManagerMock = new();
 
         // Constructor.
@@ -51,6 +52,10 @@ namespace Etherna.MongODM.Core.Utility
                 .Returns(AsyncLocalContext.Instance);
             engineMock.Setup(e => e.SerializerRegistry)
                 .Returns(serializerRegistry);
+            //the guarded collections count their operations on the internal engine surface
+            engineMock.As<IInternalDbContextEngine>()
+                .Setup(e => e.InFlightOperations)
+                .Returns(inFlightOperations);
         }
 
         // Tests.
@@ -78,7 +83,37 @@ namespace Etherna.MongODM.Core.Utility
             innerCollectionMock.VerifyNoOtherCalls();
         }
 
-        // Tests.
+        [Fact]
+        public async Task ExclusiveWindowAdmissionsDoNotCountInFlight()
+        {
+            /* The exclusive access drain waits only for the operations admitted before the
+             * window opened: a denied operation exits its count with its denial, and one
+             * admitted by the allowance of its flow, meant to work during the window,
+             * never counts. */
+
+            // Setup.
+            using var contextHandler = AsyncLocalContext.Instance.InitAsyncLocalContext();
+            engineMock.Setup(e => e.IsExclusiveWriteEnabled)
+                .Returns(true);
+            var writeGate = new TaskCompletionSource();
+            collectionMock.Setup(c => c.InsertOneAsync(It.IsAny<FakeModel>(), It.IsAny<InsertOneOptions>(), It.IsAny<CancellationToken>()))
+                .Returns(writeGate.Task);
+            var collection = new LimitedAccessMongoCollection<FakeModel>(engineMock.Object, collectionMock.Object, false);
+
+            // Action and assert.
+            //denied without an allowance
+            await Assert.ThrowsAsync<UnauthorizedAccessException>(() => collection.InsertOneAsync(new FakeModel()));
+            Assert.Equal(0, inFlightOperations.WritesCount);
+
+            //admitted by the allowance of this flow, and not counted while in flight
+            using var allowance = new ExclusiveAccessHandler(engineMock.Object);
+            var insertTask = collection.InsertOneAsync(new FakeModel());
+            Assert.Equal(0, inFlightOperations.WritesCount);
+            writeGate.SetResult();
+            await insertTask;
+            Assert.Equal(0, inFlightOperations.WritesCount);
+        }
+
         [Fact]
         public async Task ForeignExclusiveAccessDeniesAggregateToCollectionPipelines()
         {
@@ -137,6 +172,70 @@ namespace Etherna.MongODM.Core.Utility
                 }));
 #pragma warning restore CS0618
             collectionMock.VerifyNoOtherCalls();
+        }
+
+        [Fact]
+        public async Task HandedOutWrappersCountTheirOperationsInFlight()
+        {
+            /* Index management and the database reached from a guarded collection keep its
+             * guards: their operations count in flight on the engine like the collection
+             * ones, so the exclusive access drain sees them too. */
+
+            // Setup.
+            var databaseMock = new Mock<IMongoDatabase>();
+            collectionMock.Setup(c => c.Database)
+                .Returns(databaseMock.Object);
+            var indexGate = new TaskCompletionSource<string>();
+            indexManagerMock.Setup(m => m.CreateOneAsync(It.IsAny<CreateIndexModel<FakeModel>>(), It.IsAny<CreateOneIndexOptions>(), It.IsAny<CancellationToken>()))
+                .Returns(indexGate.Task);
+            var listGate = new TaskCompletionSource<IAsyncCursor<string>>();
+            databaseMock.Setup(d => d.ListCollectionNamesAsync(It.IsAny<ListCollectionNamesOptions>(), It.IsAny<CancellationToken>()))
+                .Returns(listGate.Task);
+            var collection = new LimitedAccessMongoCollection<FakeModel>(engineMock.Object, collectionMock.Object, false);
+
+            // Action and assert.
+            //an index write counts in flight until its completion
+            var createIndexTask = collection.Indexes.CreateOneAsync(
+                new CreateIndexModel<FakeModel>(Builders<FakeModel>.IndexKeys.Ascending(m => m.IntegerProp)));
+            Assert.Equal(1, inFlightOperations.WritesCount);
+            indexGate.SetResult("indexName");
+            await createIndexTask;
+            Assert.Equal(0, inFlightOperations.WritesCount);
+
+            //a database read counts in flight until its completion
+            var listNamesTask = collection.Database.ListCollectionNamesAsync();
+            Assert.Equal(1, inFlightOperations.ReadsCount);
+            listGate.SetResult(new Mock<IAsyncCursor<string>>().Object);
+            await listNamesTask;
+            Assert.Equal(0, inFlightOperations.ReadsCount);
+        }
+
+        [Fact]
+        public async Task OperationsCountInFlightUntilTheirCompletion()
+        {
+            /* The exclusive access window drains the counted operations: an operation counts
+             * from its admission to the completion of its forwarded call, a faulted one
+             * included. */
+
+            // Setup.
+            var readGate = new TaskCompletionSource<IAsyncCursor<FakeModel>>();
+            collectionMock.Setup(c => c.FindAsync(It.IsAny<FilterDefinition<FakeModel>>(), It.IsAny<FindOptions<FakeModel, FakeModel>>(), It.IsAny<CancellationToken>()))
+                .Returns(readGate.Task);
+            collectionMock.Setup(c => c.InsertOneAsync(It.IsAny<FakeModel>(), It.IsAny<InsertOneOptions>(), It.IsAny<CancellationToken>()))
+                .ThrowsAsync(new InvalidOperationException("fake driver failure"));
+            var collection = new LimitedAccessMongoCollection<FakeModel>(engineMock.Object, collectionMock.Object, false);
+
+            // Action and assert.
+            //a read counts until its cursor is handed out
+            var findTask = collection.FindAsync(Builders<FakeModel>.Filter.Empty);
+            Assert.Equal(1, inFlightOperations.ReadsCount);
+            readGate.SetResult(new Mock<IAsyncCursor<FakeModel>>().Object);
+            await findTask;
+            Assert.Equal(0, inFlightOperations.ReadsCount);
+
+            //a faulted write exits its count with its fault
+            await Assert.ThrowsAsync<InvalidOperationException>(() => collection.InsertOneAsync(new FakeModel()));
+            Assert.Equal(0, inFlightOperations.WritesCount);
         }
 
         [Fact]

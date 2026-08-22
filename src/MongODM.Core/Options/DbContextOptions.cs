@@ -35,6 +35,7 @@ namespace Etherna.MongODM.Core.Options
                 "Connection string doesn't specify a database name. Declare it as its path segment, as in \"mongodb://localhost:27017/mydbname\"");
         public string DbOperationsCollectionName { get; set; } = "_db_ops";
         public bool EnableTransactionsWithReplicaSet { get; set; } = true;
+        public TimeSpan ExclusiveAccessDrainTimeout { get; set; } = TimeSpan.FromMinutes(5);
         public string? Identifier { get; set; }
         public ReactionMode ImplicitLazyLoad { get; set; } = ReactionMode.Warn;
         public bool IsReadOnly { get; set; }
