@@ -43,7 +43,7 @@ namespace Etherna.MongODM.Core.Serialization.Mapping
 
         // Properties.
         public IEnumerable<IMemberMap> AllDescendingMemberMaps =>
-            ChildMemberMaps.Concat(ChildMemberMaps.SelectMany(mm => mm.ChildMemberMaps));
+            ChildMemberMaps.Concat(ChildMemberMaps.SelectMany(mm => mm.AllDescendingMemberMaps));
 
         public BsonMemberMap BsonMemberMap { get; }
 

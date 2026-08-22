@@ -81,6 +81,12 @@ namespace Etherna.MongODM.Core
             public string? Area { get; set; }
             public int Number { get; set; }
         }
+        /* The deep host nests a reference under three embedding levels: the reference member
+         * maps are the fourth level from the root. */
+        public class DeepChildHostModel
+        {
+            public OuterLayerModel? Outer { get; set; }
+        }
         public class DictionaryChildHostModel : IEntityModel<string>
         {
             public IDictionary<string, object>? ExtraElements { get; }
@@ -111,6 +117,10 @@ namespace Etherna.MongODM.Core
             public string? Name { get; set; }
         }
         public interface IKeyModel;
+        public class InnerLayerModel
+        {
+            public ChildModel? Child { get; set; }
+        }
         public class InterfaceIdModel : IEntityModel<IKeyModel>
         {
             public IDictionary<string, object>? ExtraElements { get; }
@@ -135,6 +145,10 @@ namespace Etherna.MongODM.Core
 
             public override void Serialize(BsonSerializationContext context, BsonSerializationArgs args, KeyModel value) =>
                 context.Writer.WriteString(value.Value);
+        }
+        public class OuterLayerModel
+        {
+            public InnerLayerModel? Inner { get; set; }
         }
         public class PlainChildHostModel
         {
@@ -779,6 +793,62 @@ namespace Etherna.MongODM.Core
             // Assert.
             Assert.DoesNotContain(typeof(object), mapRegistry.MapsByModelType.Keys);
             Assert.IsType<ObjectSerializer>(serializerRegistry.GetSerializer<object>());
+        }
+
+        [Fact]
+        public void FreezeRegistersMemberMapsAtEveryNestingDepth()
+        {
+            /* MODM-248: the member maps walk descends to every depth, so a reference
+             * denormalized under three embedding levels enters the registers the
+             * dependencies propagation resolves against: the member map of a summarized
+             * member by id and by member info, and the id member map by element path. */
+
+            // Setup.
+            dbContextEngineMock.Setup(e => e.MapRegistry)
+                .Returns(mapRegistry);
+
+            mapRegistry.AddModelMap<InnerLayerModel>("innerLayerSchemaId", cm =>
+            {
+                cm.AutoMap();
+                cm.SetMemberSerializer(m => m.Child!, new ReferenceSerializer<ChildModel, string>(
+                    dbContextEngineMock.Object,
+                    config =>
+                    {
+                        config.AddModelMap<FakeEntityModelBase<string>>("childBaseSchemaId", cm2 => cm2.MapIdMember(c => c.Id));
+                        config.AddModelMap<ChildModel>("childSchemaId", cm2 => cm2.MapMember(c => c.Name));
+                    }));
+            });
+            mapRegistry.AddModelMap<OuterLayerModel>("outerLayerSchemaId", cm =>
+            {
+                cm.AutoMap();
+                cm.SetMemberSerializer(m => m.Inner!, new MappedSerializerAdapter<InnerLayerModel>(dbContextEngineMock.Object));
+            });
+            mapRegistry.AddModelMap<DeepChildHostModel>("deepHostSchemaId", cm =>
+            {
+                cm.AutoMap();
+                cm.SetMemberSerializer(m => m.Outer!, new MappedSerializerAdapter<OuterLayerModel>(dbContextEngineMock.Object));
+            });
+
+            // Action.
+            mapRegistry.Freeze();
+
+            // Assert.
+            var deepChildNameMemberMapId =
+                $"{nameof(DeepChildHostModel)};deepHostSchemaId;{nameof(DeepChildHostModel.Outer)}|" +
+                $"{nameof(OuterLayerModel)};outerLayerSchemaId;{nameof(OuterLayerModel.Inner)}|" +
+                $"{nameof(InnerLayerModel)};innerLayerSchemaId;{nameof(InnerLayerModel.Child)}|" +
+                $"{nameof(ChildModel)};childSchemaId;{nameof(ChildModel.Name)}";
+            var deepChildNameMemberMap = Assert.Contains(deepChildNameMemberMapId, mapRegistry.MemberMapsById);
+
+            Assert.Contains(
+                deepChildNameMemberMap,
+                mapRegistry.GetMemberMapsFromMemberInfo(typeof(ChildModel).GetProperty(nameof(ChildModel.Name))!));
+
+            var deepChildIdMemberMap = deepChildNameMemberMap.OwnerEntityIdMap;
+            Assert.NotNull(deepChildIdMemberMap);
+            Assert.Contains(
+                deepChildIdMemberMap,
+                mapRegistry.GetMemberMapsWithSameElementPath(deepChildIdMemberMap));
         }
 
         [Fact]

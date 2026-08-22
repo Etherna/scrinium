@@ -24,6 +24,8 @@ namespace Etherna.MongODM.IntegrationTests.ModelMaps
     {
         public void Register(IDbContextEngine dbContextEngine)
         {
+            dbContextEngine.MapRegistry.AddModelMap<Dispatch>("c9dc5a5d-54ed-475c-8262-7a748e233226");
+
             dbContextEngine.MapRegistry.AddModelMap<Envelope>(
                 "86d458e2-e618-466f-b29c-bf04fceb5196",
                 mm =>
