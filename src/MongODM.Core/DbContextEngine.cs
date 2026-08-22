@@ -29,6 +29,7 @@ using Etherna.MongODM.Core.Utility;
 using Microsoft.Extensions.Logging;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -39,9 +40,11 @@ namespace Etherna.MongODM.Core
     /// schema registries, and infrastructure components built once at context initialization.
     /// </summary>
     public sealed class DbContextEngine(ILogger logger)
-        : IDbContextEngine, IDisposable
+        : IDbContextEngine, IInternalDbContextEngine, IDisposable
     {
         // Consts.
+        //pause between two in flight counts of the exclusive access drain
+        private static readonly TimeSpan ExclusiveAccessDrainPollDelay = TimeSpan.FromMilliseconds(20);
         //separates the namespace from the resource id in the application lock identifiers
         private const string ResourceLockNamespaceSeparator = "/";
 
@@ -53,6 +56,9 @@ namespace Etherna.MongODM.Core
         private BsonSerializerRegistry _serializerRegistry = null!;
         private bool disposed;
         private readonly SemaphoreSlim exclusiveAccessSemaphore = new(1, 1); //support async/await
+        /* One counter per engine: the guarded collections enter it around every forwarded
+         * operation, whatever the wrapper instance addressing them. */
+        private readonly InFlightOperationsCounter inFlightOperations = new();
         private bool isInitialized;
         private readonly ReaderWriterLockSlim isSeededCacheLock = new(); //support read/write locks
         private Task? lockCollectionPreparation;
@@ -275,6 +281,13 @@ namespace Etherna.MongODM.Core
                 IsExclusiveReadEnabled = lockOnRead;
                 IsExclusiveWriteEnabled = true;
 
+                /* The flags deny the operations starting after the window opens: drain the
+                 * ones admitted a moment before, still running against the collections, so
+                 * the exclusive work never runs beside them. Reads drain only when the
+                 * window locks them: left open, they keep flowing during the whole window,
+                 * and their count has no zero to wait for. */
+                await DrainInFlightOperationsAsync(drainReads: lockOnRead).ConfigureAwait(false);
+
                 using var _ = new ExclusiveAccessHandler(this);
                 return await func().ConfigureAwait(false);
             }
@@ -290,6 +303,9 @@ namespace Etherna.MongODM.Core
         public Task<IClientSessionHandle> StartSessionAsync(CancellationToken cancellationToken = default) =>
             Client.StartSessionAsync(cancellationToken: cancellationToken);
 
+        // Internals.
+        InFlightOperationsCounter IInternalDbContextEngine.InFlightOperations => inFlightOperations;
+
         // Helpers.
         private ResourceLock BuildResourceLock(string lockId) => new(
             Database.GetCollection<BsonDocument>(Options.DbLockCollectionName),
@@ -297,6 +313,40 @@ namespace Etherna.MongODM.Core
             ExecutionContext,
             logger,
             PrepareLockCollectionAsync);
+
+        /* An operation stays in flight for the span of its forwarded call, until its task
+         * completes: the cursors already handed out iterate past the drain, like the
+         * traffic of the other processes proceeds during the window. A drain unable to
+         * complete within the timeout denies the exclusive work: running it beside an
+         * operation still in flight would break the exclusivity the window declares. */
+        private async Task DrainInFlightOperationsAsync(bool drainReads)
+        {
+            var drainTimeout = Options.ExclusiveAccessDrainTimeout;
+            var drainStopwatch = Stopwatch.StartNew();
+            var isDrainLogged = false;
+            while (true)
+            {
+                var readsCount = drainReads ? inFlightOperations.ReadsCount : 0;
+                var writesCount = inFlightOperations.WritesCount;
+                if (readsCount == 0 && writesCount == 0)
+                    return;
+
+                if (!isDrainLogged)
+                {
+                    logger.DbContextExclusiveAccessDrainingInFlightOperations(Options.DbName, readsCount, writesCount);
+                    isDrainLogged = true;
+                }
+
+                if (drainStopwatch.Elapsed >= drainTimeout)
+                    throw new TimeoutException(
+                        $"Can't run with exclusive access on db context {Identifier}: " +
+                        $"{writesCount} writes and {readsCount} reads admitted before the exclusive window opened " +
+                        $"are still running after the {drainTimeout} drain timeout, " +
+                        $"configured by {nameof(IDbContextOptions)}.{nameof(IDbContextOptions.ExclusiveAccessDrainTimeout)}");
+
+                await Task.Delay(ExclusiveAccessDrainPollDelay).ConfigureAwait(false);
+            }
+        }
 
         private void InitializeSerializerRegistry()
         {

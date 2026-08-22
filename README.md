@@ -88,7 +88,10 @@ documents to complex application domains.
   duration is how long a dead instance blocks the others: each operation chooses it, with
   `TryStartMigrationAsync(lockLeaseDuration)` and `SeedIfNeededAsync(lockWaitTimeout, lockLeaseDuration)`
   (forwarded by the startup `SeedDbContexts`), 10 minutes by default. An unspecified seeding wait for
-  the lock owner defaults to the lease duration of that seeding.
+  the lock owner defaults to the lease duration of that seeding. In process, the exclusive window of a
+  migration or seeding also waits for the operations already in flight against the collections before
+  starting its work (`DbContextOptions.ExclusiveAccessDrainTimeout`, 5 minutes by default), so it never
+  runs beside an operation admitted a moment before it opened.
 - **Resource locks** — the same server side lease lock, usable by applications on their own resources:
   exclusive or shared locks on arbitrary resource ids, each inside its own namespace, acquired in one
   call on the db context (`TryAcquireResourceLockAsync`, exclusive by default or shared by parameter)

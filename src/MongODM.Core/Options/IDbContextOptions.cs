@@ -54,6 +54,15 @@ namespace Etherna.MongODM.Core.Options
         /// </summary>
         public bool EnableTransactionsWithReplicaSet { get; }
 
+        /// <summary>
+        /// How long the exclusive access window (seeding and migrations) waits for the
+        /// operations admitted before it opened, still running against the collections of the
+        /// db context, before starting its work. A drain unable to complete within the timeout
+        /// denies the exclusive work throwing <see cref="TimeoutException"/>: only an operation
+        /// running for the whole timeout leaves it in flight.
+        /// </summary>
+        public TimeSpan ExclusiveAccessDrainTimeout { get; }
+
         public string? Identifier { get; }
 
         /// <summary>

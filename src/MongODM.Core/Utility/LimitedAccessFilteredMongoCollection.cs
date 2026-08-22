@@ -33,7 +33,7 @@ namespace Etherna.MongODM.Core.Utility
         {
             get
             {
-                VerifyReadPermission();
+                using var _ = EnterReadOperation();
                 return filteredMongoCollection.Filter;
             }
         }

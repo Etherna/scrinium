@@ -27,23 +27,30 @@ namespace Etherna.MongODM.Core.Utility
      * (collection creations, drops and renames, view creations, aggregations to
      * collection, and commands, whose arbitrary content can write) verify the write
      * permission of the originating collection and can't be simulated by a dry run;
-     * reads verify the read permission. Sessions pass verbatim without ambient
-     * resolution: transactional work runs through the retrieved guarded collections,
-     * that enlist their operations in the ambient session of the engine. The Client
-     * property hands out the raw driver client: the explicit escape hatch out of the
-     * guarded surface, like IDbContextEngine.Client. */
+     * reads verify the read permission. Every member enters an operation scope counting
+     * the operation in flight on the engine until it completes, like the guarded
+     * collections do: the exclusive access window drains the counted operations before
+     * starting its work. Sessions pass verbatim without ambient resolution:
+     * transactional work runs through the retrieved guarded collections, that enlist
+     * their operations in the ambient session of the engine. The Client property hands
+     * out the raw driver client: the explicit escape hatch out of the guarded surface,
+     * like IDbContextEngine.Client. */
     internal sealed class LimitedAccessMongoDatabase(
         IDbContextEngine dbContextEngine,
         IMongoDatabase database,
         bool isReadOnly)
         : IMongoDatabase
     {
+        // Fields.
+        private readonly InFlightOperationsCounter inFlightOperations =
+            ((IInternalDbContextEngine)dbContextEngine).InFlightOperations;
+
         // Properties.
         public IMongoClient Client
         {
             get
             {
-                VerifyReadPermission();
+                using var _ = EnterReadOperation();
                 return database.Client;
             }
         }
@@ -51,7 +58,7 @@ namespace Etherna.MongODM.Core.Utility
         {
             get
             {
-                VerifyReadPermission();
+                using var _ = EnterReadOperation();
                 return database.DatabaseNamespace;
             }
         }
@@ -59,7 +66,7 @@ namespace Etherna.MongODM.Core.Utility
         {
             get
             {
-                VerifyReadPermission();
+                using var _ = EnterReadOperation();
                 return database.Settings;
             }
         }
@@ -70,7 +77,7 @@ namespace Etherna.MongODM.Core.Utility
             AggregateOptions? options = null,
             CancellationToken cancellationToken = default)
         {
-            VerifyAggregatePermission(pipeline);
+            using var _ = EnterAggregateOperation(pipeline);
             return database.Aggregate(pipeline, options, cancellationToken);
         }
 
@@ -80,27 +87,27 @@ namespace Etherna.MongODM.Core.Utility
             AggregateOptions? options = null,
             CancellationToken cancellationToken = default)
         {
-            VerifyAggregatePermission(pipeline);
+            using var _ = EnterAggregateOperation(pipeline);
             return database.Aggregate(session, pipeline, options, cancellationToken);
         }
 
-        public Task<IAsyncCursor<TResult>> AggregateAsync<TResult>(
+        public async Task<IAsyncCursor<TResult>> AggregateAsync<TResult>(
             PipelineDefinition<NoPipelineInput, TResult> pipeline,
             AggregateOptions? options = null,
             CancellationToken cancellationToken = default)
         {
-            VerifyAggregatePermission(pipeline);
-            return database.AggregateAsync(pipeline, options, cancellationToken);
+            using var _ = EnterAggregateOperation(pipeline);
+            return await database.AggregateAsync(pipeline, options, cancellationToken).ConfigureAwait(false);
         }
 
-        public Task<IAsyncCursor<TResult>> AggregateAsync<TResult>(
+        public async Task<IAsyncCursor<TResult>> AggregateAsync<TResult>(
             IClientSessionHandle session,
             PipelineDefinition<NoPipelineInput, TResult> pipeline,
             AggregateOptions? options = null,
             CancellationToken cancellationToken = default)
         {
-            VerifyAggregatePermission(pipeline);
-            return database.AggregateAsync(session, pipeline, options, cancellationToken);
+            using var _ = EnterAggregateOperation(pipeline);
+            return await database.AggregateAsync(session, pipeline, options, cancellationToken).ConfigureAwait(false);
         }
 
         public void AggregateToCollection<TResult>(
@@ -108,8 +115,7 @@ namespace Etherna.MongODM.Core.Utility
             AggregateOptions? options = null,
             CancellationToken cancellationToken = default)
         {
-            VerifyWritePermission();
-            VerifyDryRunSimulable("Aggregate to collection");
+            using var _ = EnterWriteOperation("Aggregate to collection");
             database.AggregateToCollection(pipeline, options, cancellationToken);
         }
 
@@ -119,30 +125,27 @@ namespace Etherna.MongODM.Core.Utility
             AggregateOptions? options = null,
             CancellationToken cancellationToken = default)
         {
-            VerifyWritePermission();
-            VerifyDryRunSimulable("Aggregate to collection");
+            using var _ = EnterWriteOperation("Aggregate to collection");
             database.AggregateToCollection(session, pipeline, options, cancellationToken);
         }
 
-        public Task AggregateToCollectionAsync<TResult>(
+        public async Task AggregateToCollectionAsync<TResult>(
             PipelineDefinition<NoPipelineInput, TResult> pipeline,
             AggregateOptions? options = null,
             CancellationToken cancellationToken = default)
         {
-            VerifyWritePermission();
-            VerifyDryRunSimulable("Aggregate to collection");
-            return database.AggregateToCollectionAsync(pipeline, options, cancellationToken);
+            using var _ = EnterWriteOperation("Aggregate to collection");
+            await database.AggregateToCollectionAsync(pipeline, options, cancellationToken).ConfigureAwait(false);
         }
 
-        public Task AggregateToCollectionAsync<TResult>(
+        public async Task AggregateToCollectionAsync<TResult>(
             IClientSessionHandle session,
             PipelineDefinition<NoPipelineInput, TResult> pipeline,
             AggregateOptions? options = null,
             CancellationToken cancellationToken = default)
         {
-            VerifyWritePermission();
-            VerifyDryRunSimulable("Aggregate to collection");
-            return database.AggregateToCollectionAsync(session, pipeline, options, cancellationToken);
+            using var _ = EnterWriteOperation("Aggregate to collection");
+            await database.AggregateToCollectionAsync(session, pipeline, options, cancellationToken).ConfigureAwait(false);
         }
 
         public void CreateCollection(
@@ -150,8 +153,7 @@ namespace Etherna.MongODM.Core.Utility
             CreateCollectionOptions? options = null,
             CancellationToken cancellationToken = default)
         {
-            VerifyWritePermission();
-            VerifyDryRunSimulable("Collection creation");
+            using var _ = EnterWriteOperation("Collection creation");
             database.CreateCollection(name, options, cancellationToken);
         }
 
@@ -161,30 +163,27 @@ namespace Etherna.MongODM.Core.Utility
             CreateCollectionOptions? options = null,
             CancellationToken cancellationToken = default)
         {
-            VerifyWritePermission();
-            VerifyDryRunSimulable("Collection creation");
+            using var _ = EnterWriteOperation("Collection creation");
             database.CreateCollection(session, name, options, cancellationToken);
         }
 
-        public Task CreateCollectionAsync(
+        public async Task CreateCollectionAsync(
             string name,
             CreateCollectionOptions? options = null,
             CancellationToken cancellationToken = default)
         {
-            VerifyWritePermission();
-            VerifyDryRunSimulable("Collection creation");
-            return database.CreateCollectionAsync(name, options, cancellationToken);
+            using var _ = EnterWriteOperation("Collection creation");
+            await database.CreateCollectionAsync(name, options, cancellationToken).ConfigureAwait(false);
         }
 
-        public Task CreateCollectionAsync(
+        public async Task CreateCollectionAsync(
             IClientSessionHandle session,
             string name,
             CreateCollectionOptions? options = null,
             CancellationToken cancellationToken = default)
         {
-            VerifyWritePermission();
-            VerifyDryRunSimulable("Collection creation");
-            return database.CreateCollectionAsync(session, name, options, cancellationToken);
+            using var _ = EnterWriteOperation("Collection creation");
+            await database.CreateCollectionAsync(session, name, options, cancellationToken).ConfigureAwait(false);
         }
 
         public void CreateView<TDocument, TResult>(
@@ -194,8 +193,7 @@ namespace Etherna.MongODM.Core.Utility
             CreateViewOptions<TDocument>? options = null,
             CancellationToken cancellationToken = default)
         {
-            VerifyWritePermission();
-            VerifyDryRunSimulable("View creation");
+            using var _ = EnterWriteOperation("View creation");
             database.CreateView(viewName, viewOn, pipeline, options, cancellationToken);
         }
 
@@ -207,24 +205,22 @@ namespace Etherna.MongODM.Core.Utility
             CreateViewOptions<TDocument>? options = null,
             CancellationToken cancellationToken = default)
         {
-            VerifyWritePermission();
-            VerifyDryRunSimulable("View creation");
+            using var _ = EnterWriteOperation("View creation");
             database.CreateView(session, viewName, viewOn, pipeline, options, cancellationToken);
         }
 
-        public Task CreateViewAsync<TDocument, TResult>(
+        public async Task CreateViewAsync<TDocument, TResult>(
             string viewName,
             string viewOn,
             PipelineDefinition<TDocument, TResult> pipeline,
             CreateViewOptions<TDocument>? options = null,
             CancellationToken cancellationToken = default)
         {
-            VerifyWritePermission();
-            VerifyDryRunSimulable("View creation");
-            return database.CreateViewAsync(viewName, viewOn, pipeline, options, cancellationToken);
+            using var _ = EnterWriteOperation("View creation");
+            await database.CreateViewAsync(viewName, viewOn, pipeline, options, cancellationToken).ConfigureAwait(false);
         }
 
-        public Task CreateViewAsync<TDocument, TResult>(
+        public async Task CreateViewAsync<TDocument, TResult>(
             IClientSessionHandle session,
             string viewName,
             string viewOn,
@@ -232,17 +228,15 @@ namespace Etherna.MongODM.Core.Utility
             CreateViewOptions<TDocument>? options = null,
             CancellationToken cancellationToken = default)
         {
-            VerifyWritePermission();
-            VerifyDryRunSimulable("View creation");
-            return database.CreateViewAsync(session, viewName, viewOn, pipeline, options, cancellationToken);
+            using var _ = EnterWriteOperation("View creation");
+            await database.CreateViewAsync(session, viewName, viewOn, pipeline, options, cancellationToken).ConfigureAwait(false);
         }
 
         public void DropCollection(
             string name,
             CancellationToken cancellationToken = default)
         {
-            VerifyWritePermission();
-            VerifyDryRunSimulable("Collection drop");
+            using var _ = EnterWriteOperation("Collection drop");
             database.DropCollection(name, cancellationToken);
         }
 
@@ -251,8 +245,7 @@ namespace Etherna.MongODM.Core.Utility
             DropCollectionOptions options,
             CancellationToken cancellationToken = default)
         {
-            VerifyWritePermission();
-            VerifyDryRunSimulable("Collection drop");
+            using var _ = EnterWriteOperation("Collection drop");
             database.DropCollection(name, options, cancellationToken);
         }
 
@@ -261,8 +254,7 @@ namespace Etherna.MongODM.Core.Utility
             string name,
             CancellationToken cancellationToken = default)
         {
-            VerifyWritePermission();
-            VerifyDryRunSimulable("Collection drop");
+            using var _ = EnterWriteOperation("Collection drop");
             database.DropCollection(session, name, cancellationToken);
         }
 
@@ -272,49 +264,44 @@ namespace Etherna.MongODM.Core.Utility
             DropCollectionOptions options,
             CancellationToken cancellationToken = default)
         {
-            VerifyWritePermission();
-            VerifyDryRunSimulable("Collection drop");
+            using var _ = EnterWriteOperation("Collection drop");
             database.DropCollection(session, name, options, cancellationToken);
         }
 
-        public Task DropCollectionAsync(
+        public async Task DropCollectionAsync(
             string name,
             CancellationToken cancellationToken = default)
         {
-            VerifyWritePermission();
-            VerifyDryRunSimulable("Collection drop");
-            return database.DropCollectionAsync(name, cancellationToken);
+            using var _ = EnterWriteOperation("Collection drop");
+            await database.DropCollectionAsync(name, cancellationToken).ConfigureAwait(false);
         }
 
-        public Task DropCollectionAsync(
+        public async Task DropCollectionAsync(
             string name,
             DropCollectionOptions options,
             CancellationToken cancellationToken = default)
         {
-            VerifyWritePermission();
-            VerifyDryRunSimulable("Collection drop");
-            return database.DropCollectionAsync(name, options, cancellationToken);
+            using var _ = EnterWriteOperation("Collection drop");
+            await database.DropCollectionAsync(name, options, cancellationToken).ConfigureAwait(false);
         }
 
-        public Task DropCollectionAsync(
+        public async Task DropCollectionAsync(
             IClientSessionHandle session,
             string name,
             CancellationToken cancellationToken = default)
         {
-            VerifyWritePermission();
-            VerifyDryRunSimulable("Collection drop");
-            return database.DropCollectionAsync(session, name, cancellationToken);
+            using var _ = EnterWriteOperation("Collection drop");
+            await database.DropCollectionAsync(session, name, cancellationToken).ConfigureAwait(false);
         }
 
-        public Task DropCollectionAsync(
+        public async Task DropCollectionAsync(
             IClientSessionHandle session,
             string name,
             DropCollectionOptions options,
             CancellationToken cancellationToken = default)
         {
-            VerifyWritePermission();
-            VerifyDryRunSimulable("Collection drop");
-            return database.DropCollectionAsync(session, name, options, cancellationToken);
+            using var _ = EnterWriteOperation("Collection drop");
+            await database.DropCollectionAsync(session, name, options, cancellationToken).ConfigureAwait(false);
         }
 
         public IMongoCollection<TDocument> GetCollection<TDocument>(
@@ -329,7 +316,7 @@ namespace Etherna.MongODM.Core.Utility
             ListCollectionNamesOptions? options = null,
             CancellationToken cancellationToken = default)
         {
-            VerifyReadPermission();
+            using var _ = EnterReadOperation();
             return database.ListCollectionNames(options, cancellationToken);
         }
 
@@ -338,32 +325,32 @@ namespace Etherna.MongODM.Core.Utility
             ListCollectionNamesOptions? options = null,
             CancellationToken cancellationToken = default)
         {
-            VerifyReadPermission();
+            using var _ = EnterReadOperation();
             return database.ListCollectionNames(session, options, cancellationToken);
         }
 
-        public Task<IAsyncCursor<string>> ListCollectionNamesAsync(
+        public async Task<IAsyncCursor<string>> ListCollectionNamesAsync(
             ListCollectionNamesOptions? options = null,
             CancellationToken cancellationToken = default)
         {
-            VerifyReadPermission();
-            return database.ListCollectionNamesAsync(options, cancellationToken);
+            using var _ = EnterReadOperation();
+            return await database.ListCollectionNamesAsync(options, cancellationToken).ConfigureAwait(false);
         }
 
-        public Task<IAsyncCursor<string>> ListCollectionNamesAsync(
+        public async Task<IAsyncCursor<string>> ListCollectionNamesAsync(
             IClientSessionHandle session,
             ListCollectionNamesOptions? options = null,
             CancellationToken cancellationToken = default)
         {
-            VerifyReadPermission();
-            return database.ListCollectionNamesAsync(session, options, cancellationToken);
+            using var _ = EnterReadOperation();
+            return await database.ListCollectionNamesAsync(session, options, cancellationToken).ConfigureAwait(false);
         }
 
         public IAsyncCursor<BsonDocument> ListCollections(
             ListCollectionsOptions? options = null,
             CancellationToken cancellationToken = default)
         {
-            VerifyReadPermission();
+            using var _ = EnterReadOperation();
             return database.ListCollections(options, cancellationToken);
         }
 
@@ -372,25 +359,25 @@ namespace Etherna.MongODM.Core.Utility
             ListCollectionsOptions? options = null,
             CancellationToken cancellationToken = default)
         {
-            VerifyReadPermission();
+            using var _ = EnterReadOperation();
             return database.ListCollections(session, options, cancellationToken);
         }
 
-        public Task<IAsyncCursor<BsonDocument>> ListCollectionsAsync(
+        public async Task<IAsyncCursor<BsonDocument>> ListCollectionsAsync(
             ListCollectionsOptions? options = null,
             CancellationToken cancellationToken = default)
         {
-            VerifyReadPermission();
-            return database.ListCollectionsAsync(options, cancellationToken);
+            using var _ = EnterReadOperation();
+            return await database.ListCollectionsAsync(options, cancellationToken).ConfigureAwait(false);
         }
 
-        public Task<IAsyncCursor<BsonDocument>> ListCollectionsAsync(
+        public async Task<IAsyncCursor<BsonDocument>> ListCollectionsAsync(
             IClientSessionHandle session,
             ListCollectionsOptions? options = null,
             CancellationToken cancellationToken = default)
         {
-            VerifyReadPermission();
-            return database.ListCollectionsAsync(session, options, cancellationToken);
+            using var _ = EnterReadOperation();
+            return await database.ListCollectionsAsync(session, options, cancellationToken).ConfigureAwait(false);
         }
 
         public void RenameCollection(
@@ -399,8 +386,7 @@ namespace Etherna.MongODM.Core.Utility
             RenameCollectionOptions? options = null,
             CancellationToken cancellationToken = default)
         {
-            VerifyWritePermission();
-            VerifyDryRunSimulable("Collection rename");
+            using var _ = EnterWriteOperation("Collection rename");
             database.RenameCollection(oldName, newName, options, cancellationToken);
         }
 
@@ -411,32 +397,29 @@ namespace Etherna.MongODM.Core.Utility
             RenameCollectionOptions? options = null,
             CancellationToken cancellationToken = default)
         {
-            VerifyWritePermission();
-            VerifyDryRunSimulable("Collection rename");
+            using var _ = EnterWriteOperation("Collection rename");
             database.RenameCollection(session, oldName, newName, options, cancellationToken);
         }
 
-        public Task RenameCollectionAsync(
+        public async Task RenameCollectionAsync(
             string oldName,
             string newName,
             RenameCollectionOptions? options = null,
             CancellationToken cancellationToken = default)
         {
-            VerifyWritePermission();
-            VerifyDryRunSimulable("Collection rename");
-            return database.RenameCollectionAsync(oldName, newName, options, cancellationToken);
+            using var _ = EnterWriteOperation("Collection rename");
+            await database.RenameCollectionAsync(oldName, newName, options, cancellationToken).ConfigureAwait(false);
         }
 
-        public Task RenameCollectionAsync(
+        public async Task RenameCollectionAsync(
             IClientSessionHandle session,
             string oldName,
             string newName,
             RenameCollectionOptions? options = null,
             CancellationToken cancellationToken = default)
         {
-            VerifyWritePermission();
-            VerifyDryRunSimulable("Collection rename");
-            return database.RenameCollectionAsync(session, oldName, newName, options, cancellationToken);
+            using var _ = EnterWriteOperation("Collection rename");
+            await database.RenameCollectionAsync(session, oldName, newName, options, cancellationToken).ConfigureAwait(false);
         }
 
         public TResult RunCommand<TResult>(
@@ -444,8 +427,7 @@ namespace Etherna.MongODM.Core.Utility
             ReadPreference? readPreference = null,
             CancellationToken cancellationToken = default)
         {
-            VerifyWritePermission();
-            VerifyDryRunSimulable("Database command");
+            using var _ = EnterWriteOperation("Database command");
             return database.RunCommand(command, readPreference, cancellationToken);
         }
 
@@ -455,30 +437,27 @@ namespace Etherna.MongODM.Core.Utility
             ReadPreference? readPreference = null,
             CancellationToken cancellationToken = default)
         {
-            VerifyWritePermission();
-            VerifyDryRunSimulable("Database command");
+            using var _ = EnterWriteOperation("Database command");
             return database.RunCommand(session, command, readPreference, cancellationToken);
         }
 
-        public Task<TResult> RunCommandAsync<TResult>(
+        public async Task<TResult> RunCommandAsync<TResult>(
             Command<TResult> command,
             ReadPreference? readPreference = null,
             CancellationToken cancellationToken = default)
         {
-            VerifyWritePermission();
-            VerifyDryRunSimulable("Database command");
-            return database.RunCommandAsync(command, readPreference, cancellationToken);
+            using var _ = EnterWriteOperation("Database command");
+            return await database.RunCommandAsync(command, readPreference, cancellationToken).ConfigureAwait(false);
         }
 
-        public Task<TResult> RunCommandAsync<TResult>(
+        public async Task<TResult> RunCommandAsync<TResult>(
             IClientSessionHandle session,
             Command<TResult> command,
             ReadPreference? readPreference = null,
             CancellationToken cancellationToken = default)
         {
-            VerifyWritePermission();
-            VerifyDryRunSimulable("Database command");
-            return database.RunCommandAsync(session, command, readPreference, cancellationToken);
+            using var _ = EnterWriteOperation("Database command");
+            return await database.RunCommandAsync(session, command, readPreference, cancellationToken).ConfigureAwait(false);
         }
 
         public IChangeStreamCursor<TResult> Watch<TResult>(
@@ -486,7 +465,7 @@ namespace Etherna.MongODM.Core.Utility
             ChangeStreamOptions? options = null,
             CancellationToken cancellationToken = default)
         {
-            VerifyReadPermission();
+            using var _ = EnterReadOperation();
             return database.Watch(pipeline, options, cancellationToken);
         }
 
@@ -496,27 +475,27 @@ namespace Etherna.MongODM.Core.Utility
             ChangeStreamOptions? options = null,
             CancellationToken cancellationToken = default)
         {
-            VerifyReadPermission();
+            using var _ = EnterReadOperation();
             return database.Watch(session, pipeline, options, cancellationToken);
         }
 
-        public Task<IChangeStreamCursor<TResult>> WatchAsync<TResult>(
+        public async Task<IChangeStreamCursor<TResult>> WatchAsync<TResult>(
             PipelineDefinition<ChangeStreamDocument<BsonDocument>, TResult> pipeline,
             ChangeStreamOptions? options = null,
             CancellationToken cancellationToken = default)
         {
-            VerifyReadPermission();
-            return database.WatchAsync(pipeline, options, cancellationToken);
+            using var _ = EnterReadOperation();
+            return await database.WatchAsync(pipeline, options, cancellationToken).ConfigureAwait(false);
         }
 
-        public Task<IChangeStreamCursor<TResult>> WatchAsync<TResult>(
+        public async Task<IChangeStreamCursor<TResult>> WatchAsync<TResult>(
             IClientSessionHandle session,
             PipelineDefinition<ChangeStreamDocument<BsonDocument>, TResult> pipeline,
             ChangeStreamOptions? options = null,
             CancellationToken cancellationToken = default)
         {
-            VerifyReadPermission();
-            return database.WatchAsync(session, pipeline, options, cancellationToken);
+            using var _ = EnterReadOperation();
+            return await database.WatchAsync(session, pipeline, options, cancellationToken).ConfigureAwait(false);
         }
 
         public IMongoDatabase WithReadConcern(ReadConcern readConcern) =>
@@ -529,7 +508,7 @@ namespace Etherna.MongODM.Core.Utility
             new LimitedAccessMongoDatabase(dbContextEngine, database.WithWriteConcern(writeConcern), isReadOnly);
 
         // Helpers.
-        private void VerifyAggregatePermission<TResult>(PipelineDefinition<NoPipelineInput, TResult> pipeline)
+        private InFlightOperationScope EnterAggregateOperation<TResult>(PipelineDefinition<NoPipelineInput, TResult> pipeline)
         {
             ArgumentNullException.ThrowIfNull(pipeline);
 
@@ -543,15 +522,55 @@ namespace Etherna.MongODM.Core.Utility
                 BsonSerializer.LookupSerializer<NoPipelineInput>(),
                 dbContextEngine.SerializerRegistry);
             var lastStageName = pipeline.Render(renderArgs).Documents.LastOrDefault()?.GetElement(0).Name;
-            if (lastStageName is "$out" or "$merge")
+            return lastStageName is "$out" or "$merge"
+                ? EnterWriteOperation("Aggregate to collection")
+                : EnterReadOperation();
+        }
+
+        /* Counting enters before the exclusive flags read, and the same flag read that
+         * admits the operation decides whether it counts, like on the guarded
+         * collections: denied operations and the ones admitted by an exclusive access
+         * allowance exit right away. */
+        private InFlightOperationScope EnterReadOperation()
+        {
+            inFlightOperations.EnterRead();
+            var isCounted = true;
+            if (dbContextEngine.IsExclusiveReadEnabled)
             {
-                VerifyWritePermission();
-                VerifyDryRunSimulable("Aggregate to collection");
+                inFlightOperations.ExitRead();
+                if (!ExclusiveAccessHandler.IsExclusiveAccessAllowed(dbContextEngine))
+                    throw new UnauthorizedAccessException("Read access is not allowed");
+                isCounted = false;
             }
-            else
+            return new InFlightOperationScope(inFlightOperations, isWriteOperation: false, isCounted);
+        }
+
+        private InFlightOperationScope EnterWriteOperation(string dryRunDeniedOperation)
+        {
+            if (isReadOnly)
+                throw new UnauthorizedAccessException("Database is read only");
+
+            inFlightOperations.EnterWrite();
+            var isCounted = true;
+            if (dbContextEngine.IsExclusiveWriteEnabled)
             {
-                VerifyReadPermission();
+                inFlightOperations.ExitWrite();
+                if (!ExclusiveAccessHandler.IsExclusiveAccessAllowed(dbContextEngine))
+                    throw new UnauthorizedAccessException("Write access is not allowed");
+                isCounted = false;
             }
+            var scope = new InFlightOperationScope(inFlightOperations, isWriteOperation: true, isCounted);
+
+            try
+            {
+                VerifyDryRunSimulable(dryRunDeniedOperation);
+            }
+            catch
+            {
+                scope.Dispose();
+                throw;
+            }
+            return scope;
         }
 
         private void VerifyDryRunSimulable(string operationDescription)
@@ -559,23 +578,6 @@ namespace Etherna.MongODM.Core.Utility
             if (dbContextEngine.ExecutionContext.Items is not null &&
                 DryRunHandler.IsDryRunEnabled(dbContextEngine.ExecutionContext))
                 throw new InvalidOperationException($"{operationDescription} can't be simulated by a dry run");
-        }
-
-        private void VerifyReadPermission()
-        {
-            if (dbContextEngine.IsExclusiveReadEnabled &&
-                !ExclusiveAccessHandler.IsExclusiveAccessAllowed(dbContextEngine))
-                throw new UnauthorizedAccessException("Read access is not allowed");
-        }
-
-        private void VerifyWritePermission()
-        {
-            if (isReadOnly)
-                throw new UnauthorizedAccessException("Database is read only");
-
-            if (dbContextEngine.IsExclusiveWriteEnabled &&
-                !ExclusiveAccessHandler.IsExclusiveAccessAllowed(dbContextEngine))
-                throw new UnauthorizedAccessException("Write access is not allowed");
         }
     }
 }

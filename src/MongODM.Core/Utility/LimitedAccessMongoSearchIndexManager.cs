@@ -23,12 +23,13 @@ using System.Threading.Tasks;
 namespace Etherna.MongODM.Core.Utility
 {
     /* Search index management operations are writes on the collection: index creations,
-     * drops and updates verify the write permission of the owning collection, listings
-     * verify the read one. */
+     * drops and updates enter the write operation scope of the owning collection,
+     * listings the read one, counting in flight on the engine until they complete like
+     * any guarded operation. */
     internal sealed class LimitedAccessMongoSearchIndexManager(
         IMongoSearchIndexManager searchIndexManager,
-        Action verifyReadPermission,
-        Action verifyWritePermission)
+        Func<InFlightOperationScope> enterReadOperation,
+        Func<InFlightOperationScope> enterWriteOperation)
         : IMongoSearchIndexManager
     {
         // Methods.
@@ -36,23 +37,23 @@ namespace Etherna.MongODM.Core.Utility
             IEnumerable<CreateSearchIndexModel> models,
             CancellationToken cancellationToken = default)
         {
-            verifyWritePermission();
+            using var _ = enterWriteOperation();
             return searchIndexManager.CreateMany(models, cancellationToken);
         }
 
-        public Task<IEnumerable<string>> CreateManyAsync(
+        public async Task<IEnumerable<string>> CreateManyAsync(
             IEnumerable<CreateSearchIndexModel> models,
             CancellationToken cancellationToken = default)
         {
-            verifyWritePermission();
-            return searchIndexManager.CreateManyAsync(models, cancellationToken);
+            using var _ = enterWriteOperation();
+            return await searchIndexManager.CreateManyAsync(models, cancellationToken).ConfigureAwait(false);
         }
 
         public string CreateOne(
             CreateSearchIndexModel model,
             CancellationToken cancellationToken = default)
         {
-            verifyWritePermission();
+            using var _ = enterWriteOperation();
             return searchIndexManager.CreateOne(model, cancellationToken);
         }
 
@@ -61,41 +62,41 @@ namespace Etherna.MongODM.Core.Utility
             string? name = null,
             CancellationToken cancellationToken = default)
         {
-            verifyWritePermission();
+            using var _ = enterWriteOperation();
             return searchIndexManager.CreateOne(definition, name, cancellationToken);
         }
 
-        public Task<string> CreateOneAsync(
+        public async Task<string> CreateOneAsync(
             CreateSearchIndexModel model,
             CancellationToken cancellationToken = default)
         {
-            verifyWritePermission();
-            return searchIndexManager.CreateOneAsync(model, cancellationToken);
+            using var _ = enterWriteOperation();
+            return await searchIndexManager.CreateOneAsync(model, cancellationToken).ConfigureAwait(false);
         }
 
-        public Task<string> CreateOneAsync(
+        public async Task<string> CreateOneAsync(
             BsonDocument definition,
             string? name = null,
             CancellationToken cancellationToken = default)
         {
-            verifyWritePermission();
-            return searchIndexManager.CreateOneAsync(definition, name, cancellationToken);
+            using var _ = enterWriteOperation();
+            return await searchIndexManager.CreateOneAsync(definition, name, cancellationToken).ConfigureAwait(false);
         }
 
         public void DropOne(
             string name,
             CancellationToken cancellationToken = default)
         {
-            verifyWritePermission();
+            using var _ = enterWriteOperation();
             searchIndexManager.DropOne(name, cancellationToken);
         }
 
-        public Task DropOneAsync(
+        public async Task DropOneAsync(
             string name,
             CancellationToken cancellationToken = default)
         {
-            verifyWritePermission();
-            return searchIndexManager.DropOneAsync(name, cancellationToken);
+            using var _ = enterWriteOperation();
+            await searchIndexManager.DropOneAsync(name, cancellationToken).ConfigureAwait(false);
         }
 
         public IAsyncCursor<BsonDocument> List(
@@ -103,17 +104,17 @@ namespace Etherna.MongODM.Core.Utility
             AggregateOptions? aggregateOptions = null,
             CancellationToken cancellationToken = default)
         {
-            verifyReadPermission();
+            using var _ = enterReadOperation();
             return searchIndexManager.List(name, aggregateOptions, cancellationToken);
         }
 
-        public Task<IAsyncCursor<BsonDocument>> ListAsync(
+        public async Task<IAsyncCursor<BsonDocument>> ListAsync(
             string? name = null,
             AggregateOptions? aggregateOptions = null,
             CancellationToken cancellationToken = default)
         {
-            verifyReadPermission();
-            return searchIndexManager.ListAsync(name, aggregateOptions, cancellationToken);
+            using var _ = enterReadOperation();
+            return await searchIndexManager.ListAsync(name, aggregateOptions, cancellationToken).ConfigureAwait(false);
         }
 
         public void Update(
@@ -121,17 +122,17 @@ namespace Etherna.MongODM.Core.Utility
             BsonDocument definition,
             CancellationToken cancellationToken = default)
         {
-            verifyWritePermission();
+            using var _ = enterWriteOperation();
             searchIndexManager.Update(name, definition, cancellationToken);
         }
 
-        public Task UpdateAsync(
+        public async Task UpdateAsync(
             string name,
             BsonDocument definition,
             CancellationToken cancellationToken = default)
         {
-            verifyWritePermission();
-            return searchIndexManager.UpdateAsync(name, definition, cancellationToken);
+            using var _ = enterWriteOperation();
+            await searchIndexManager.UpdateAsync(name, definition, cancellationToken).ConfigureAwait(false);
         }
     }
 }
