@@ -6,7 +6,7 @@
 [![MongODM.AspNetCore.UI on NuGet](https://img.shields.io/nuget/v/MongODM.AspNetCore.UI?label=MongODM.AspNetCore.UI)](https://www.nuget.org/packages/MongODM.AspNetCore.UI/)
 [![MongODM.Hangfire on NuGet](https://img.shields.io/nuget/v/MongODM.Hangfire?label=MongODM.Hangfire)](https://www.nuget.org/packages/MongODM.Hangfire/)
 [![Target frameworks](https://img.shields.io/badge/.NET-8%20%7C%209%20%7C%2010-512BD4)](#supported-frameworks)
-[![License: LGPL-3.0](https://img.shields.io/badge/license-LGPL--3.0-blue)](COPYING-LESSER)
+[![License: LGPL-3.0](https://img.shields.io/badge/license-LGPL--3.0-blue)](COPYING.LESSER)
 
 **MongODM** is an **ODM framework** (Object-Documental Mapper) for **MongoDB** on .NET, oriented to
 ASP.NET Core applications. It maps domain objects to documents and takes care of the hard parts of a
@@ -458,5 +458,6 @@ For questions or problems please write an email to [info@etherna.io](mailto:info
 
 ![LGPL Logo](https://www.gnu.org/graphics/lgplv3-with-text-154x68.png)
 
-We use the GNU Lesser General Public License v3 (LGPL-3.0) for this project.
+We use the GNU Lesser General Public License v3 or later (SPDX `LGPL-3.0-or-later`) for this project:
+[COPYING.LESSER](COPYING.LESSER) adds the lesser terms to the GNU GPL v3 of [COPYING](COPYING).
 If you require a custom license, you can contact us at [license@etherna.io](mailto:license@etherna.io).

@@ -1,5 +1,13 @@
 <Project>
   <PropertyGroup>
+    <!-- The license of every package of the solution, declared once. The COPYING (GNU GPL) and
+         COPYING.LESSER (GNU LGPL) texts are packed as content, but a license file carries no
+         machine readable identifier: the SPDX expression is what the package registries publish and
+         what the license scanners of the consumers read. It says `-or-later` like the "or (at your
+         option) any later version" of the source headers, and it excludes PackageLicenseFile, which
+         NuGet accepts only as its alternative, and only for a single file. -->
+    <PackageLicenseExpression>LGPL-3.0-or-later</PackageLicenseExpression>
+
     <!-- Audit direct and transitive dependencies: the packages of this graph prone to receive
          advisories (the official driver stack pulled by Hangfire.Mongo, the Microsoft.Extensions
          floor of Hangfire.NetCore) are all transitive. Explicit, to not depend on the SDK default.
