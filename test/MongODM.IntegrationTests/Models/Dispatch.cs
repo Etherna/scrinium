@@ -12,42 +12,25 @@
 // You should have received a copy of the GNU Lesser General Public License along with MongODM.
 // If not, see <https://www.gnu.org/licenses/>.
 
-using Etherna.MongODM.Core.Domain.Models;
-using System.Collections.Generic;
-
 namespace Etherna.MongODM.IntegrationTests.Models
 {
-    public class Message : EntityModelBase<string>
+    /// <summary>
+    /// A value object embedded by <see cref="Message"/>, wrapping an <see cref="Envelope"/>
+    /// into one more document level: the account references it hosts are the fourth
+    /// member map level from the message root.
+    /// </summary>
+    public class Dispatch
     {
-        // Fields.
-        private List<AccountBase> _watchers = [];
-
         // Constructors.
-        public Message(string text, AccountBase author, AccountBase editor)
+        public Dispatch(Envelope envelope)
         {
-            Text = text;
-            Author = author;
-            Editor = editor;
+            Envelope = envelope;
         }
 #pragma warning disable CS8618 // Non-nullable field must contain a non-null value when exiting constructor. Consider declaring as nullable.
-        protected Message() { }
+        protected Dispatch() { }
 #pragma warning restore CS8618 // Non-nullable field must contain a non-null value when exiting constructor. Consider declaring as nullable.
 
         // Properties.
-        public virtual AccountBase Author { get; protected set; }
-        public virtual IEnumerable<Envelope> Batches { get; set; } = [];
-        public virtual Dispatch? Dispatch { get; set; }
-        public virtual AccountBase Editor { get; set; }
-        public virtual Envelope? Envelope { get; set; }
-        public virtual string Text { get; set; }
-        public virtual IEnumerable<AccountBase> Watchers
-        {
-            get => _watchers;
-            protected set => _watchers = [.. value ?? []];
-        }
-
-        // Methods.
-        public virtual void AddWatcher(AccountBase watcher) =>
-            _watchers.Add(watcher);
+        public virtual Envelope Envelope { get; protected set; }
     }
 }

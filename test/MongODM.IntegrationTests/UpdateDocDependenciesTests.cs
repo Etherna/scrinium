@@ -786,6 +786,42 @@ namespace Etherna.MongODM.IntegrationTests
             Assert.Equal("Web3Account", rawSecondBatchAlice["_t"].AsString);
         }
 
+        [Fact]
+        public async Task UpdatesSummariesHostedUnderThreeEmbeddingLevels()
+        {
+            /* MODM-248: a reference denormalized under three embedding levels (the
+             * dispatch, its envelope, the recipients collection) has its member maps at
+             * the fourth level from the document root: they register like the shallower
+             * ones, so the change of the referenced account refreshes the deep summary. */
+
+            // Setup.
+            using var contextHandler = AsyncLocalContext.Instance.InitAsyncLocalContext();
+            fixture.TaskRunner.ClearPending();
+
+            var alice = new Web2Account("alice");
+            await dbContext.Accounts.CreateAsync(alice);
+
+            var message = new Message("hello", alice, alice)
+            {
+                Dispatch = new Dispatch(new Envelope([alice]))
+            };
+            await dbContext.Messages.CreateAsync(message);
+
+            // Action: evolve alice into a web3 account, and execute the enqueued task.
+            var web3Alice = new Web3Account(alice, "0x0123456789");
+            await dbContext.Accounts.ReplaceAsync(web3Alice);
+            await fixture.TaskRunner.ExecutePendingAsync(fixture.ServiceProvider);
+
+            // Assert.
+            var messagesCollection = dbContext.Engine.Database.GetCollection<BsonDocument>("messages");
+            var rawMessage = await messagesCollection.Find(IdFilter(message.Id)).SingleAsync();
+
+            var rawAlice = rawMessage["Dispatch"]["Envelope"]["Recipients"].AsBsonArray.Single().AsBsonDocument;
+            Assert.Equal("Web3Account", rawAlice["_t"].AsString);
+            Assert.Equal("06d4e4c1-1e57-4bd0-a071-90fe7d3dbc2a", rawAlice["_s"].AsString); //summary schema of the new type
+            Assert.Equal("alice", rawAlice["Username"].AsString);
+        }
+
         // Helpers.
         private async Task<(long FindAndModify, long Update)> GetServerCommandCountersAsync()
         {
