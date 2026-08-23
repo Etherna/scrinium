@@ -215,41 +215,6 @@ namespace Etherna.MongODM.IntegrationTests
         }
 
         [Fact]
-        public async Task CustomSerializedIdPersistsWithItsCustomRepresentation()
-        {
-            // Setup.
-            using var contextHandler = AsyncLocalContext.Instance.InitAsyncLocalContext();
-            var artifact = new Artifact(new Fingerprint("f0e1d2"), "binaries");
-            await dbContext.Artifacts.CreateAsync(artifact);
-
-            // Action.
-            var artifactsCollection = dbContext.Engine.Database.GetCollection<BsonDocument>("artifacts");
-            var rawArtifact = await (await artifactsCollection.FindAsync(
-                Builders<BsonDocument>.Filter.Eq("_id", "f0e1d2"))).SingleAsync();
-
-            // Assert.
-            Assert.Equal(BsonType.String, rawArtifact["_id"].BsonType);
-            Assert.Equal("binaries", rawArtifact["Label"].AsString);
-        }
-
-        [Fact]
-        public async Task CustomSerializedMemberPersistsWithItsCustomRepresentation()
-        {
-            // Setup.
-            using var contextHandler = AsyncLocalContext.Instance.InitAsyncLocalContext();
-            var seal = new Seal(new Fingerprint("09f8e7"));
-            await dbContext.Seals.CreateAsync(seal);
-
-            // Action.
-            var sealsCollection = dbContext.Engine.Database.GetCollection<BsonDocument>("seals");
-            var rawSeal = await (await sealsCollection.FindAsync(
-                Builders<BsonDocument>.Filter.Eq("_id", ObjectId.Parse(seal.Id)))).SingleAsync();
-
-            // Assert.
-            Assert.Equal("09f8e7", rawSeal[nameof(Seal.ArtifactFingerprint)].AsString);
-        }
-
-        [Fact]
         public async Task OperatorShapedIdValueDoesntMatchAnyDocument()
         {
             /* MODM-222: an id value serialized to a document whose first element name

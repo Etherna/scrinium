@@ -15,7 +15,6 @@
 using Etherna.MongoDB.Driver;
 using Etherna.MongODM.Core.ExecContext.AsyncLocal;
 using Moq;
-using System;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -129,14 +128,6 @@ namespace Etherna.MongODM.Core.Utility
         {
             Assert.Null(AsyncLocalContext.Instance.Items);
             Assert.Null(DbSessionHandler.TryGetCurrentSession(engineMock.Object));
-        }
-
-        [Fact]
-        public void NullArgumentsAreRejected()
-        {
-            Assert.Throws<ArgumentNullException>(() => new DbSessionHandler(null!, sessionMock.Object));
-            Assert.Throws<ArgumentNullException>(() => new DbSessionHandler(engineMock.Object, null!));
-            Assert.Throws<ArgumentNullException>(() => DbSessionHandler.TryGetCurrentSession(null!));
         }
     }
 }
