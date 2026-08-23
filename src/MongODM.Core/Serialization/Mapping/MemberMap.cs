@@ -79,8 +79,12 @@ namespace Etherna.MongODM.Core.Serialization.Mapping
                 {
                     _internalElementPath = new List<ElementRepresentationBase>();
                     var serializer = Serializer;
+                    HashSet<IBsonSerializer> exploredSerializers = [];
 
-                    while (true)
+                    /* Serializers reporting themselves as their own item serializer (the driver
+                     * BsonValue one) close the walk, instead of appending element representations
+                     * without end. */
+                    while (exploredSerializers.Add(serializer))
                     {
                         /*
                          * Several serializers implements interfaces also if they are not able to provide required information.

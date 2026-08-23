@@ -282,6 +282,30 @@ namespace Etherna.MongODM.Core
         }
 
         [Fact]
+        public void BsonValueMemberInternalElementPathClosesOnTheSerializerCycle()
+        {
+            /* The driver BsonValue serializer reports itself as its own array item
+             * serializer: the internal element path walk closes on the repeated serializer,
+             * instead of appending array representations without end. */
+
+            // Setup.
+            mapRegistry.AddModelMap<BsonValueMemberModel>("bsonValueMemberSchemaId");
+            mapRegistry.Freeze();
+
+            var payloadMemberMap = mapRegistry.GetModelMap(typeof(BsonValueMemberModel))
+                .AllDescendingMemberMaps
+                .Single(mm => mm.BsonMemberMap.MemberName == nameof(BsonValueMemberModel.Payload));
+
+            // Action.
+            var internalElementPath = payloadMemberMap.InternalElementPath;
+
+            // Assert.
+            //the path stops at the containers crossed before the cycle
+            Assert.NotEmpty(internalElementPath);
+            Assert.All(internalElementPath, element => Assert.IsType<ArrayElementRepresentation>(element));
+        }
+
+        [Fact]
         public void FreezeAcceptsFabricatedSerializerCachedBeforeMapsRegistration()
         {
             /* MODM-176: a serializer lookup executed while maps are still registering
