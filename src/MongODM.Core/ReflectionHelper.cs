@@ -144,9 +144,11 @@ namespace Etherna.MongODM.Core
                         stackType = stackType.BaseType;
                     } while (stackType != null);
                     
+                    //materialize, so the registry entry is a snapshot instead of a query re-run at every enumeration
                     value = typeStack
                         .SelectMany(type => type.GetProperties(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance))
-                        .Where(prop => prop.CanWrite);
+                        .Where(prop => prop.CanWrite)
+                        .ToArray();
                     propertyRegistry.Add(objectType, value);
                 }
                 return value;
