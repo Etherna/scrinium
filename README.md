@@ -79,7 +79,9 @@ documents to complex application domains.
 - **ACID transactions** — automatic enlistment of repository operations, plus an implicit transaction
   around each unit of work flush on deployments supporting them.
 - **Versioned document schemas** — several schema versions coexist in the same collection, each document
-  recording the schema that wrote it.
+  recording the schema that wrote it. Documents written with the previous, deprecated name of that
+  element keep loading through it, and the admin dashboard counts and migrates them, collection by
+  collection.
 - **Data migrations** — configurable migration scripts between document schemas, skipping and reporting
   the failing documents, with a **dry run** mode simulating the migration without persisting anything.
   Migrations and seeding are serialized across every application instance connected to the database,
@@ -115,7 +117,7 @@ Five NuGet packages are published, from the full stack down to the single compon
 | [**MongODM**](https://www.nuget.org/packages/MongODM/) | **Start here.** Meta package wiring the full default stack (ASP.NET Core + Hangfire) behind a single entry point, `AddMongODMWithHangfire`. | `MongODM.AspNetCore`, `MongODM.Hangfire` |
 | [**MongODM.Core**](https://www.nuget.org/packages/MongODM.Core/) | The framework itself: mapping, serialization, repositories, db contexts, migrations and tasks. Host-agnostic, always pulled in transitively. Reference it directly for a non-ASP.NET host, or to implement custom components. | — |
 | [**MongODM.AspNetCore**](https://www.nuget.org/packages/MongODM.AspNetCore/) | ASP.NET Core integration with a task runner **other than Hangfire**: the `AddMongODM` configuration builder, db context registration, execution context wiring. | `MongODM.Core` |
-| [**MongODM.AspNetCore.UI**](https://www.nuget.org/packages/MongODM.AspNetCore.UI/) | The optional admin dashboard, a Razor Pages area monitoring db contexts, their model schemas, their document structures, their missing origin references, and running migrations. | `MongODM.AspNetCore` |
+| [**MongODM.AspNetCore.UI**](https://www.nuget.org/packages/MongODM.AspNetCore.UI/) | The optional admin dashboard, a Razor Pages area monitoring db contexts, their model schemas, their document structures, their missing origin references, their deprecated schema id elements, and running migrations. | `MongODM.AspNetCore` |
 | [**MongODM.Hangfire**](https://www.nuget.org/packages/MongODM.Hangfire/) | Scheduling MongODM's maintenance tasks on Hangfire. Pair it with `MongODM.AspNetCore` when you compose the stack yourself. | `MongODM.Core` |
 
 ## Installation

@@ -119,6 +119,13 @@ namespace Etherna.MongODM.Core.Migration
         { }
 
         // Properties.
+        /// <summary>
+        /// The documents to migrate, every one of them by default. It selects them on their
+        /// stored content, since a migration also addresses documents the current maps don't
+        /// shape anymore.
+        /// </summary>
+        public FilterDefinition<TModel> DocumentsFilter { get; init; } = FilterDefinition<TModel>.Empty;
+
         public override IRepository SourceRepository => _sourceRepository;
 
         // Methods.
@@ -156,7 +163,7 @@ namespace Etherna.MongODM.Core.Migration
                          * driver keeps alive for it: the server side idle timeout of a cursor
                          * only reaps the cursors without a session, so a long scan doesn't need
                          * to disable it. */
-                        await sourceCollection.Find(FilterDefinition<TModel>.Empty)
+                        await sourceCollection.Find(DocumentsFilter)
                             .As<BsonDocument>()
                             .ForEachAsync(async document =>
                             {

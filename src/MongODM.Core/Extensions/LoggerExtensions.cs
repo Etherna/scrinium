@@ -322,6 +322,12 @@ namespace Etherna.MongODM.Core.Extensions
                 new EventId(49, nameof(RepositoryCountedDocumentsBySchemaId)),
                 "Repository {RepositoryName} of DbContext {DbName} counted documents by schema id, found {SchemaIdsCount} schema ids");
 
+        private static readonly Action<ILogger, string, string, long, Exception> _repositoryCountedDeprecatedSchemaIdDocuments =
+            LoggerMessage.Define<string, string, long>(
+                LogLevel.Information,
+                new EventId(77, nameof(RepositoryCountedDeprecatedSchemaIdDocuments)),
+                "Repository {RepositoryName} of DbContext {DbName} counted {DocumentsCount} documents carrying the schema id with a deprecated element name");
+
         private static readonly Action<ILogger, string, string, long, Exception> _repositoryDeletedDocuments =
             LoggerMessage.Define<string, string, long>(
                 LogLevel.Information,
@@ -339,6 +345,12 @@ namespace Etherna.MongODM.Core.Extensions
                 LogLevel.Information,
                 new EventId(63, nameof(RepositoryFoundMissingOriginReferences)),
                 "Repository {RepositoryName} of DbContext {DbName} found {MissingOriginIdsCount} referenced ids with missing origin document");
+
+        private static readonly Action<ILogger, string, string, long, long, Exception> _repositoryMigratedDeprecatedSchemaIdDocuments =
+            LoggerMessage.Define<string, string, long, long>(
+                LogLevel.Information,
+                new EventId(78, nameof(RepositoryMigratedDeprecatedSchemaIdDocuments)),
+                "Repository {RepositoryName} of DbContext {DbName} migrated {MigratedDocumentsCount} documents carrying the schema id with a deprecated element name, {DocumentErrorsCount} failing");
 
         private static readonly Action<ILogger, string, string, Exception> _repositoryQueriedCollection =
             LoggerMessage.Define<string, string>(
@@ -606,6 +618,9 @@ namespace Etherna.MongODM.Core.Extensions
         public static void RepositoryCountedDocumentsBySchemaId(this ILogger logger, string repositoryName, string dbName, int schemaIdsCount) =>
             _repositoryCountedDocumentsBySchemaId(logger, repositoryName, dbName, schemaIdsCount, null!);
 
+        public static void RepositoryCountedDeprecatedSchemaIdDocuments(this ILogger logger, string repositoryName, string dbName, long documentsCount) =>
+            _repositoryCountedDeprecatedSchemaIdDocuments(logger, repositoryName, dbName, documentsCount, null!);
+
         public static void RepositoryCreatedDocument(this ILogger logger, string repositoryName, string dbName, string modelId) =>
             _repositoryCreatedDocument(logger, repositoryName, dbName, modelId, null!);
 
@@ -629,6 +644,9 @@ namespace Etherna.MongODM.Core.Extensions
 
         public static void RepositoryInitialized(this ILogger logger, string repositoryName, string dbName) =>
             _repositoryInitialized(logger, repositoryName, dbName, null!);
+
+        public static void RepositoryMigratedDeprecatedSchemaIdDocuments(this ILogger logger, string repositoryName, string dbName, long migratedDocumentsCount, long documentErrorsCount) =>
+            _repositoryMigratedDeprecatedSchemaIdDocuments(logger, repositoryName, dbName, migratedDocumentsCount, documentErrorsCount, null!);
 
         public static void RepositoryQueriedCollection(this ILogger logger, string repositoryName, string dbName) =>
             _repositoryQueriedCollection(logger, repositoryName, dbName, null!);

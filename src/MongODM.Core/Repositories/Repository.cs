@@ -21,6 +21,7 @@ using Etherna.MongODM.Core.Domain.Models;
 using Etherna.MongODM.Core.Exceptions;
 using Etherna.MongODM.Core.Extensions;
 using Etherna.MongODM.Core.FilterDefinition;
+using Etherna.MongODM.Core.Migration;
 using Etherna.MongODM.Core.ProxyModels;
 using Etherna.MongODM.Core.Serialization.Mapping;
 using Etherna.MongODM.Core.Utility;
@@ -84,6 +85,13 @@ namespace Etherna.MongODM.Core.Repositories
         public string Name => options.Name;
 
         // Private properties.
+        /* The documents carrying their model map schema id under the deprecated element name,
+         * recognized at their root: a document whose root carries the current element name was
+         * written whole by a version writing it, its sub-documents included, so the root tells
+         * the whole document. */
+        private static FilterDefinition<TModel> DeprecatedSchemaIdDocumentsFilter =>
+            new BsonDocument(ModelMapSchema.DeprecatedIdElementName, new BsonDocument("$exists", true));
+
         private IInternalDbContext InternalDbContext => (IInternalDbContext)DbContext;
 
         // Public methods.
@@ -135,14 +143,12 @@ namespace Etherna.MongODM.Core.Repositories
             CancellationToken cancellationToken = default) =>
             AccessToCollectionAsync(async collection =>
             {
-                // Read each document schema id from the current element name, or from a read fallback name.
-                var schemaIdOptions = DbContext.Engine.Options.ModelMapSchemaId;
-                var schemaIdExpression = schemaIdOptions.ReadFallbackElementNames
-                    .Prepend(schemaIdOptions.ElementName)
-                    .Reverse()
-                    .Aggregate(
-                        (BsonValue)BsonNull.Value,
-                        (fallbackValue, elementName) => new BsonDocument("$ifNull", new BsonArray { "$" + elementName, fallbackValue }));
+                // Read each document schema id from the current element name, or from the deprecated one.
+                var schemaIdExpression = new BsonDocument("$ifNull", new BsonArray
+                {
+                    "$" + ModelMapSchema.IdElementName,
+                    "$" + ModelMapSchema.DeprecatedIdElementName
+                });
 
                 var pipeline = PipelineDefinition<TModel, BsonDocument>.Create(
                     new BsonDocument("$group", new BsonDocument
@@ -177,6 +183,19 @@ namespace Etherna.MongODM.Core.Repositories
                 logger.RepositoryCountedDocumentsBySchemaId(Name, DbContext.Engine.Options.DbName, documentsBySchemaId.Count);
 
                 return ((IReadOnlyDictionary<string, long>)documentsBySchemaId, documentsWithoutSchemaId);
+            });
+
+        public virtual Task<long> CountDeprecatedSchemaIdDocumentsAsync(CancellationToken cancellationToken = default) =>
+            AccessToCollectionAsync(async collection =>
+            {
+                var documentsCount = await collection.CountDocumentsAsync(
+                    DeprecatedSchemaIdDocumentsFilter,
+                    cancellationToken: cancellationToken).ConfigureAwait(false);
+
+                logger.RepositoryCountedDeprecatedSchemaIdDocuments(
+                    Name, DbContext.Engine.Options.DbName, documentsCount);
+
+                return documentsCount;
             });
 
         public Task CreateAsync(object model, CancellationToken cancellationToken = default) =>
@@ -456,6 +475,32 @@ namespace Etherna.MongODM.Core.Repositories
                 return Task.FromResult(indexes.ToArray());
             });
 
+        public virtual async Task<MigrationResult> MigrateDeprecatedSchemaIdDocumentsAsync(
+            CancellationToken cancellationToken = default)
+        {
+            /* Fail fast on a read-only repository: every write on its collection is denied,
+             * so the migration could only fail at its first document. */
+            if (IsReadOnly)
+                throw new UnauthorizedAccessException(
+                    $"Can't migrate the deprecated schema id documents of collection \"{Name}\": the repository is read-only");
+
+            /* The repair is a document migration restricted to the documents to rewrite: each
+             * of them is deserialized and replaced whole with its current active schema, which
+             * writes the schema id under the current element name at every level. */
+            var migrationResult = await new DocumentMigration<TModel, TKey>(this)
+            {
+                DocumentsFilter = DeprecatedSchemaIdDocumentsFilter
+            }.MigrateAsync(cancellationToken: cancellationToken).ConfigureAwait(false);
+
+            logger.RepositoryMigratedDeprecatedSchemaIdDocuments(
+                Name,
+                DbContext.Engine.Options.DbName,
+                migrationResult.MigratedDocuments,
+                migrationResult.TotDocumentErrors);
+
+            return migrationResult;
+        }
+
         public string ModelIdToString(object model)
         {
             ArgumentNullException.ThrowIfNull(model);
@@ -703,7 +748,7 @@ namespace Etherna.MongODM.Core.Repositories
              * shaped by an older schema would mix schemas into a broken document. */
             var filter = new EntityIdEqFilterDefinition<TModel, TKey>(castedModel.Id) &
                 Builders<TModel>.Filter.Eq(
-                    new StringFieldDefinition<TModel, string>(DbContext.Engine.Options.ModelMapSchemaId.ElementName),
+                    new StringFieldDefinition<TModel, string>(ModelMapSchema.IdElementName),
                     activeSchema.Id);
 
             var updatedModel = await AccessToCollectionAsync(async collection =>

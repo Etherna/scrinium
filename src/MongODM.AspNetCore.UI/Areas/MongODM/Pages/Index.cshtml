@@ -1,5 +1,6 @@
 @page
 @using Etherna.MongODM.AspNetCore.UI.Areas.MongODM.Pages
+@using Etherna.MongODM.Core.Serialization.Mapping
 @using Etherna.MongODM.Core.Utility
 @using Microsoft.AspNetCore.Mvc.Razor
 @model IndexModel
@@ -141,7 +142,7 @@
                     @{
                         RenderInfoTip(@<text>
                             Every document carries the id of the model map schema shaping it, in the
-                            <code>@context.Engine.Options.ModelMapSchemaId.ElementName</code> element. Counting the
+                            <code>@ModelMapSchema.IdElementName</code> element. Counting the
                             documents of each schema id scans the whole collection, so it runs only on request, one
                             collection at a time: documents counted on a deprecated, unrecognized or missing schema
                             id are the ones a migration has to rewrite.
@@ -192,6 +193,48 @@
                 }
             </details>
 
+            <details class="deprecated-schema-ids">
+                <summary>Deprecated schema id elements</summary>
+
+                <p class="muted">
+                    The documents of each collection still carrying their schema id under a previous
+                    element name, and their migration.
+                    @{
+                        RenderInfoTip(@<text>
+                            Documents written before the schema id element took the
+                            <code>@ModelMapSchema.IdElementName</code> name carry it in the
+                            <code>@ModelMapSchema.DeprecatedIdElementName</code> element,
+                            still recognized while reading them: they keep loading, but that name is
+                            <strong>deprecated</strong>, and a future version of MongODM will stop reading it.
+                            Counting them scans the whole collection, so it runs
+                            only on request, one collection at a time. The migration rewrites each of those
+                            documents whole with its current active schema, so the current name carries the
+                            schema id at every level: a document written under the current name has every
+                            sub-document written under it too, and stays out. Failing documents are skipped and
+                            reported, keeping the content they have.
+                        </text>);
+                    }
+                </p>
+
+                @foreach (var repository in context.RepositoryRegistry.Repositories.OrderBy(r => r.Name))
+                {
+                    <div class="deprecated-schema-id-collection" data-repository="@repository.Name">
+                        <div class="deprecated-schema-id-collection-header">
+                            <h4>@repository.Name</h4>
+                            <span class="muted" data-role="deprecated-schema-id-count">&mdash;</span>
+                            <button type="button" class="btn secondary" data-role="count-deprecated-schema-ids">Count documents</button>
+                            @if (!repository.IsReadOnly)
+                            {
+                                <button type="button" class="btn" data-role="migrate-deprecated-schema-ids" hidden>Migrate documents</button>
+                            }
+                        </div>
+
+                        <p class="action-feedback" data-role="migration-outcome" hidden></p>
+                        <ul class="deprecated-schema-id-errors" data-role="migration-errors" hidden></ul>
+                    </div>
+                }
+            </details>
+
             <details class="document-structures">
                 <summary>Document structures</summary>
 
@@ -234,7 +277,7 @@
                                     </span>
                                 </summary>
 
-                                @{ RenderDocumentShape(shape, context.Engine.Options.ModelMapSchemaId.ElementName); }
+                                @{ RenderDocumentShape(shape, ModelMapSchema.IdElementName); }
                             </details>
                         }
                     </div>

@@ -32,6 +32,20 @@
             });
         });
 
+        /* Deprecated schema id elements are available on every db context too: the count is
+         * a read, and the migration control renders only on the writable repositories. */
+        Array.prototype.forEach.call(card.querySelectorAll('.deprecated-schema-id-collection'), function (collection) {
+            collection.querySelector('[data-role="count-deprecated-schema-ids"]').addEventListener('click', function () {
+                countDeprecatedSchemaIdDocuments(card, collection);
+            });
+
+            var migrateButton = collection.querySelector('[data-role="migrate-deprecated-schema-ids"]');
+            if (migrateButton)
+                migrateButton.addEventListener('click', function () {
+                    migrateDeprecatedSchemaIdDocuments(card, collection);
+                });
+        });
+
         /* Missing origin references are available on every db context too: the scan is a
          * read, and the removal control renders only on the writable repositories. */
         Array.prototype.forEach.call(card.querySelectorAll('.missing-origin-collection'), function (collection) {
@@ -262,6 +276,122 @@
         cell.className = documentsCount === 0
             ? 'numeric muted'
             : 'numeric' + (needsMigration ? ' needs-migration' : '');
+    }
+
+    function countDeprecatedSchemaIdDocuments(card, collection) {
+        var button = collection.querySelector('[data-role="count-deprecated-schema-ids"]');
+        var count = collection.querySelector('[data-role="deprecated-schema-id-count"]');
+        button.disabled = true;
+        button.textContent = 'Counting…';
+
+        fetch(baseUrl + '?handler=DeprecatedSchemaIdDocuments' +
+            '&identifier=' + encodeURIComponent(card.dataset.identifier) +
+            '&repositoryName=' + encodeURIComponent(collection.dataset.repository), {
+            headers: { 'Accept': 'application/json' }
+        }).then(function (response) {
+            if (!response.ok)
+                throw new Error('HTTP ' + response.status);
+            return response.json();
+        }).then(function (result) {
+            renderDeprecatedSchemaIdCount(collection, result);
+            button.textContent = result.isUnavailable ? 'Count documents' : 'Recount';
+        }).catch(function () {
+            count.textContent = '—';
+            count.className = 'muted';
+            button.textContent = 'Count failed, retry';
+        }).then(function () {
+            button.disabled = false;
+        });
+    }
+
+    function renderDeprecatedSchemaIdCount(collection, result) {
+        var count = collection.querySelector('[data-role="deprecated-schema-id-count"]');
+        var migrateButton = collection.querySelector('[data-role="migrate-deprecated-schema-ids"]');
+
+        if (result.isUnavailable) {
+            count.textContent = 'Unavailable: an exclusive access is running';
+            count.className = 'muted';
+        } else if (result.documentsCount === 0) {
+            count.textContent = 'No document to migrate';
+            count.className = 'muted';
+        } else {
+            count.textContent = result.documentsCount.toLocaleString() + ' documents to migrate';
+            count.className = 'deprecated-schema-id-documents';
+        }
+
+        if (migrateButton)
+            migrateButton.hidden = result.isUnavailable || result.documentsCount === 0;
+    }
+
+    function migrateDeprecatedSchemaIdDocuments(card, collection) {
+        var repository = collection.dataset.repository;
+        if (!window.confirm('Migrate the documents of "' + repository + '" carrying a deprecated schema id element?\n\n' +
+            'The collection is scanned again, and every document carrying the schema id under a deprecated ' +
+            'element name is rewritten whole with its current active schema. Failing documents are skipped ' +
+            'and reported, keeping the content they have.'))
+            return;
+
+        var migrateButton = collection.querySelector('[data-role="migrate-deprecated-schema-ids"]');
+        var outcome = collection.querySelector('[data-role="migration-outcome"]');
+        var errors = collection.querySelector('[data-role="migration-errors"]');
+        migrateButton.disabled = true;
+        outcome.hidden = true;
+        errors.hidden = true;
+
+        fetch(baseUrl + '?handler=MigrateDeprecatedSchemaIdDocuments', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'RequestVerificationToken': antiforgeryToken
+            },
+            body: new URLSearchParams({
+                identifier: card.dataset.identifier,
+                repositoryName: repository
+            })
+        }).then(function (response) {
+            //a migration rejected by the server reports its reason in the body, with an error status
+            return response.json().then(function (result) {
+                if (!response.ok && !result.error)
+                    throw new Error('HTTP ' + response.status);
+                return result;
+            });
+        }).then(function (result) {
+            renderDeprecatedSchemaIdMigration(collection, result);
+
+            //recount to render the migrated state
+            countDeprecatedSchemaIdDocuments(card, collection);
+        }).catch(function () {
+            outcome.textContent = 'Migration request failed.';
+            outcome.hidden = false;
+        }).then(function () {
+            migrateButton.disabled = false;
+        });
+    }
+
+    function renderDeprecatedSchemaIdMigration(collection, result) {
+        var outcome = collection.querySelector('[data-role="migration-outcome"]');
+        var errors = collection.querySelector('[data-role="migration-errors"]');
+        errors.innerHTML = '';
+
+        var message = '';
+        if (result.migratedDocumentsCount !== undefined)
+            message = 'Migrated ' + result.migratedDocumentsCount.toLocaleString() + ' documents.';
+        if (result.documentErrorsCount)
+            message += ' ' + result.documentErrorsCount.toLocaleString() + ' documents failed and were skipped.';
+        if (result.error)
+            message = (message + ' ' + result.error).trim();
+        outcome.textContent = message;
+        outcome.hidden = false;
+
+        //the failing documents reported by the migration, listing capped by the server
+        (result.documentErrors || []).forEach(function (documentError) {
+            var errorItem = document.createElement('li');
+            /* The error message quotes the exception that failed the document, so it can carry
+             * document content: it must keep landing on textContent, never on innerHTML. */
+            errorItem.textContent = documentError.documentId + ' — ' + documentError.message;
+            errors.appendChild(errorItem);
+        });
+        errors.hidden = errors.childElementCount === 0;
     }
 
     function scanMissingOriginReferences(card, collection) {

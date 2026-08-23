@@ -185,7 +185,7 @@ namespace Etherna.MongODM.Core.Serialization.Serializers
             var bsonDocument = BsonDocumentSerializer.Instance.Deserialize(context, args);
 
             //get model map schema id
-            var schemaId = ModelMapSchemaIdHelper.ExtractSchemaId(bsonDocument, dbContextEngine.Options.ModelMapSchemaId);
+            var schemaId = ModelMapSchemaIdHelper.ExtractSchemaId(bsonDocument);
 
             // Initialize localContext.
             using var bsonReader = new BsonDocumentReader(bsonDocument);
@@ -370,8 +370,8 @@ namespace Etherna.MongODM.Core.Serialization.Serializers
 
             // Add additional data.
             //add model map schema id
-            if (bsonDocument.Contains(dbContextEngine.Options.ModelMapSchemaId.ElementName))
-                bsonDocument.Remove(dbContextEngine.Options.ModelMapSchemaId.ElementName);
+            if (bsonDocument.Contains(ModelMapSchema.IdElementName))
+                bsonDocument.Remove(ModelMapSchema.IdElementName);
             var schemaIdElement = Configuration.GetActiveSchemaIdBsonElement(actualType);
             bsonDocument.InsertAt(0, schemaIdElement);
 

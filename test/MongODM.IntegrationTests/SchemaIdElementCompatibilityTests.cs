@@ -50,10 +50,10 @@ namespace Etherna.MongODM.IntegrationTests
 
         // Tests.
         [Fact]
-        public async Task LoadsDocumentsCarryingAReadFallbackSchemaIdElementName()
+        public async Task LoadsDocumentsCarryingTheDeprecatedSchemaIdElementName()
         {
             /* MODM-153: the schema id element name is "_s"; documents written with the
-             * previous "_m" name keep loading through the read fallback element names,
+             * previous "_m" name keep loading through the deprecated element name,
              * without reporting the recognized element into extra elements. */
 
             // Setup.
@@ -80,10 +80,10 @@ namespace Etherna.MongODM.IntegrationTests
         }
 
         [Fact]
-        public async Task LoadsReferenceSummariesCarryingAReadFallbackSchemaIdElementName()
+        public async Task LoadsReferenceSummariesCarryingTheDeprecatedSchemaIdElementName()
         {
-            /* A reference sub-document resolves its summary schema through the read fallback
-             * element names too: without recognizing the element, only the reference id
+            /* A reference sub-document resolves its summary schema through the deprecated
+             * element name too: without recognizing the element, only the reference id
              * would deserialize, discarding the denormalized summary members. */
 
             // Setup.
@@ -116,7 +116,7 @@ namespace Etherna.MongODM.IntegrationTests
         [Fact]
         public async Task SavingChangesMigratesDocumentsToTheCurrentSchemaIdElementName()
         {
-            /* A document carrying its schema id under a read fallback element name can't
+            /* A document carrying its schema id under the deprecated element name can't
              * match the member level update guard on the current name: the save falls back
              * to a whole document replace, migrating the document to the current name. */
 

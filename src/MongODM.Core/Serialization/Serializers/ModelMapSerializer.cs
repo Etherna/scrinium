@@ -77,7 +77,7 @@ namespace Etherna.MongODM.Core.Serialization.Serializers
             var bsonDocument = BsonDocumentSerializer.Instance.Deserialize(context, args);
 
             //get model map schema id
-            var schemaId = ModelMapSchemaIdHelper.ExtractSchemaId(bsonDocument, dbContextEngine.Options.ModelMapSchemaId);
+            var schemaId = ModelMapSchemaIdHelper.ExtractSchemaId(bsonDocument);
 
             // Initialize localContext.
             using var bsonReader = new BsonDocumentReader(bsonDocument);
@@ -232,7 +232,7 @@ namespace Etherna.MongODM.Core.Serialization.Serializers
              * from bson class map serializer. In that case, the right schema id has already been set, and we
              * don't have to replace it with the one wrong of the basic collection model type.
              */
-            if (!bsonDocument.Contains(dbContextEngine.Options.ModelMapSchemaId.ElementName))
+            if (!bsonDocument.Contains(ModelMapSchema.IdElementName))
                 bsonDocument.InsertAt(0, dbContextEngine.MapRegistry.GetActiveSchemaIdBsonElement(actualType));
 
             // Serialize document.

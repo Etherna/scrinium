@@ -14,6 +14,7 @@
 
 using Etherna.MongoDB.Driver;
 using Etherna.MongODM.Core.Domain.Models;
+using Etherna.MongODM.Core.Migration;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -43,7 +44,7 @@ namespace Etherna.MongODM.Core.Repositories
 
         /// <summary>
         /// Count the collection documents grouped by their model map schema id, read from the
-        /// current schema id element name or from a read fallback name. Schema ids not
+        /// current schema id element name or from the deprecated one. Schema ids not
         /// registered on the db context report too.
         /// The schema id is not indexable for this grouping: the count always scans the whole
         /// collection, with a cost linear in its size. Prefer
@@ -54,6 +55,20 @@ namespace Etherna.MongODM.Core.Repositories
         /// Documents count by schema id, with the count of documents carrying no schema id element aside
         /// </returns>
         Task<(IReadOnlyDictionary<string, long> DocumentsBySchemaId, long DocumentsWithoutSchemaId)> CountDocumentsBySchemaIdAsync(
+            CancellationToken cancellationToken = default);
+
+        /// <summary>
+        /// Count the collection documents carrying their model map schema id under the
+        /// deprecated element name MongODM still recognizes
+        /// (<see cref="Serialization.Mapping.ModelMapSchema.DeprecatedIdElementName"/>), matched at
+        /// their root: a document whose root carries the current
+        /// element name was written whole by a version writing it, its sub-documents
+        /// included, so the root tells the whole document. The count scans the collection,
+        /// with a cost linear in its size, so it belongs to on demand diagnostics.
+        /// </summary>
+        /// <param name="cancellationToken">Cancellation token</param>
+        /// <returns>The documents count</returns>
+        Task<long> CountDeprecatedSchemaIdDocumentsAsync(
             CancellationToken cancellationToken = default);
 
         Task CreateAsync(
@@ -96,6 +111,22 @@ namespace Etherna.MongODM.Core.Repositories
 
         Task<object> FindOneAsync(
             object id,
+            CancellationToken cancellationToken = default);
+
+        /// <summary>
+        /// Migrate the collection documents carrying their model map schema id under a
+        /// deprecated element name, the ones <see cref="CountDeprecatedSchemaIdDocumentsAsync"/>
+        /// counts: each of them is deserialized and written back whole with its current active
+        /// schema, so the schema id lands under the current element name at every level of the
+        /// document. Renaming the element alone wouldn't be enough: a document can nest it as
+        /// deep as its sub-documents and reference summaries go. Failing documents are skipped
+        /// and reported, keeping the content they have, and the documents referencing the
+        /// migrated ones are not updated, like in any document migration.
+        /// </summary>
+        /// <param name="cancellationToken">Cancellation token</param>
+        /// <returns>The migration result, with the failing documents detailed</returns>
+        /// <exception cref="UnauthorizedAccessException">The repository is read-only</exception>
+        Task<MigrationResult> MigrateDeprecatedSchemaIdDocumentsAsync(
             CancellationToken cancellationToken = default);
 
         string ModelIdToString(object model);

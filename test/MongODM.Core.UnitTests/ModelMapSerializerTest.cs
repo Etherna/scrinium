@@ -84,7 +84,6 @@ namespace Etherna.MongODM.Core
         private readonly Mock<IDiscriminatorRegistry> discriminatorRegistryMock = new();
         private readonly Mock<ILogger> loggerMock = new();
         private readonly Mock<IModelMap> modelMapMock = new();
-        private readonly ModelMapSchemaIdOptions modelMapSchemaIdOptions = new();
         private readonly Mock<IMapRegistry> mapRegistryMock = new();
         private readonly Mock<ISerializerModifierAccessor> serializerModifierAccessorMock = new();
 
@@ -107,10 +106,10 @@ namespace Etherna.MongODM.Core
                 .Returns(true);
             dbContextEngineMock.Setup(c => c.ProxyGenerator.PurgeProxyType(It.IsAny<Type>()))
                 .Returns<Type>(t => t);
-            dbContextEngineMock.Setup(c => c.Options.ModelMapSchemaId)
-                .Returns(() => modelMapSchemaIdOptions);
             dbContextEngineMock.Setup(c => c.MapRegistry)
                 .Returns(() => mapRegistryMock.Object);
+            dbContextEngineMock.Setup(c => c.Options.DbName)
+                .Returns("testDb");
             dbContextEngineMock.Setup(c => c.SerializerModifierAccessor)
                 .Returns(() => serializerModifierAccessorMock.Object);
 
@@ -435,8 +434,8 @@ namespace Etherna.MongODM.Core
         public void DeserializeResolvesSchemaIdFromItsDocumentElement(string schemaIdElementName)
         {
             /* MODM-153: the schema id element name is "_s"; documents written with the
-             * previous "_m" name keep resolving their schema through the read fallback
-             * names. The recognized element is removed before the schema deserialization:
+             * previous "_m" name keep resolving their schema through the deprecated
+             * name. The recognized element is removed before the schema deserialization:
              * an unremoved element would fail it, not matching any mapped member. */
 
             // Setup.

@@ -46,8 +46,8 @@ namespace Etherna.MongODM.Core
                 .Returns(() => loggerMock.Object);
             dbContextEngineMock.Setup(e => e.MapRegistry)
                 .Returns(new MapRegistry());
-            dbContextEngineMock.Setup(e => e.Options.ModelMapSchemaId)
-                .Returns(new ModelMapSchemaIdOptions());
+            dbContextEngineMock.Setup(e => e.Options.DbName)
+                .Returns("testDb");
             dbContextEngineMock.Setup(e => e.ProxyGenerator.CreateInstance(It.IsAny<Type>(), It.IsAny<object[]>()))
                 .Returns<Type, object[]>((type, arguments) => Activator.CreateInstance(
                     type,

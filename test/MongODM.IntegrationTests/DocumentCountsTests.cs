@@ -52,7 +52,7 @@ namespace Etherna.MongODM.IntegrationTests
         public async Task CountsDocumentsGroupedBySchemaId()
         {
             /* MODM-204: a single server side scan groups the collection documents by their
-             * schema id, read from the current element name or from a read fallback name.
+             * schema id, read from the current element name or from the deprecated one.
              * Schema ids not registered on the db context report too, and documents without
              * any schema id element count aside: both identify documents needing attention. */
 
@@ -65,7 +65,7 @@ namespace Etherna.MongODM.IntegrationTests
             var posts = new[]
             {
                 new Post("title", "content"), //keeps the active schema id
-                new Post("title", "content"), //rewritten under the read fallback element name
+                new Post("title", "content"), //rewritten under the deprecated element name
                 new Post("title", "content"), //rewritten with a not registered schema id
                 new Post("title", "content")  //rewritten without any schema id element
             };
@@ -91,7 +91,7 @@ namespace Etherna.MongODM.IntegrationTests
             var (counts, withoutSchemaId) = await dbContext.Posts.CountDocumentsBySchemaIdAsync();
 
             // Assert.
-            //the fallback element name document groups with the active schema id ones
+            //the deprecated element name document groups with the active schema id ones
             Assert.Equal(
                 baselineCounts.GetValueOrDefault(activeSchemaId) + 2,
                 counts[activeSchemaId]);

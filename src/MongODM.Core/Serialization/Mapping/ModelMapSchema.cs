@@ -28,9 +28,22 @@ namespace Etherna.MongODM.Core.Serialization.Mapping
     public abstract class ModelMapSchema : FreezableConfig, IModelMapSchema
     {
         // Consts.
+        /// <summary>
+        /// Previous name of the document element carrying a schema id, still recognized
+        /// reading the documents written with it. Writes always use
+        /// <see cref="IdElementName"/>: a document read through the deprecated name migrates
+        /// to the current one with its next whole document write.
+        /// </summary>
+        public const string DeprecatedIdElementName = "_m";
+
         /* Sentinel id shared by all fallback schemas: it doesn't identify a schema
          * version on documents, and is reserved to them. */
         public const string FallbackId = "fallback";
+
+        /// <summary>
+        /// Name of the document element carrying the id of the schema that wrote the document.
+        /// </summary>
+        public const string IdElementName = "_s";
 
         // Fields.
         private readonly List<IMemberMap> _generatedMemberMaps = new();
