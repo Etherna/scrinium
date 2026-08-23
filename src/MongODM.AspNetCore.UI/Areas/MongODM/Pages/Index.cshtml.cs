@@ -162,6 +162,39 @@ namespace Etherna.MongODM.AspNetCore.UI.Areas.MongODM.Pages
         }
 
         /// <summary>
+        /// Count the documents of a single collection carrying their schema id under a
+        /// deprecated element name. This scans the whole collection, so it runs only on explicit
+        /// request, one collection at a time.
+        /// </summary>
+        public async Task<IActionResult> OnGetDeprecatedSchemaIdDocumentsAsync(string identifier, string repositoryName)
+        {
+            InitializePage();
+
+            var dbContext = DbContexts.FirstOrDefault(dbc => dbc.Engine.Identifier == identifier);
+            var repository = dbContext?.RepositoryRegistry.Repositories
+                .FirstOrDefault(repo => repo.Name == repositoryName);
+            if (repository is null)
+                return NotFound();
+
+            long? documentsCount = null;
+            try
+            {
+                documentsCount = await repository.CountDeprecatedSchemaIdDocumentsAsync().ConfigureAwait(false);
+            }
+            catch (UnauthorizedAccessException)
+            {
+                //an exclusive access (a running migration) denies reads on the collection
+            }
+
+            return new JsonResult(new
+            {
+                repository = repository.Name,
+                isUnavailable = documentsCount is null,
+                documentsCount
+            });
+        }
+
+        /// <summary>
         /// Find the references of a single collection pointing to missing origin documents.
         /// This reads every referenced id of the collection, so it runs only on explicit
         /// request, one collection at a time.
@@ -297,6 +330,55 @@ namespace Etherna.MongODM.AspNetCore.UI.Areas.MongODM.Pages
                 headers.ContentSecurityPolicy = ContentSecurityPolicy;
                 headers.XFrameOptions = "DENY";
             }
+        }
+
+        /// <summary>
+        /// Migrate the documents of a single collection carrying their schema id under a
+        /// deprecated element name: each of them is rewritten whole with its current active
+        /// schema. The collection is scanned again server side: the migration never trusts a
+        /// list of documents sent by the browser.
+        /// </summary>
+        public async Task<IActionResult> OnPostMigrateDeprecatedSchemaIdDocumentsAsync(string identifier, string repositoryName)
+        {
+            InitializePage();
+
+            var dbContext = DbContexts.FirstOrDefault(dbc => dbc.Engine.Identifier == identifier);
+            var repository = dbContext?.RepositoryRegistry.Repositories
+                .FirstOrDefault(repo => repo.Name == repositoryName);
+            if (repository is null)
+                return NotFound();
+
+            /* The page doesn't render the migration control on a read-only repository, but the
+             * request doesn't have to come from it. */
+            if (repository.IsReadOnly)
+                return BadRequest(new
+                {
+                    migrated = false,
+                    error = $"The repository \"{repository.Name}\" is read-only."
+                });
+
+            var migrationResult = await repository.MigrateDeprecatedSchemaIdDocumentsAsync().ConfigureAwait(false);
+
+            /* A migration reports what failed instead of throwing: an exclusive access denying
+             * the collection surfaces as the exception failing the whole scan. */
+            return new JsonResult(new
+            {
+                migrated = migrationResult.Succeded,
+                migratedDocumentsCount = migrationResult.MigratedDocuments,
+                documentErrorsCount = migrationResult.TotDocumentErrors,
+                //a capped listing: the errors count always reports the full amount
+                documentErrors = migrationResult.DocumentErrors.Select(documentError => new
+                {
+                    documentId = documentError.DocumentId,
+                    message = documentError.Message
+                }),
+                error = migrationResult.Exception switch
+                {
+                    UnauthorizedAccessException => "The collection is unavailable: an exclusive access is running.",
+                    { } exception => $"{exception.GetType().Name}: {exception.Message}",
+                    _ => null
+                }
+            });
         }
 
         /// <summary>

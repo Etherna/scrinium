@@ -20,6 +20,7 @@ using Etherna.MongODM.Core;
 using Etherna.MongODM.Core.Migration;
 using Etherna.MongODM.Core.Repositories;
 using Etherna.MongODM.Core.Serialization;
+using Etherna.MongODM.Core.Serialization.Mapping;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -70,7 +71,7 @@ namespace Etherna.MongODM.AspNetCoreSample.Persistence
             await Engine.Database.GetCollection<BsonDocument>(Cats.Name).UpdateManyAsync(
                 Builders<BsonDocument>.Filter.In("_id", previousSchemaCats.Select(cat => ObjectId.Parse(cat.Id))),
                 Builders<BsonDocument>.Update.Set(
-                    Engine.Options.ModelMapSchemaId.ElementName,
+                    ModelMapSchema.IdElementName,
                     CatMap.PreviousSchemaId));
 
             await base.SeedAsync();

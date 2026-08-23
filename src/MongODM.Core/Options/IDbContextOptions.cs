@@ -96,11 +96,6 @@ namespace Etherna.MongODM.Core.Options
         public int MigrationEvictEveryTotDocuments { get; }
 
         /// <summary>
-        /// Configuration of the document element carrying the model map schema id.
-        /// </summary>
-        public ModelMapSchemaIdOptions ModelMapSchemaId { get; }
-
-        /// <summary>
         /// How the engine build reacts to not propagated reference paths — reference id
         /// element paths with an unknown document key (a dictionary in document
         /// representation), that the dependencies propagation can't address: report a

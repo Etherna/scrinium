@@ -41,7 +41,6 @@ namespace Etherna.MongODM.Core.Options
         public bool IsReadOnly { get; set; }
         public int MigrationCallbackEveryTotDocuments { get; set; } = 500;
         public int MigrationEvictEveryTotDocuments { get; set; } = DocumentMigration.DefaultEvictEveryTotDocuments;
-        public ModelMapSchemaIdOptions ModelMapSchemaId { get; set; } = new();
         public ReactionMode NotPropagatedReferences { get; set; } = ReactionMode.Warn;
 
         // Methods.

@@ -307,7 +307,7 @@ namespace Etherna.MongODM.Core.Serialization.Mapping
                 activeSchemaIdBsonElement.Add(
                     modelMap.ModelType,
                     new BsonElement(
-                        dbContextEngine.Options.ModelMapSchemaId.ElementName,
+                        ModelMapSchema.IdElementName,
                         new BsonString(modelMap.ActiveSchema.Id)));
             }
 

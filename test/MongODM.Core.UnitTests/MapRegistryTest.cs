@@ -205,8 +205,6 @@ namespace Etherna.MongODM.Core
                 .Returns(new Mock<IDiscriminatorRegistry>().Object);
             dbContextEngineMock.Setup(e => e.Options.DbName)
                 .Returns("fakeDb");
-            dbContextEngineMock.Setup(e => e.Options.ModelMapSchemaId)
-                .Returns(new ModelMapSchemaIdOptions());
             dbContextEngineMock.Setup(e => e.Options.NotPropagatedReferences)
                 .Returns(ReactionMode.Warn); //the DbContextOptions default
             dbContextEngineMock.Setup(e => e.SerializerRegistry)

@@ -215,7 +215,7 @@ namespace Etherna.MongODM.Core.Serialization.Serializers
                 activeSchemaIdBsonElement.Add(
                     modelMap.ModelType,
                     new BsonElement(
-                        dbContextEngine.Options.ModelMapSchemaId.ElementName,
+                        ModelMapSchema.IdElementName,
                         new BsonString(modelMap.ActiveSchema.Id)));
 
                 // Generate default fallback serializers.

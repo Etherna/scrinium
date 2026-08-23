@@ -13,9 +13,8 @@
 // If not, see <https://www.gnu.org/licenses/>.
 
 using Etherna.MongoDB.Bson;
-using Etherna.MongODM.Core.Options;
+using Etherna.MongODM.Core.Serialization.Mapping;
 using System;
-using System.Linq;
 
 namespace Etherna.MongODM.Core.Serialization.Serializers
 {
@@ -24,22 +23,19 @@ namespace Etherna.MongODM.Core.Serialization.Serializers
         /// <summary>
         /// Extract the model map schema id from a deserialized document, removing every
         /// recognized schema id element so it doesn't report into extra elements. The current
-        /// element name takes precedence over the read fallback names, recognized on documents
+        /// element name takes precedence over the deprecated one, recognized on documents
         /// written with a previous element name.
         /// </summary>
         /// <param name="bsonDocument">The deserialized document</param>
-        /// <param name="options">The schema id element configuration</param>
         /// <returns>The schema id, or null when no element carries it</returns>
-        public static string? ExtractSchemaId(
-            BsonDocument bsonDocument,
-            ModelMapSchemaIdOptions options)
+        public static string? ExtractSchemaId(BsonDocument bsonDocument)
         {
             ArgumentNullException.ThrowIfNull(bsonDocument);
-            ArgumentNullException.ThrowIfNull(options);
 
             string? schemaId = null;
             var isFound = false;
-            foreach (var elementName in options.ReadFallbackElementNames.Prepend(options.ElementName))
+            string[] elementNames = [ModelMapSchema.IdElementName, ModelMapSchema.DeprecatedIdElementName];
+            foreach (var elementName in elementNames)
             {
                 if (!bsonDocument.TryGetElement(elementName, out var element))
                     continue;
