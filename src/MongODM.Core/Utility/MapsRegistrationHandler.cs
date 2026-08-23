@@ -13,7 +13,7 @@
 // If not, see <https://www.gnu.org/licenses/>.
 
 using Etherna.MongODM.Core.ExecContext;
-using Etherna.MongODM.Core.ExecContext.Exceptions;
+using Etherna.MongODM.Core.Extensions;
 using System;
 using System.Collections;
 using System.Collections.Generic;
@@ -38,13 +38,8 @@ namespace Etherna.MongODM.Core.Utility
         public MapsRegistrationHandler(IExecutionContext context)
         {
             ArgumentNullException.ThrowIfNull(context);
-            if (context.Items is null)
-                throw new ExecutionContextNotFoundException();
 
-            if (!context.Items.ContainsKey(HandlerKey))
-                context.Items.Add(HandlerKey, new List<MapsRegistrationHandler>());
-
-            requests = (ICollection<MapsRegistrationHandler>)context.Items[HandlerKey]!;
+            requests = context.GetOrAddItemsList<MapsRegistrationHandler>(HandlerKey);
 
             lock (((ICollection)requests).SyncRoot)
                 requests.Add(this);
@@ -69,10 +64,9 @@ namespace Etherna.MongODM.Core.Utility
             /* Invoked by the driver while it looks up the conventions of a class map, from any
              * flow of the process: without an execution context there is no MongODM registration
              * in progress, and reporting it is the answer, not an error. */
-            if (context.Items is null ||
-                !context.Items.TryGetValue(HandlerKey, out var requestsObj))
+            var requests = context.TryGetItemsList<MapsRegistrationHandler>(HandlerKey);
+            if (requests is null)
                 return false;
-            var requests = (ICollection<MapsRegistrationHandler>)requestsObj!;
 
             lock (((ICollection)requests).SyncRoot)
                 return requests.Count != 0;
