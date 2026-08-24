@@ -13,8 +13,6 @@
 // If not, see <https://www.gnu.org/licenses/>.
 
 using Etherna.MongoDB.Bson;
-using Etherna.MongoDB.Bson.IO;
-using Etherna.MongoDB.Bson.Serialization;
 using Etherna.MongoDB.Driver;
 using Etherna.MongODM.Core.Domain.Models;
 using Etherna.MongODM.Core.Extensions;
@@ -126,7 +124,7 @@ namespace Etherna.MongODM.Core.Tasks
                         .Max();
 
                     // Serialize the deleted id like the references store it.
-                    var deletedIdValue = SerializeReferencedId(representativeIdMemberMap, deletedModelId);
+                    var deletedIdValue = representativeIdMemberMap.Serializer.SerializeToBsonValue(deletedModelId);
 
                     await ((Task)propagateAsyncMethodInfo.Invoke(null,
                     [
@@ -189,18 +187,6 @@ namespace Etherna.MongODM.Core.Tasks
                 {
                     ArrayFilters = [new BsonDocumentArrayFilterDefinition<BsonDocument>(arrayFilter)]
                 }).ConfigureAwait(false);
-        }
-
-        private static BsonValue SerializeReferencedId(IMemberMap idMemberMap, object deletedModelId)
-        {
-            var document = new BsonDocument();
-            using var bsonWriter = new BsonDocumentWriter(document);
-            var context = BsonSerializationContext.CreateRoot(bsonWriter);
-            bsonWriter.WriteStartDocument();
-            bsonWriter.WriteName("id");
-            idMemberMap.Serializer.Serialize(context, deletedModelId);
-            bsonWriter.WriteEndDocument();
-            return document["id"];
         }
     }
 }

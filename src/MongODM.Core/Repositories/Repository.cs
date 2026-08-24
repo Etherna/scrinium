@@ -13,7 +13,6 @@
 // If not, see <https://www.gnu.org/licenses/>.
 
 using Etherna.MongoDB.Bson;
-using Etherna.MongoDB.Bson.IO;
 using Etherna.MongoDB.Bson.Serialization;
 using Etherna.MongoDB.Driver;
 using Etherna.MongoDB.Driver.Linq;
@@ -698,7 +697,7 @@ namespace Etherna.MongODM.Core.Repositories
                         {
                             var memberValue = memberMap.Getter(castedModel);
                             var currentValue = memberMap.ShouldSerialize(castedModel, memberValue)
-                                ? SerializeMemberValue(memberMap, memberValue)
+                                ? memberMap.GetSerializer().SerializeToBsonValue(memberValue)
                                 : null;
                             var modelDocumentValue = modelDocument.TryGetValue(memberMap.ElementName, out var bv) ? bv : null;
 
@@ -926,15 +925,7 @@ namespace Etherna.MongODM.Core.Repositories
                 var serializer = DbContext.Engine.MapRegistry.GetMappedSerializer(typeof(TModel));
                 
                 // Serialize model.
-                var modelBsonDoc = new BsonDocument();
-                using (var bsonWriter = new BsonDocumentWriter(modelBsonDoc))
-                {
-                    var context = BsonSerializationContext.CreateRoot(bsonWriter);
-                    bsonWriter.WriteStartDocument();
-                    bsonWriter.WriteName("model");
-                    serializer.Serialize(context, onInsertModel);
-                    bsonWriter.WriteEndDocument();
-                }
+                var onInsertDocument = serializer.SerializeToBsonValue(onInsertModel).AsBsonDocument;
 
                 // Update "update" definition with OnInsert instructions.
                 var updatedPaths = updatedFields
@@ -942,7 +933,7 @@ namespace Etherna.MongODM.Core.Repositories
                     .Select(f => f.FieldName.Split('.'))
                     .ToArray();
                 var onInsertUpdate = ComposeOnInsertFields(
-                        modelBsonDoc[0].AsBsonDocument.Elements.Where(element => element.Name != IdElementName),
+                        onInsertDocument.Elements.Where(element => element.Name != IdElementName),
                         null,
                         updatedPaths)
                     .Select(field => Builders<TModel>.Update.SetOnInsert(field.Name, field.Value))
@@ -1351,13 +1342,9 @@ namespace Etherna.MongODM.Core.Repositories
             using var newModelsCollector = new NewReferredModelsCollector(DbContext.Engine.ExecutionContext);
             using (new DbExecutionContextHandler(DbContext))
             using (InternalDbContext.SuppressChangeTracking())
-            using (var bsonWriter = new BsonDocumentWriter([]))
             {
-                var context = BsonSerializationContext.CreateRoot(bsonWriter);
-                bsonWriter.WriteStartDocument();
-                bsonWriter.WriteName("model");
-                serializer.Serialize(context, model);
-                bsonWriter.WriteEndDocument();
+                //the serialized document is discarded: the pass runs for the collector reports
+                _ = serializer.SerializeToBsonValue(model);
             }
             return newModelsCollector.Models;
         }
@@ -1440,18 +1427,6 @@ namespace Etherna.MongODM.Core.Repositories
             }
         }
 
-        private static BsonValue SerializeMemberValue(BsonMemberMap memberMap, object? memberValue)
-        {
-            var document = new BsonDocument();
-            using var bsonWriter = new BsonDocumentWriter(document);
-            var context = BsonSerializationContext.CreateRoot(bsonWriter);
-            bsonWriter.WriteStartDocument();
-            bsonWriter.WriteName("value");
-            memberMap.GetSerializer().Serialize(context, memberValue);
-            bsonWriter.WriteEndDocument();
-            return document["value"];
-        }
-
         /* A document written with an id that doesn't render as an addressable filter value
          * couldn't be found, updated or deleted afterwards: build the id filter of the
          * inserting model, refusing the write the same way every other operation refuses
@@ -1493,17 +1468,8 @@ namespace Etherna.MongODM.Core.Repositories
                 return null;
 
             //reading the model members to serialize must not flag it a change candidate.
-            var wrapper = new BsonDocument();
             using (InternalDbContext.SuppressChangeTracking())
-            using (var bsonWriter = new BsonDocumentWriter(wrapper))
-            {
-                var context = BsonSerializationContext.CreateRoot(bsonWriter);
-                bsonWriter.WriteStartDocument();
-                bsonWriter.WriteName("model");
-                serializer.Serialize(context, model);
-                bsonWriter.WriteEndDocument();
-            }
-            return wrapper["model"].AsBsonDocument;
+                return serializer.SerializeToBsonValue(model).AsBsonDocument;
         }
 
         // Protected virtual methods.
