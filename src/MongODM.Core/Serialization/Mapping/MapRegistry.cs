@@ -24,7 +24,6 @@ using Etherna.MongODM.Core.Utility;
 using Microsoft.Extensions.Logging;
 using System;
 using System.Collections.Generic;
-using System.Globalization;
 using System.Linq;
 using System.Reflection;
 
@@ -319,46 +318,6 @@ namespace Etherna.MongODM.Core.Serialization.Mapping
         }
 
         // Helpers.
-        private ModelMap CreateNewDefaultModelMap(Type modelType)
-        {
-            // Construct.
-            //model schema
-            var modelMapDefinition = typeof(ModelMap<>);
-            var modelMapType = modelMapDefinition.MakeGenericType(modelType);
-
-            var modelMap = (ModelMap)Activator.CreateInstance(
-                modelMapType,
-                dbContextEngine)!;          //IDbContextEngine dbContextEngine
-
-            //class map
-            var classMapDefinition = typeof(BsonClassMap<>);
-            var classMapType = classMapDefinition.MakeGenericType(modelType);
-
-            var classMap = (BsonClassMap)Activator.CreateInstance(classMapType)!;
-
-            //model map
-            var modelMapSchemaDefinition = typeof(ModelMapSchema<>);
-            var modelMapSchemaType = modelMapSchemaDefinition.MakeGenericType(modelType);
-
-            var activeModelMapSchema = (ModelMapSchema)Activator.CreateInstance(
-                modelMapSchemaType,
-                BindingFlags.NonPublic | BindingFlags.Instance,
-                null,
-                [
-                    Guid.NewGuid().ToString(), //string id
-                    classMap,                  //BsonClassMap<TModel> bsonClassMap
-                    null!,                     //string? baseSchemaId
-                    null!,                     //Func<IDbContext, TModel, Task<TModel>>? fixDeserializedModelFunc
-                    modelMap                   //IModelMap modelMap
-                ],
-                CultureInfo.InvariantCulture)!;
-
-            // Set active model map.
-            modelMap.ActiveSchema = activeModelMapSchema;
-
-            return modelMap;
-        }
-
         private static string GetMemberMapElementPath(IMemberMap memberMap) => memberMap.RenderElementPath(false, _ => ".$", _ => ".*");
 
         /* Class map serializers write the full document of their model: the driver ones
@@ -488,7 +447,7 @@ namespace Etherna.MongODM.Core.Serialization.Mapping
                     if (!_maps.TryGetValue(baseModelType, out IMap? baseMap))
                     {
                         // Create schema instance.
-                        baseMap = CreateNewDefaultModelMap(baseModelType);
+                        baseMap = ModelMap.CreateNewDefault(dbContextEngine, baseModelType);
 
                         // Register schema instance.
                         _maps.Add(baseModelType, baseMap);

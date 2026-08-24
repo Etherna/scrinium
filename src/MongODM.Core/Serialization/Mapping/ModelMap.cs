@@ -17,7 +17,9 @@ using Etherna.MongODM.Core.Serialization.Serializers;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
+using System.Globalization;
 using System.Linq;
+using System.Reflection;
 using System.Threading.Tasks;
 
 namespace Etherna.MongODM.Core.Serialization.Mapping
@@ -108,6 +110,41 @@ namespace Etherna.MongODM.Core.Serialization.Mapping
         }
 
         // Internal methods.
+        /// <summary>
+        /// Build the default model map of a type: an active schema with a generated id, over a
+        /// plain class map, without a base schema nor a post-load fix function.
+        /// </summary>
+        /// <param name="dbContextEngine">The db context engine owning the map</param>
+        /// <param name="modelType">The mapped model type</param>
+        /// <returns>The new model map</returns>
+        internal static ModelMap CreateNewDefault(IDbContextEngine dbContextEngine, Type modelType)
+        {
+            //model map
+            var modelMap = (ModelMap)Activator.CreateInstance(
+                typeof(ModelMap<>).MakeGenericType(modelType),
+                dbContextEngine)!;          //IDbContextEngine dbContextEngine
+
+            //class map
+            var classMap = (BsonClassMap)Activator.CreateInstance(
+                typeof(BsonClassMap<>).MakeGenericType(modelType))!;
+
+            //active schema
+            modelMap.ActiveSchema = (ModelMapSchema)Activator.CreateInstance(
+                typeof(ModelMapSchema<>).MakeGenericType(modelType),
+                BindingFlags.NonPublic | BindingFlags.Instance,
+                null,
+                [
+                    Guid.NewGuid().ToString(), //string id
+                    classMap,                  //BsonClassMap<TModel> bsonClassMap
+                    null!,                     //string? baseSchemaId
+                    null!,                     //Func<IDbContext, TModel, Task<TModel>>? fixDeserializedModelFunc
+                    modelMap                   //IModelMap modelMap
+                ],
+                CultureInfo.InvariantCulture)!;
+
+            return modelMap;
+        }
+
         internal void InitializeMemberMaps()
         {
             foreach (var schema in SchemasById.Values)
