@@ -244,19 +244,12 @@ namespace Etherna.MongODM.Core.Tasks
             var filter = new MemberMapEqFilterDefinition<TOriginModel, object>(idMemberMap, referencedModelId);
 
             // Define update operator.
-            var lastUndefinedArrayElement = subDocumentMemberMap.MemberMapPath
-                .SelectMany(mm => mm.InternalElementPath
-                    .OfType<ArrayElementRepresentation>()
-                    .Where(arrayElement => arrayElement.ItemIndex is null))
-                .LastOrDefault();
+            var lastUndefinedArrayElement = MemberMapRenderHelper.FindLastUndefinedArrayElement(subDocumentMemberMap);
 
             var update = Builders<TOriginModel>.Update.Set(
                 new MemberMapFieldDefinition<TOriginModel, BsonDocument>(
                     subDocumentMemberMap,
-                    undefArrayElement =>
-                        undefArrayElement != lastUndefinedArrayElement ? //if isn't the last array element with undefined index
-                        ".$[]" :                                         //select all array items
-                        ".$[idfilter]",                                  //else, filter in array items
+                    MemberMapRenderHelper.BuildArrayFilterFieldSelector(lastUndefinedArrayElement),
                     _ => throw new MongodmElementPathRenderingException("Can't render field with an unknown document key in path"),
                     referToFinalItem: true),
                 updatedSubDocument);
@@ -264,29 +257,8 @@ namespace Etherna.MongODM.Core.Tasks
             var arrayFilters = new List<ArrayFilterDefinition>();
             if (lastUndefinedArrayElement is not null)
                 arrayFilters.Add(new BsonDocumentArrayFilterDefinition<BsonDocument>(
-                    new BsonDocument($"idfilter{string.Join(".",
-                        idMemberMap.MemberMapPath
-                            .SkipWhile(mm => mm != lastUndefinedArrayElement.MemberMap) //take all final member maps in path from the last with undefined array index
-                            .Select(mm =>
-                            {
-                                //if is the last member map, render internal path only after the last undefined array index
-                                var internalElementPathToRender = mm.InternalElementPath;
-                                if (mm == lastUndefinedArrayElement.MemberMap)
-                                    internalElementPathToRender = internalElementPathToRender.Reverse()
-                                                                                             .TakeWhile(e => e != lastUndefinedArrayElement)
-                                                                                             .Reverse();
-
-                                var renderedInternalElementPath = MemberMapRenderHelper.RenderInternalItemElementPath(
-                                    internalElementPathToRender,
-                                    _ => throw new MongodmElementPathRenderingException("Can't exist arrays with undefined index here"),
-                                    _ => throw new MongodmElementPathRenderingException("Can't render field with an unknown document key in path"));
-
-                                var returnedString = mm != lastUndefinedArrayElement.MemberMap ?
-                                    mm.BsonMemberMap.ElementName + renderedInternalElementPath :
-                                    renderedInternalElementPath;
-
-                                return returnedString;
-                            }))}",
+                    new BsonDocument(
+                        MemberMapRenderHelper.RenderArrayFilterIdPath(idMemberMap, lastUndefinedArrayElement),
                         new BsonDocument("$eq", updatedSubDocument.GetValue(idMemberMap.BsonMemberMap.ElementName)))));
 
             // Exec update.

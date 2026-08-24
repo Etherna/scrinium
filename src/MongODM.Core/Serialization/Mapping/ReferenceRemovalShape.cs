@@ -27,9 +27,6 @@ namespace Etherna.MongODM.Core.Serialization.Mapping
     /// </summary>
     internal sealed class ReferenceRemovalShape
     {
-        // Consts.
-        private const string ArrayFilterName = "idfilter";
-
         // Fields.
         private readonly string? arrayFilterIdPath;
         private readonly string? pullFieldPath;
@@ -132,45 +129,17 @@ namespace Etherna.MongODM.Core.Serialization.Mapping
             else
             {
                 // The reference is a single valued element: removing it sets it to null.
-                /* Mirror the dependencies update task rendering: every array level above the
-                 * reference addresses all its positions, except the last one, filtered on the
-                 * items nesting the referenced id. */
-                var lastUndefinedArrayElement = referenceMemberMap.MemberMapPath
-                    .SelectMany(memberMap => memberMap.InternalElementPath
-                        .OfType<ArrayElementRepresentation>()
-                        .Where(arrayElement => arrayElement.ItemIndex is null))
-                    .LastOrDefault();
+                /* Every array level above the reference addresses all its positions, except
+                 * the last one, filtered on the items nesting the referenced id. */
+                var lastUndefinedArrayElement = MemberMapRenderHelper.FindLastUndefinedArrayElement(referenceMemberMap);
 
                 setFieldPath = referenceMemberMap.RenderElementPath(
                     referToFinalItem: true,
-                    undefArrayElement =>
-                        undefArrayElement != lastUndefinedArrayElement ?
-                        ".$[]" :
-                        $".$[{ArrayFilterName}]",
+                    MemberMapRenderHelper.BuildArrayFilterFieldSelector(lastUndefinedArrayElement),
                     _ => throw new MongodmElementPathRenderingException("Can't render field with an unknown document key in path"));
 
                 if (lastUndefinedArrayElement is not null)
-                    arrayFilterIdPath = $"{ArrayFilterName}{string.Join(".",
-                        idMemberMap.MemberMapPath
-                            .SkipWhile(memberMap => memberMap != lastUndefinedArrayElement.MemberMap)
-                            .Select(memberMap =>
-                            {
-                                //if is the member map hosting the filtered array, render internal path only after it
-                                var internalElementPathToRender = memberMap.InternalElementPath;
-                                if (memberMap == lastUndefinedArrayElement.MemberMap)
-                                    internalElementPathToRender = internalElementPathToRender.Reverse()
-                                                                                             .TakeWhile(element => element != lastUndefinedArrayElement)
-                                                                                             .Reverse();
-
-                                var renderedInternalElementPath = MemberMapRenderHelper.RenderInternalItemElementPath(
-                                    internalElementPathToRender,
-                                    _ => throw new MongodmElementPathRenderingException("Can't exist arrays with undefined index here"),
-                                    _ => throw new MongodmElementPathRenderingException("Can't render field with an unknown document key in path"));
-
-                                return memberMap != lastUndefinedArrayElement.MemberMap ?
-                                    memberMap.BsonMemberMap.ElementName + renderedInternalElementPath :
-                                    renderedInternalElementPath;
-                            }))}";
+                    arrayFilterIdPath = MemberMapRenderHelper.RenderArrayFilterIdPath(idMemberMap, lastUndefinedArrayElement);
             }
 
             return new ReferenceRemovalShape(
