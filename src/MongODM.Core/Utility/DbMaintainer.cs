@@ -63,8 +63,7 @@ namespace Etherna.MongODM.Core.Utility
             var deletedModelId = ((IEntityModel<TKey>)deletedModel).Id!;
 
             // Skip the propagation on a dry run: simulated writes don't alter any document.
-            if (dbContextEngine.ExecutionContext.Items is not null &&
-                DryRunHandler.IsDryRunEnabled(dbContextEngine.ExecutionContext))
+            if (DryRunHandler.IsDryRunEnabled(dbContextEngine.ExecutionContext))
             {
                 logger.DbMaintainerSkippedDependenciesDeleteOnDryRun(
                     dbContextEngine.Options.DbName,
@@ -196,8 +195,7 @@ namespace Etherna.MongODM.Core.Utility
                 throw new ArgumentException($"Model is not of type {nameof(IEntityModel<TKey>)}", nameof(updatedModel));
 
             // Skip the propagation on a dry run: simulated writes don't alter any document.
-            if (dbContextEngine.ExecutionContext.Items is not null &&
-                DryRunHandler.IsDryRunEnabled(dbContextEngine.ExecutionContext))
+            if (DryRunHandler.IsDryRunEnabled(dbContextEngine.ExecutionContext))
             {
                 logger.DbMaintainerSkippedDependenciesUpdateOnDryRun(
                     dbContextEngine.Options.DbName,

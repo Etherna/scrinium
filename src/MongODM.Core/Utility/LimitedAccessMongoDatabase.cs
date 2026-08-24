@@ -575,8 +575,7 @@ namespace Etherna.MongODM.Core.Utility
 
         private void VerifyDryRunSimulable(string operationDescription)
         {
-            if (dbContextEngine.ExecutionContext.Items is not null &&
-                DryRunHandler.IsDryRunEnabled(dbContextEngine.ExecutionContext))
+            if (DryRunHandler.IsDryRunEnabled(dbContextEngine.ExecutionContext))
                 throw new InvalidOperationException($"{operationDescription} can't be simulated by a dry run");
         }
     }

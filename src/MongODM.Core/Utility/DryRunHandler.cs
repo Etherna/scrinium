@@ -13,7 +13,6 @@
 // If not, see <https://www.gnu.org/licenses/>.
 
 using Etherna.MongODM.Core.ExecContext;
-using Etherna.MongODM.Core.ExecContext.Exceptions;
 using Etherna.MongODM.Core.Extensions;
 using System;
 using System.Collections;
@@ -52,9 +51,9 @@ namespace Etherna.MongODM.Core.Utility
         // Static methods.
         public static bool IsDryRunEnabled(IExecutionContext context)
         {
-            if (context.Items is null)
-                throw new ExecutionContextNotFoundException();
-
+            /* Invoked also from flows without an execution context, like any db operation run
+             * outside a MongODM scope: such a flow is not a dry run, and reporting it is the
+             * answer, not an error. */
             var requests = context.TryGetItemsList<DryRunHandler>(HandlerKey);
             if (requests is null)
                 return false;

@@ -1203,7 +1203,6 @@ namespace Etherna.MongODM.Core.Utility
         }
 
         private bool IsDryRun() =>
-            dbContextEngine.ExecutionContext.Items is not null &&
             DryRunHandler.IsDryRunEnabled(dbContextEngine.ExecutionContext);
 
         private BulkWriteResult<TDocument> SimulateBulkWrite(IEnumerable<WriteModel<TDocument>> requests)
