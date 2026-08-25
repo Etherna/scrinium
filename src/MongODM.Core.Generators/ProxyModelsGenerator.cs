@@ -95,13 +95,16 @@ namespace Etherna.MongODM.Core.Generators
         private static ProxyModelInfo BuildProxyModelInfo(INamedTypeSymbol classSymbol, Compilation compilation)
         {
             var methodAnalyzer = new AlteredMembersAnalyzer(classSymbol, compilation);
+            var entityInterface = classSymbol.AllInterfaces
+                .FirstOrDefault(i => i.IsGenericType && i.ConstructedFrom.ToDisplayString() == EntityModelInterfaceFullName + "<TKey>");
+            var keyType = entityInterface?.TypeArguments[0];
             var info = new ProxyModelInfo
             {
                 Accessibility = classSymbol.DeclaredAccessibility == Accessibility.Public ? "public" : "internal",
-                IdPropertyName = FindEntityIdProperty(classSymbol)?.Name ?? "Id",
-                KeyTypeIsNullable = FindEntityKeyType(classSymbol) is { } keyType &&
-                                    (keyType.IsReferenceType || keyType.NullableAnnotation == NullableAnnotation.Annotated ||
-                                     keyType.OriginalDefinition.SpecialType == SpecialType.System_Nullable_T),
+                IdPropertyName = FindEntityIdProperty(classSymbol, entityInterface)?.Name ?? "Id",
+                KeyTypeIsNullable = keyType is { IsReferenceType: true } or
+                                               { NullableAnnotation: NullableAnnotation.Annotated } or
+                                               { OriginalDefinition.SpecialType: SpecialType.System_Nullable_T },
                 ModelFullName = classSymbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
                 ModelName = classSymbol.Name,
                 Namespace = classSymbol.ContainingNamespace.IsGlobalNamespace ?
@@ -138,7 +141,7 @@ namespace Etherna.MongODM.Core.Generators
                                 info.WritableProperties.Add(BuildWritablePropertyInfo(property, type, classSymbol));
 
                             //accessible virtual properties get interception overrides
-                            if (IsOverridable(property, property.IsVirtual, property.IsOverride, property.IsSealed, property.DeclaredAccessibility))
+                            if (IsOverridable(property))
                                 info.OverriddenProperties.Add(BuildOverriddenPropertyInfo(property));
                             break;
 
@@ -147,7 +150,7 @@ namespace Etherna.MongODM.Core.Generators
                                 continue;
                             if (method.IsGenericMethod ||
                                 GetOverrideRoot(method).ContainingType.SpecialType == SpecialType.System_Object ||
-                                !IsOverridable(method, method.IsVirtual, method.IsOverride, method.IsSealed, method.DeclaredAccessibility))
+                                !IsOverridable(method))
                                 continue;
 
                             info.OverriddenMethods.Add(BuildOverriddenMethodInfo(method, methodAnalyzer));
@@ -165,13 +168,11 @@ namespace Etherna.MongODM.Core.Generators
             return info;
         }
 
-        private static IPropertySymbol? FindEntityIdProperty(INamedTypeSymbol classSymbol)
+        private static IPropertySymbol? FindEntityIdProperty(INamedTypeSymbol classSymbol, INamedTypeSymbol? entityInterface)
         {
             /* The identity property is the implicit implementation of the typed entity model
              * interface id. Models without it (or with an explicit implementation) fall back
              * to the "Id" name convention, like the lazy load emission does. */
-            var entityInterface = classSymbol.AllInterfaces
-                .FirstOrDefault(i => i.IsGenericType && i.ConstructedFrom.ToDisplayString() == EntityModelInterfaceFullName + "<TKey>");
             if (entityInterface?.GetMembers("Id").OfType<IPropertySymbol>().FirstOrDefault() is { } interfaceIdProperty &&
                 classSymbol.FindImplementationForInterfaceMember(interfaceIdProperty) is IPropertySymbol implementingProperty &&
                 implementingProperty.ExplicitInterfaceImplementations.IsEmpty)
@@ -179,20 +180,12 @@ namespace Etherna.MongODM.Core.Generators
             return null;
         }
 
-        private static ITypeSymbol? FindEntityKeyType(INamedTypeSymbol classSymbol) =>
-            classSymbol.AllInterfaces
-                .FirstOrDefault(i => i.IsGenericType && i.ConstructedFrom.ToDisplayString() == EntityModelInterfaceFullName + "<TKey>")?
-                .TypeArguments[0];
-
-        private static bool IsOverridable(
-            ISymbol member,
-            bool isVirtual,
-            bool isOverride,
-            bool isSealed,
-            Accessibility accessibility) =>
-            (isVirtual || (isOverride && !isSealed)) &&
-            accessibility is Accessibility.Public or Accessibility.Protected or Accessibility.ProtectedOrInternal &&
-            member.ContainingType.SpecialType != SpecialType.System_Object;
+        private static bool IsOverridable(ISymbol member) =>
+            member is
+            {
+                DeclaredAccessibility: Accessibility.Public or Accessibility.Protected or Accessibility.ProtectedOrInternal,
+                ContainingType.SpecialType: not SpecialType.System_Object
+            } and ({ IsVirtual: true } or { IsOverride: true, IsSealed: false });
 
         private static IMethodSymbol GetOverrideRoot(IMethodSymbol method)
         {
