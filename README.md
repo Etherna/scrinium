@@ -1,27 +1,30 @@
-# MongODM
+# Etherna Scrinium
 
-[![MongODM on NuGet](https://img.shields.io/nuget/v/MongODM?label=MongODM)](https://www.nuget.org/packages/MongODM/)
-[![MongODM.Core on NuGet](https://img.shields.io/nuget/v/MongODM.Core?label=MongODM.Core)](https://www.nuget.org/packages/MongODM.Core/)
-[![MongODM.AspNetCore on NuGet](https://img.shields.io/nuget/v/MongODM.AspNetCore?label=MongODM.AspNetCore)](https://www.nuget.org/packages/MongODM.AspNetCore/)
-[![MongODM.AspNetCore.UI on NuGet](https://img.shields.io/nuget/v/MongODM.AspNetCore.UI?label=MongODM.AspNetCore.UI)](https://www.nuget.org/packages/MongODM.AspNetCore.UI/)
-[![MongODM.Hangfire on NuGet](https://img.shields.io/nuget/v/MongODM.Hangfire?label=MongODM.Hangfire)](https://www.nuget.org/packages/MongODM.Hangfire/)
+> *A case for your documents.*
+
+[![Etherna.Scrinium on NuGet](https://img.shields.io/nuget/v/Etherna.Scrinium?label=Etherna.Scrinium)](https://www.nuget.org/packages/Etherna.Scrinium/)
+[![Etherna.Scrinium.Core on NuGet](https://img.shields.io/nuget/v/Etherna.Scrinium.Core?label=Etherna.Scrinium.Core)](https://www.nuget.org/packages/Etherna.Scrinium.Core/)
+[![Etherna.Scrinium.AspNetCore on NuGet](https://img.shields.io/nuget/v/Etherna.Scrinium.AspNetCore?label=Etherna.Scrinium.AspNetCore)](https://www.nuget.org/packages/Etherna.Scrinium.AspNetCore/)
+[![Etherna.Scrinium.AspNetCore.UI on NuGet](https://img.shields.io/nuget/v/Etherna.Scrinium.AspNetCore.UI?label=Etherna.Scrinium.AspNetCore.UI)](https://www.nuget.org/packages/Etherna.Scrinium.AspNetCore.UI/)
+[![Etherna.Scrinium.Hangfire on NuGet](https://img.shields.io/nuget/v/Etherna.Scrinium.Hangfire?label=Etherna.Scrinium.Hangfire)](https://www.nuget.org/packages/Etherna.Scrinium.Hangfire/)
 [![Target frameworks](https://img.shields.io/badge/.NET-8%20%7C%209%20%7C%2010-512BD4)](#supported-frameworks)
 [![License: LGPL-3.0](https://img.shields.io/badge/license-LGPL--3.0-blue)](COPYING.LESSER)
 
-**MongODM** is an **ODM framework** (Object-Documental Mapper) for **MongoDB** on .NET, oriented to
-ASP.NET Core applications. It maps domain objects to documents and takes care of the hard parts of a
-documental data layer: **denormalized references** between documents with **automatic dependency
-updates**, **versioned document schemas** coexisting in one collection, and **data migrations**.
+**Etherna Scrinium** (**Scrinium** for short) is an **ODM framework** (Object-Documental Mapper) for
+**MongoDB** on .NET, oriented to ASP.NET Core applications. It maps domain objects to documents and
+takes care of the hard parts of a documental data layer: **denormalized references** between documents
+with **automatic dependency updates**, **versioned document schemas** coexisting in one collection, and
+**data migrations**.
 
-MongODM is a set of **libraries**, not an application. Add it to your project to model a plain domain
+Scrinium is a set of **libraries**, not an application. Add it to your project to model a plain domain
 and get denormalized-document efficiency without maintaining the denormalization by hand.
 
-> **Status.** MongODM is pre-beta: new features are still being added and the public interface can
+> **Status.** Scrinium is pre-beta: new features are still being added and the public interface can
 > change between minor versions. Active use in production is discouraged at this stage.
 
 ## Contents
 
-- [Why MongODM](#why-mongodm)
+- [Why Scrinium](#why-scrinium)
 - [Features](#features)
 - [Packages](#packages)
 - [Installation](#installation)
@@ -42,7 +45,7 @@ and get denormalized-document efficiency without maintaining the denormalization
 - [Questions? Problems?](#questions-problems)
 - [License](#license)
 
-## Why MongODM
+## Why Scrinium
 
 Document databases are efficient because they let you **denormalize**: store together what you read
 together, and get a whole aggregate with a single read, without joins. That efficiency is usually paid
@@ -55,7 +58,7 @@ for at the application layer, where the same three problems keep coming back:
   decorated with explicit checks and conditions on loaded data.
 
 For these reasons document databases are often used as a plain CRUD storage layer, or dropped in favor
-of SQL as soon as the domain gets complex. MongODM removes that price: you model a plain domain,
+of SQL as soon as the domain gets complex. Scrinium removes that price: you model a plain domain,
 declare how it serializes, and the framework keeps denormalized copies in sync, serves versioned
 schemas side by side, and migrates documents on your terms — bringing the efficiency of denormalized
 documents to complex application domains.
@@ -114,24 +117,24 @@ Five NuGet packages are published, from the full stack down to the single compon
 
 | Package | Use it for | Depends on |
 | --- | --- | --- |
-| [**MongODM**](https://www.nuget.org/packages/MongODM/) | **Start here.** Meta package wiring the full default stack (ASP.NET Core + Hangfire) behind a single entry point, `AddScriniumWithHangfire`. | `MongODM.AspNetCore`, `MongODM.Hangfire` |
-| [**MongODM.Core**](https://www.nuget.org/packages/MongODM.Core/) | The framework itself: mapping, serialization, repositories, db contexts, migrations and tasks. Host-agnostic, always pulled in transitively. Reference it directly for a non-ASP.NET host, or to implement custom components. | — |
-| [**MongODM.AspNetCore**](https://www.nuget.org/packages/MongODM.AspNetCore/) | ASP.NET Core integration with a task runner **other than Hangfire**: the `AddScrinium` configuration builder, db context registration, execution context wiring. | `MongODM.Core` |
-| [**MongODM.AspNetCore.UI**](https://www.nuget.org/packages/MongODM.AspNetCore.UI/) | The optional admin dashboard, a Razor Pages area monitoring db contexts, their model schemas, their document structures, their missing origin references, their deprecated schema id elements, and running migrations. | `MongODM.AspNetCore` |
-| [**MongODM.Hangfire**](https://www.nuget.org/packages/MongODM.Hangfire/) | Scheduling MongODM's maintenance tasks on Hangfire. Pair it with `MongODM.AspNetCore` when you compose the stack yourself. | `MongODM.Core` |
+| [**Etherna.Scrinium**](https://www.nuget.org/packages/Etherna.Scrinium/) | **Start here.** Meta package wiring the full default stack (ASP.NET Core + Hangfire) behind a single entry point, `AddScriniumWithHangfire`. | `Etherna.Scrinium.AspNetCore`, `Etherna.Scrinium.Hangfire` |
+| [**Etherna.Scrinium.Core**](https://www.nuget.org/packages/Etherna.Scrinium.Core/) | The framework itself: mapping, serialization, repositories, db contexts, migrations and tasks. Host-agnostic, always pulled in transitively. Reference it directly for a non-ASP.NET host, or to implement custom components. | — |
+| [**Etherna.Scrinium.AspNetCore**](https://www.nuget.org/packages/Etherna.Scrinium.AspNetCore/) | ASP.NET Core integration with a task runner **other than Hangfire**: the `AddScrinium` configuration builder, db context registration, execution context wiring. | `Etherna.Scrinium.Core` |
+| [**Etherna.Scrinium.AspNetCore.UI**](https://www.nuget.org/packages/Etherna.Scrinium.AspNetCore.UI/) | The optional admin dashboard, a Razor Pages area monitoring db contexts, their model schemas, their document structures, their missing origin references, their deprecated schema id elements, and running migrations. | `Etherna.Scrinium.AspNetCore` |
+| [**Etherna.Scrinium.Hangfire**](https://www.nuget.org/packages/Etherna.Scrinium.Hangfire/) | Scheduling Scrinium's maintenance tasks on Hangfire. Pair it with `Etherna.Scrinium.AspNetCore` when you compose the stack yourself. | `Etherna.Scrinium.Core` |
 
 ## Installation
 
 ```bash
 # Standard ASP.NET Core app, with Hangfire running the background tasks:
-dotnet add package MongODM
+dotnet add package Etherna.Scrinium
 
 # Optional admin dashboard:
-dotnet add package MongODM.AspNetCore.UI
+dotnet add package Etherna.Scrinium.AspNetCore.UI
 ```
 
-`MongODM.AspNetCore`, `MongODM.Hangfire` and `MongODM.Core` come in transitively; add one of them
-directly only when you compose the stack yourself.
+`Etherna.Scrinium.AspNetCore`, `Etherna.Scrinium.Hangfire` and `Etherna.Scrinium.Core` come in
+transitively; add one of them directly only when you compose the stack yourself.
 
 ## Quick start
 
@@ -174,8 +177,8 @@ public class Cat : EntityModelBase<string>
 }
 ```
 
-Every member is `virtual`: MongODM subclasses persisted models with a **proxy generated at compile
-time** (a source generator shipped inside `MongODM.Core`) to provide lazy loading and change tracking.
+Every member is `virtual`: Scrinium subclasses persisted models with a **proxy generated at compile
+time** (a source generator shipped inside `Etherna.Scrinium.Core`) to provide lazy loading and change tracking.
 The protected parameterless constructor lets the serializer materialize an instance, and `Id` is left
 unset — the id generator configured by the map assigns it on insert.
 
@@ -214,7 +217,7 @@ class SampleModelMaps : IModelMapsCollector
 }
 ```
 
-Without the optional configuration argument, MongODM applies `AutoMap()`.
+Without the optional configuration argument, Scrinium applies `AutoMap()`.
 
 ### 3. Declare a db context
 
@@ -322,7 +325,7 @@ public class CatsService(ISampleDbContext dbContext)
 
 ### Reference another entity, keep it in sync
 
-This is MongODM's flagship feature: a referenced entity is stored once in its own collection, and every
+This is Scrinium's flagship feature: a referenced entity is stored once in its own collection, and every
 referencing document embeds a **summary** of it — its id plus the members you chose to denormalize.
 Give each cat an owner — a `Person Owner` member on `Cat` — and serialize it as a reference:
 
@@ -370,7 +373,7 @@ null.
 
 ## Documentation
 
-The complete documentation lives in the **[MongODM wiki](https://github.com/Etherna/scrinium/wiki)**:
+The complete documentation lives in the **[Scrinium wiki](https://github.com/Etherna/scrinium/wiki)**:
 first steps, startup and configuration, domain models and mapping, references and denormalization,
 versioned schemas, migrations, transactions, the admin dashboard, and an exceptions reference.
 
@@ -386,12 +389,12 @@ The libraries multi-target **.NET 8, 9 and 10**. Install them into any project o
 framework.
 
 The MongoDB driver they use is the **Etherna fork** (`Etherna.MongoDB.Driver`, namespaces
-`Etherna.MongoDB.*`), brought in with the packages: reference MongODM's packages, not the official
+`Etherna.MongoDB.*`), brought in with the packages: reference Scrinium's packages, not the official
 `MongoDB.*` ones.
 
 ## Building and testing
 
-MongODM builds with the standard .NET SDK:
+Scrinium builds with the standard .NET SDK:
 
 ```bash
 dotnet restore Scrinium.sln
@@ -423,7 +426,7 @@ src/
   Scrinium.AspNetCore.UI    admin dashboard, as a Razor Pages area (→ AspNetCore)
   Scrinium.Core             the framework: mapping, repositories, db contexts, migrations, tasks
   Scrinium.Core.Generators  source generator emitting the model proxies (packed inside Core)
-  Scrinium.Hangfire         task runner scheduling MongODM's tasks on Hangfire (→ Core)
+  Scrinium.Hangfire         task runner scheduling Scrinium's tasks on Hangfire (→ Core)
 test/
   Scrinium.AspNetCore.UI.UnitTests    admin dashboard tests, over an in-memory test host
   Scrinium.Core.UnitTests             xUnit + Moq unit tests of the core
