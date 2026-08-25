@@ -6,14 +6,15 @@
     <RootNamespace>Etherna.MongODM</RootNamespace>
     
     <Authors>Etherna SA</Authors>
-    <Description>Configuration package for MongODM using Asp.Net Core and Hangfire</Description>
+    <Description>Configuration package for Scrinium using Asp.Net Core and Hangfire</Description>
     
     <Nullable>enable</Nullable>
     <EnableNETAnalyzers>true</EnableNETAnalyzers>
     <AnalysisMode>AllEnabledByDefault</AnalysisMode>
     <IsAotCompatible>true</IsAotCompatible>
     
-    <RepositoryUrl>https://github.com/Etherna/mongodm</RepositoryUrl>
+    <PackageId>Etherna.Scrinium</PackageId>
+    <RepositoryUrl>https://github.com/Etherna/scrinium</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
     <PublishRepositoryUrl>true</PublishRepositoryUrl>
     <IncludeSymbols>true</IncludeSymbols>
@@ -38,8 +39,8 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\MongODM.AspNetCore\MongODM.AspNetCore.csproj" />
-    <ProjectReference Include="..\MongODM.Hangfire\MongODM.Hangfire.csproj" />
+    <ProjectReference Include="..\Scrinium.AspNetCore\Scrinium.AspNetCore.csproj" />
+    <ProjectReference Include="..\Scrinium.Hangfire\Scrinium.Hangfire.csproj" />
   </ItemGroup>
 
   <ItemGroup>

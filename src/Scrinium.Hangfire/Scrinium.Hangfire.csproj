@@ -12,7 +12,8 @@
     <EnableNETAnalyzers>true</EnableNETAnalyzers>
     <AnalysisMode>AllEnabledByDefault</AnalysisMode>
     
-    <RepositoryUrl>https://github.com/Etherna/mongodm</RepositoryUrl>
+    <PackageId>Etherna.Scrinium.Hangfire</PackageId>
+    <RepositoryUrl>https://github.com/Etherna/scrinium</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
     <PublishRepositoryUrl>true</PublishRepositoryUrl>
     <IncludeSymbols>true</IncludeSymbols>
@@ -37,7 +38,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\MongODM.Core\MongODM.Core.csproj" />
+    <ProjectReference Include="..\Scrinium.Core\Scrinium.Core.csproj" />
   </ItemGroup>
 
   <ItemGroup>

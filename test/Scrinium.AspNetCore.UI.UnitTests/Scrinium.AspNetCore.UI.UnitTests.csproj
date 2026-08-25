@@ -24,7 +24,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\src\MongODM.AspNetCore.UI\MongODM.AspNetCore.UI.csproj" />
+    <ProjectReference Include="..\..\src\Scrinium.AspNetCore.UI\Scrinium.AspNetCore.UI.csproj" />
   </ItemGroup>
 
 </Project>

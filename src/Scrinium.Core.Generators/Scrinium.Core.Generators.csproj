@@ -4,10 +4,10 @@
     <TargetFramework>netstandard2.0</TargetFramework>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <RootNamespace>Etherna.MongODM.Core.Generators</RootNamespace>
-    <AssemblyName>Etherna.MongODM.Core.Generators</AssemblyName>
+    <AssemblyName>Etherna.Scrinium.Core.Generators</AssemblyName>
 
     <Authors>Etherna SA</Authors>
-    <Description>Proxy models source generator for MongODM</Description>
+    <Description>Proxy models source generator for Scrinium</Description>
 
     <LangVersion>latest</LangVersion>
     <Nullable>enable</Nullable>

@@ -370,7 +370,7 @@ null.
 
 ## Documentation
 
-The complete documentation lives in the **[MongODM wiki](https://github.com/Etherna/mongodm/wiki)**:
+The complete documentation lives in the **[MongODM wiki](https://github.com/Etherna/scrinium/wiki)**:
 first steps, startup and configuration, domain models and mapping, references and denormalization,
 versioned schemas, migrations, transactions, the admin dashboard, and an exceptions reference.
 
@@ -394,9 +394,9 @@ The MongoDB driver they use is the **Etherna fork** (`Etherna.MongoDB.Driver`, n
 MongODM builds with the standard .NET SDK:
 
 ```bash
-dotnet restore MongODM.sln
-dotnet build   MongODM.sln -c Release   # compiles every target framework
-dotnet test    MongODM.sln -c Release   # runs the xUnit test projects
+dotnet restore Scrinium.sln
+dotnet build   Scrinium.sln -c Release   # compiles every target framework
+dotnet test    Scrinium.sln -c Release   # runs the xUnit test projects
 
 dotnet run --project samples/AspNetCoreSample   # the sample app, needs a local MongoDB
 ```
@@ -404,7 +404,7 @@ dotnet run --project samples/AspNetCoreSample   # the sample app, needs a local 
 `TreatWarningsAsErrors=true` and `AnalysisMode=AllEnabledByDefault` are enabled across the solution, so
 warnings break the build on every target framework. Because the libraries compile against the lowest
 target (`net8.0`), avoid APIs introduced only in a later framework — code can pass locally on `net10.0`
-yet fail the `net8.0` build. A green `dotnet build MongODM.sln` means all target frameworks compiled.
+yet fail the `net8.0` build. A green `dotnet build Scrinium.sln` means all target frameworks compiled.
 
 The integration tests need a real MongoDB instance supporting transactions: they use the
 `MONGODM_TEST_DB_URL` environment variable when set, otherwise they spawn a throwaway local `mongod`
@@ -418,19 +418,19 @@ Coding conventions and architecture notes live in [AGENTS.md](AGENTS.md).
 
 ```
 src/
-  MongODM                  meta package wiring the full stack (→ AspNetCore, Hangfire)
-  MongODM.AspNetCore       dependency injection integration for ASP.NET Core (→ Core)
-  MongODM.AspNetCore.UI    admin dashboard, as a Razor Pages area (→ AspNetCore)
-  MongODM.Core             the framework: mapping, repositories, db contexts, migrations, tasks
-  MongODM.Core.Generators  source generator emitting the model proxies (packed inside Core)
-  MongODM.Hangfire         task runner scheduling MongODM's tasks on Hangfire (→ Core)
+  Scrinium                  meta package wiring the full stack (→ AspNetCore, Hangfire)
+  Scrinium.AspNetCore       dependency injection integration for ASP.NET Core (→ Core)
+  Scrinium.AspNetCore.UI    admin dashboard, as a Razor Pages area (→ AspNetCore)
+  Scrinium.Core             the framework: mapping, repositories, db contexts, migrations, tasks
+  Scrinium.Core.Generators  source generator emitting the model proxies (packed inside Core)
+  Scrinium.Hangfire         task runner scheduling MongODM's tasks on Hangfire (→ Core)
 test/
-  MongODM.AspNetCore.UI.UnitTests    admin dashboard tests, over an in-memory test host
-  MongODM.Core.UnitTests             xUnit + Moq unit tests of the core
-  MongODM.Core.Generators.UnitTests  generator tests, running it in-memory on sample compilations
-  MongODM.IntegrationTests           end-to-end tests against a real MongoDB instance
+  Scrinium.AspNetCore.UI.UnitTests    admin dashboard tests, over an in-memory test host
+  Scrinium.Core.UnitTests             xUnit + Moq unit tests of the core
+  Scrinium.Core.Generators.UnitTests  generator tests, running it in-memory on sample compilations
+  Scrinium.IntegrationTests           end-to-end tests against a real MongoDB instance
 samples/
-  AspNetCoreSample         runnable demo web app (not packed)
+  AspNetCoreSample          runnable demo web app (not packed)
 ```
 
 ## Package repositories

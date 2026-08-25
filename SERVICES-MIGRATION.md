@@ -4,10 +4,11 @@ Guide for migrating the Etherna services (etherna-index, etherna-sso, etherna-ga
 
 ## Breaking changes summary (all services)
 
+- **Packages renamed by the Scrinium rebranding (MODM-199)**: package ids are `Etherna.Scrinium` / `Etherna.Scrinium.Core` / `Etherna.Scrinium.AspNetCore` / `Etherna.Scrinium.AspNetCore.UI` / `Etherna.Scrinium.Hangfire` (assemblies `Scrinium[.X].dll`) — update every `PackageReference` id; the `MongODM.*` ids stop at 0.24.0. The code namespaces stay `Etherna.MongODM.*` for now: this bullet gets amended when their own rename lands.
 - **Db contexts are SCOPED**: `AddDbContext` registers a keyed singleton `IDbContextEngine` per context type, plus a scoped `DbContext` instance per DI scope. Every consumer must be scoped/transient/per-request. A singleton receiving a db context in its constructor is a captive dependency: with scope validation it throws at first resolve, without it a context (and its identity map) is silently pinned for the process lifetime.
 - **`IDbContext` no longer extends `IDbContextEngine`**: engine members (`Client`, `Database`, `MapRegistry`, `ProxyGenerator`, `ExecutionContext`, `Options`, `SerializerRegistry`, exclusive access, `StartSessionAsync`, `GetMongoCollection`, `DbMaintainer`, `DbMigrationManager`...) moved behind `IDbContext.Engine`. Scope surface: repositories, `DbOperations`, `ChangedModelsList`, `SaveChangesAsync`, the identity map escape hatches (`TryGetLoadedModel`, `UnregisterLoadedModel`), seed/migration facades. The library plumbing (change candidate marking, loaded model registration, model document tracking, lazy load reaction hooks) is not on `IDbContext` at all: it lives on infrastructure interfaces implemented explicitly by `DbContext` (`IProxyModelsDbContext` for the generated proxies, the internal `IInternalDbContext` for serializers and repositories), so application code can't call it by accident.
 - **`DbCache`, `ClearCache`, `LoadedModels` removed**: replaced by the per-instance identity map (see semantics below). `LoadedModelsTracker` (interim API) also removed.
-- **`DbContext.Initialize(...)` and `IDisposable` on `DbContext` removed**: bootstrap is `BuildEngine` (owned by the caller) + `AttachToEngine`. See `test/MongODM.Core.UnitTests/DbContextTest.cs` for the standalone/test pattern.
+- **`DbContext.Initialize(...)` and `IDisposable` on `DbContext` removed**: bootstrap is `BuildEngine` (owned by the caller) + `AttachToEngine`. See `test/Scrinium.Core.UnitTests/DbContextTest.cs` for the standalone/test pattern.
 - **`IModelMapsCollector.Register(IDbContextEngine)`**: collectors receive the engine, not the context.
 - **`fixDeserializedModelFunc` signature**: `Func<IDbContext, TModel, Task<TModel>>` — receives the current scope as first parameter. Closures capturing the old `Register` context parameter must migrate (etherna-index `UnsuitableReportMap` does this).
 - **ExecutionContext library vendored**: namespaces are `Etherna.MongODM.Core.ExecContext[.AsyncLocal]`; the standalone `Etherna.ExecContext` package is gone.
@@ -57,7 +58,7 @@ Guide for migrating the Etherna services (etherna-index, etherna-sso, etherna-ga
 - Verify the DI lifetime of the two `AddDomainEvents` handlers receiving `ISharedDbContext`.
 
 ### Cross-cutting (all services)
-- **`DbContextMockHelper` in every test project must be rewritten**: `IDbDependencies.DbCache` setup and `dbContext.Initialize(...)` no longer exist. Reference pattern: `test/MongODM.Core.UnitTests/DbContextTest.cs` (build engine from mocked dependencies + `AttachToEngine`; `DisableCreationWithProxyTypes` now sits on the engine's proxy generator).
+- **`DbContextMockHelper` in every test project must be rewritten**: `IDbDependencies.DbCache` setup and `dbContext.Initialize(...)` no longer exist. Reference pattern: `test/Scrinium.Core.UnitTests/DbContextTest.cs` (build engine from mocked dependencies + `AttachToEngine`; `DisableCreationWithProxyTypes` now sits on the engine's proxy generator).
 - Scope validation: enable `ValidateScopes` also outside Development during the migration, to surface captive dependencies immediately.
 
 ## Live integration test checklist (before releasing app bumps)

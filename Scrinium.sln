@@ -7,13 +7,13 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{490DAED7-DAD
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "test", "test", "{CF1ABDEA-794F-4474-858D-BCB61F367D72}"
 EndProject
-Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "MongODM.Hangfire", "src\MongODM.Hangfire\MongODM.Hangfire.csproj", "{10897D0D-4898-4A4D-8D1E-B2435E93D9A1}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Scrinium.Hangfire", "src\Scrinium.Hangfire\Scrinium.Hangfire.csproj", "{10897D0D-4898-4A4D-8D1E-B2435E93D9A1}"
 EndProject
-Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "MongODM.AspNetCore", "src\MongODM.AspNetCore\MongODM.AspNetCore.csproj", "{6374F645-5D17-494E-9529-7F83426900B3}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Scrinium.AspNetCore", "src\Scrinium.AspNetCore\Scrinium.AspNetCore.csproj", "{6374F645-5D17-494E-9529-7F83426900B3}"
 EndProject
-Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "MongODM.Core", "src\MongODM.Core\MongODM.Core.csproj", "{4F2498A9-D60D-4D49-95B9-BC78EE2917B5}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Scrinium.Core", "src\Scrinium.Core\Scrinium.Core.csproj", "{4F2498A9-D60D-4D49-95B9-BC78EE2917B5}"
 EndProject
-Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "MongODM.Core.UnitTests", "test\MongODM.Core.UnitTests\MongODM.Core.UnitTests.csproj", "{50D6BEE5-54B5-43F3-BA92-6107AB6E311E}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Scrinium.Core.UnitTests", "test\Scrinium.Core.UnitTests\Scrinium.Core.UnitTests.csproj", "{50D6BEE5-54B5-43F3-BA92-6107AB6E311E}"
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution Items", "{03C64D98-FF9F-4760-AE82-203953FF4940}"
 	ProjectSection(SolutionItems) = preProject
@@ -26,9 +26,9 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution 
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "samples", "samples", "{00FD3F85-6217-4947-9D26-7B2E9A8920CF}"
 EndProject
-Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "MongODM", "src\MongODM\MongODM.csproj", "{0C53354C-B5F3-438A-A5EA-26C6F7E92E38}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Scrinium", "src\Scrinium\Scrinium.csproj", "{0C53354C-B5F3-438A-A5EA-26C6F7E92E38}"
 EndProject
-Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "MongODM.AspNetCore.UI", "src\MongODM.AspNetCore.UI\MongODM.AspNetCore.UI.csproj", "{A1821261-1FEE-430E-84CC-8D88867D4011}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Scrinium.AspNetCore.UI", "src\Scrinium.AspNetCore.UI\Scrinium.AspNetCore.UI.csproj", "{A1821261-1FEE-430E-84CC-8D88867D4011}"
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "AspNetCoreSample", "samples\AspNetCoreSample\AspNetCoreSample.csproj", "{E4DE982C-B684-40B0-A647-565363332BF3}"
 EndProject
@@ -38,13 +38,13 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "workflows", "workflows", "{
 		.github\workflows\nuget-stable-deploy.yml = .github\workflows\nuget-stable-deploy.yml
 	EndProjectSection
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MongODM.IntegrationTests", "test\MongODM.IntegrationTests\MongODM.IntegrationTests.csproj", "{8A0B3455-E579-43E2-80CE-398CD9276444}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Scrinium.IntegrationTests", "test\Scrinium.IntegrationTests\Scrinium.IntegrationTests.csproj", "{8A0B3455-E579-43E2-80CE-398CD9276444}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MongODM.Core.Generators", "src\MongODM.Core.Generators\MongODM.Core.Generators.csproj", "{7B4A36E9-141B-4E5F-BF30-73F6422F06CE}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Scrinium.Core.Generators", "src\Scrinium.Core.Generators\Scrinium.Core.Generators.csproj", "{7B4A36E9-141B-4E5F-BF30-73F6422F06CE}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MongODM.Core.Generators.UnitTests", "test\MongODM.Core.Generators.UnitTests\MongODM.Core.Generators.UnitTests.csproj", "{10B29627-A42D-4F2D-94CE-BE30DBA257AC}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Scrinium.Core.Generators.UnitTests", "test\Scrinium.Core.Generators.UnitTests\Scrinium.Core.Generators.UnitTests.csproj", "{10B29627-A42D-4F2D-94CE-BE30DBA257AC}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MongODM.AspNetCore.UI.UnitTests", "test\MongODM.AspNetCore.UI.UnitTests\MongODM.AspNetCore.UI.UnitTests.csproj", "{11F179F3-B6F9-4434-992A-4245D0F513E1}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Scrinium.AspNetCore.UI.UnitTests", "test\Scrinium.AspNetCore.UI.UnitTests\Scrinium.AspNetCore.UI.UnitTests.csproj", "{11F179F3-B6F9-4434-992A-4245D0F513E1}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
