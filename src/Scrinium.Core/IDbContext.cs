@@ -152,7 +152,7 @@ namespace Etherna.Scrinium.Core
         /// <summary>
         /// True if the model instance is outdated: its document changed type after the
         /// instance materialized, and any application interaction with it throws
-        /// <see cref="Exceptions.MongodmOutdatedModelTypeException"/>. Reload the model
+        /// <see cref="Exceptions.ScriniumOutdatedModelTypeException"/>. Reload the model
         /// from its repository to get the current type.
         /// </summary>
         /// <param name="model">The model to verify</param>
@@ -209,7 +209,7 @@ namespace Etherna.Scrinium.Core
         /// completes. It doesn't have to cover the seeding duration, since the lease is renewed
         /// in background while the seeding runs</param>
         /// <returns>True if seed has been executed. False otherwise</returns>
-        /// <exception cref="Exceptions.MongodmDbSeedingException">The seed failed, or the db
+        /// <exception cref="Exceptions.ScriniumDbSeedingException">The seed failed, or the db
         /// context lock stayed held by another owner for the whole wait timeout</exception>
         Task<bool> SeedIfNeededAsync(TimeSpan? lockWaitTimeout = null, TimeSpan? lockLeaseDuration = null);
 

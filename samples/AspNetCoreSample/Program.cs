@@ -48,7 +48,7 @@ namespace Etherna.Scrinium.AspNetCoreSample
             var sampleDbConnectionString = builder.Configuration.GetConnectionString("SampleDb")
                 ?? throw new InvalidOperationException("Missing ConnectionStrings:SampleDb configuration");
 
-            builder.Services.AddMongODMWithHangfire(hangfireOptions =>
+            builder.Services.AddScriniumWithHangfire(hangfireOptions =>
                 {
                     hangfireOptions.ConnectionString = hangfireDbConnectionString;
                 })
@@ -63,7 +63,7 @@ namespace Etherna.Scrinium.AspNetCoreSample
                     options.IsReadOnly = true;
                 });
 
-            builder.Services.AddMongODMAdminDashboard();
+            builder.Services.AddScriniumAdminDashboard();
 
             var app = builder.Build();
 

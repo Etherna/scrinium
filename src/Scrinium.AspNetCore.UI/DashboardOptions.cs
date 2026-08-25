@@ -39,6 +39,6 @@ namespace Etherna.Scrinium.AspNetCore.UI
         /// the same path. Left empty, it mounts the dashboard on the application root: what an
         /// application dedicated to it wants, and a collision with the pages of any other.
         /// </summary>
-        public string BasePath { get; set; } = "MongODM";
+        public string BasePath { get; set; } = "Scrinium";
     }
 }

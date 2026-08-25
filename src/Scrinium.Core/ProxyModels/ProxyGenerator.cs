@@ -126,7 +126,7 @@ namespace Etherna.Scrinium.Core.ProxyModels
                 proxyType :
                 throw new InvalidOperationException(
                     $"No generated proxy model exists for type {modelType.Name}: " +
-                    "its assembly must reference the MongODM proxy models source generator");
+                    "its assembly must reference the Scrinium proxy models source generator");
         }
     }
 }

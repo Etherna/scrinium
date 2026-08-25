@@ -54,13 +54,13 @@ namespace Etherna.Scrinium.Core
             repositoryMock.Setup(r => r.TryFindOneAsync("idVal", It.IsAny<CancellationToken>()))
                 .ReturnsAsync((object?)null);
             proxyModelsDbContextMock.Setup(c => c.OnMissingOriginDocument(It.IsAny<IEntityModel>()))
-                .Throws(new MongodmMissingOriginDocumentException());
+                .Throws(new ScriniumMissingOriginDocumentException());
 
             proxyModel.Id = "idVal";
             ((IReferenceable)proxyModel).SetAsSummary([], ReactionMode.Throw);
 
             // Action and assert.
-            Assert.Throws<MongodmMissingOriginDocumentException>(() => proxyModel.StringProp);
+            Assert.Throws<ScriniumMissingOriginDocumentException>(() => proxyModel.StringProp);
             //the denied load never gave up the summary state: the model keeps requiring its origin document
             Assert.True(((IReferenceable)proxyModel).IsSummary);
         }
@@ -274,12 +274,12 @@ namespace Etherna.Scrinium.Core
             // Assert.
             Assert.Equal(typeof(EvolvedFakeModel), ((IProxyModel)proxyModel).OutdatedModelType);
 
-            var getException = Assert.Throws<MongodmOutdatedModelTypeException>(() => proxyModel.StringProp);
+            var getException = Assert.Throws<ScriniumOutdatedModelTypeException>(() => proxyModel.StringProp);
             Assert.Contains("idVal", getException.Message, StringComparison.Ordinal);
             Assert.Contains($"loaded as type {nameof(FakeModel)}", getException.Message, StringComparison.Ordinal);
             Assert.Contains(nameof(EvolvedFakeModel), getException.Message, StringComparison.Ordinal);
 
-            Assert.Throws<MongodmOutdatedModelTypeException>(() => proxyModel.StringProp = "other");
+            Assert.Throws<ScriniumOutdatedModelTypeException>(() => proxyModel.StringProp = "other");
         }
 
         [Fact]

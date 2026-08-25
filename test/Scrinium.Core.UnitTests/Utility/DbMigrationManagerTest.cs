@@ -103,7 +103,7 @@ namespace Etherna.Scrinium.Core.Utility
             dbContextMock.Setup(c => c.DocumentMigrationList).Returns([docMigrationMock.Object]);
 
             // Action.
-            var migrationException = await Assert.ThrowsAsync<MongodmDbMigrationException>(() =>
+            var migrationException = await Assert.ThrowsAsync<ScriniumDbMigrationException>(() =>
                 dbMigrationManager.ExecuteDbContextMigrationAsync(dbContextMock.Object, "opId", throwOnErrors: true));
 
             // Assert.
@@ -160,7 +160,7 @@ namespace Etherna.Scrinium.Core.Utility
             dbContextMock.Setup(c => c.DocumentMigrationList).Returns([docMigrationMock.Object]);
 
             // Action.
-            var migrationException = await Assert.ThrowsAsync<MongodmDbMigrationException>(() =>
+            var migrationException = await Assert.ThrowsAsync<ScriniumDbMigrationException>(() =>
                 dbMigrationManager.ExecuteDbContextMigrationAsync(dbContextMock.Object, "opId", throwOnErrors: true));
 
             // Assert.
@@ -413,7 +413,7 @@ namespace Etherna.Scrinium.Core.Utility
             dbContextMock.Setup(c => c.DocumentMigrationList).Returns([docMigrationMock.Object]);
 
             // Action.
-            var migrationException = await Assert.ThrowsAsync<MongodmDbMigrationException>(() =>
+            var migrationException = await Assert.ThrowsAsync<ScriniumDbMigrationException>(() =>
                 dbMigrationManager.ExecuteDbContextMigrationAsync(dbContextMock.Object, "opId", throwOnErrors: true));
 
             // Assert.

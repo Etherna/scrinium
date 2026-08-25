@@ -22,17 +22,17 @@ namespace Etherna.Scrinium.Core.Exceptions
     /// instance is invalidated when a load finds the document with another type of its
     /// hierarchy. Reload the model from its repository to get the current type.
     /// </summary>
-    public class MongodmOutdatedModelTypeException : Exception
+    public class ScriniumOutdatedModelTypeException : Exception
     {
         // Constructors.
-        public MongodmOutdatedModelTypeException()
+        public ScriniumOutdatedModelTypeException()
         { }
 
-        public MongodmOutdatedModelTypeException(string message)
+        public ScriniumOutdatedModelTypeException(string message)
             : base(message)
         { }
 
-        public MongodmOutdatedModelTypeException(string message, Exception innerException)
+        public ScriniumOutdatedModelTypeException(string message, Exception innerException)
             : base(message, innerException)
         { }
     }

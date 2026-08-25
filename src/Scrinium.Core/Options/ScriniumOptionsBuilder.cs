@@ -17,7 +17,7 @@ using System.Collections.Generic;
 
 namespace Etherna.Scrinium.Core.Options
 {
-    public interface IMongODMOptionsBuilder
+    public interface IScriniumOptionsBuilder
     {
         void SetDbContextTypes(IEnumerable<Type> dbContextTypes);
     }

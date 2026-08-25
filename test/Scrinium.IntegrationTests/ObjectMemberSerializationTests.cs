@@ -69,7 +69,7 @@ namespace Etherna.Scrinium.IntegrationTests
             var dependencies = fixture.ServiceProvider.GetRequiredService<IDbDependencies>();
             var options = new DbContextOptions
             {
-                ConnectionString = $"{fixture.MongoDbUrl}/mongodm-it-interface-member"
+                ConnectionString = $"{fixture.MongoDbUrl}/scrinium-it-interface-member"
             };
 
             // Action.

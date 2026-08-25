@@ -26,13 +26,13 @@ namespace Etherna.Scrinium.Extensions
     public static class ServiceCollectionExtensions
     {
         // Methods.
-        public static IMongODMConfiguration AddMongODMWithHangfire(
+        public static IScriniumConfiguration AddScriniumWithHangfire(
             this IServiceCollection services,
             Action<HangfireOptions>? configureHangfireOptions = null,
-            Action<MongODMOptions>? configureMongODMOptions = null)
+            Action<ScriniumOptions>? configureScriniumOptions = null)
         {
             // Configure MongODM.
-            var conf = services.AddMongODM<HangfireTaskRunner>(configureMongODMOptions);
+            var conf = services.AddScrinium<HangfireTaskRunner>(configureScriniumOptions);
 
             // Configure Hangfire.
             var hangfireOptions = new HangfireOptions();
@@ -40,7 +40,7 @@ namespace Etherna.Scrinium.Extensions
 
             services.AddHangfire(options =>
             {
-                options.UseMongODM();
+                options.UseScrinium();
                 options.UseMongoStorage(hangfireOptions.ConnectionString, hangfireOptions.StorageOptions);
             });
 

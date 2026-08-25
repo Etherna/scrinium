@@ -114,9 +114,9 @@ Five NuGet packages are published, from the full stack down to the single compon
 
 | Package | Use it for | Depends on |
 | --- | --- | --- |
-| [**MongODM**](https://www.nuget.org/packages/MongODM/) | **Start here.** Meta package wiring the full default stack (ASP.NET Core + Hangfire) behind a single entry point, `AddMongODMWithHangfire`. | `MongODM.AspNetCore`, `MongODM.Hangfire` |
+| [**MongODM**](https://www.nuget.org/packages/MongODM/) | **Start here.** Meta package wiring the full default stack (ASP.NET Core + Hangfire) behind a single entry point, `AddScriniumWithHangfire`. | `MongODM.AspNetCore`, `MongODM.Hangfire` |
 | [**MongODM.Core**](https://www.nuget.org/packages/MongODM.Core/) | The framework itself: mapping, serialization, repositories, db contexts, migrations and tasks. Host-agnostic, always pulled in transitively. Reference it directly for a non-ASP.NET host, or to implement custom components. | — |
-| [**MongODM.AspNetCore**](https://www.nuget.org/packages/MongODM.AspNetCore/) | ASP.NET Core integration with a task runner **other than Hangfire**: the `AddMongODM` configuration builder, db context registration, execution context wiring. | `MongODM.Core` |
+| [**MongODM.AspNetCore**](https://www.nuget.org/packages/MongODM.AspNetCore/) | ASP.NET Core integration with a task runner **other than Hangfire**: the `AddScrinium` configuration builder, db context registration, execution context wiring. | `MongODM.Core` |
 | [**MongODM.AspNetCore.UI**](https://www.nuget.org/packages/MongODM.AspNetCore.UI/) | The optional admin dashboard, a Razor Pages area monitoring db contexts, their model schemas, their document structures, their missing origin references, their deprecated schema id elements, and running migrations. | `MongODM.AspNetCore` |
 | [**MongODM.Hangfire**](https://www.nuget.org/packages/MongODM.Hangfire/) | Scheduling MongODM's maintenance tasks on Hangfire. Pair it with `MongODM.AspNetCore` when you compose the stack yourself. | `MongODM.Core` |
 
@@ -256,7 +256,7 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddRazorPages();
 builder.Services.AddHangfireServer();
 
-builder.Services.AddMongODMWithHangfire(hangfireOptions =>
+builder.Services.AddScriniumWithHangfire(hangfireOptions =>
     {
         hangfireOptions.ConnectionString = builder.Configuration.GetConnectionString("HangfireDb")!;
     })
@@ -265,7 +265,7 @@ builder.Services.AddMongODMWithHangfire(hangfireOptions =>
         options.ConnectionString = builder.Configuration.GetConnectionString("SampleDb")!;
     });
 
-builder.Services.AddMongODMAdminDashboard();   // optional
+builder.Services.AddScriniumAdminDashboard();   // optional
 
 var app = builder.Build();
 
@@ -355,7 +355,7 @@ lazy-loads the full document from the person repository, or preload it explicitl
 `IDbContext.LoadValuesAsync`. If that person's document is deleted while cats keep referencing them,
 the load has nothing to read: by default it logs a warning and gives up the summary state, and the
 reference can declare otherwise with `config.MissingOriginDocument` — silent tolerance, or the strict
-`Throw` denying the load with `MongodmMissingOriginDocumentException`. Deleting a person **through
+`Throw` denying the load with `ScriniumMissingOriginDocumentException`. Deleting a person **through
 their repository** doesn't leave that state behind anyway: by default the reference is removed from
 every cat in background — single members set to null, array items pulled — and the reference can
 declare otherwise with `config.OriginDelete`: cascade the delete to the referencing documents, or
@@ -407,7 +407,7 @@ target (`net8.0`), avoid APIs introduced only in a later framework — code can 
 yet fail the `net8.0` build. A green `dotnet build Scrinium.sln` means all target frameworks compiled.
 
 The integration tests need a real MongoDB instance supporting transactions: they use the
-`MONGODM_TEST_DB_URL` environment variable when set, otherwise they spawn a throwaway local `mongod`
+`SCRINIUM_TEST_DB_URL` environment variable when set, otherwise they spawn a throwaway local `mongod`
 process as a single node replica set (the binary must be on `PATH`).
 
 Versions are computed by [GitVersion](https://gitversion.net/), there are no manual version bumps.

@@ -94,7 +94,7 @@ namespace Etherna.Scrinium.Core.Repositories
 
             var repositories = _repositoriesByModelType[modelType];
             if (repositories.Length > 1)
-                throw new MongodmAmbiguousRepositoryException(
+                throw new ScriniumAmbiguousRepositoryException(
                     $"Multiple repositories handle model type {modelType}: identify the origin repository explicitly");
 
             return repositories[0];

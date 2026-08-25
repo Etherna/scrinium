@@ -16,15 +16,15 @@ using System;
 
 namespace Etherna.Scrinium.Core.Exceptions
 {
-    public class MongodmInvalidEntityTypeException : Exception
+    public class ScriniumInvalidEntityTypeException : Exception
     {
-        public MongodmInvalidEntityTypeException()
+        public ScriniumInvalidEntityTypeException()
         { }
 
-        public MongodmInvalidEntityTypeException(string message) : base(message)
+        public ScriniumInvalidEntityTypeException(string message) : base(message)
         { }
 
-        public MongodmInvalidEntityTypeException(string message, Exception innerException) : base(message, innerException)
+        public ScriniumInvalidEntityTypeException(string message, Exception innerException) : base(message, innerException)
         { }
     }
 }

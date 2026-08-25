@@ -16,17 +16,17 @@ using System;
 
 namespace Etherna.Scrinium.Core.Exceptions
 {
-    public class MongodmElementPathRenderingException : Exception
+    public class ScriniumElementPathRenderingException : Exception
     {
-        public MongodmElementPathRenderingException()
+        public ScriniumElementPathRenderingException()
         {
         }
 
-        public MongodmElementPathRenderingException(string message) : base(message)
+        public ScriniumElementPathRenderingException(string message) : base(message)
         {
         }
 
-        public MongodmElementPathRenderingException(string message, Exception innerException) : base(message, innerException)
+        public ScriniumElementPathRenderingException(string message, Exception innerException) : base(message, innerException)
         {
         }
     }

@@ -25,7 +25,7 @@ namespace Etherna.Scrinium.HF.Tasks
         : ITaskRunner, ITaskRunnerBuilder
     {
         // Fields.
-        private MongODMOptions mongODMOptions = null!;
+        private ScriniumOptions mongODMOptions = null!;
 
         // Methods.
         public void RunDeleteDocDependenciesTask(
@@ -64,7 +64,7 @@ namespace Etherna.Scrinium.HF.Tasks
                 new EnqueuedState(mongODMOptions.DbMaintenanceQueueName));
 
         // Explicit methods.
-        void ITaskRunnerBuilder.SetMongODMOptions(MongODMOptions options) =>
+        void ITaskRunnerBuilder.SetScriniumOptions(ScriniumOptions options) =>
             mongODMOptions = options;
     }
 }

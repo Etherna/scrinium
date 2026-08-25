@@ -22,17 +22,17 @@ namespace Etherna.Scrinium.Core.Exceptions
     /// <see cref="Options.DbContextOptions.ImplicitLazyLoad"/>): a member of a summary model
     /// was read without a preceding explicit preload.
     /// </summary>
-    public class MongodmLazyLoadingException : Exception
+    public class ScriniumLazyLoadingException : Exception
     {
         // Constructors.
-        public MongodmLazyLoadingException()
+        public ScriniumLazyLoadingException()
         { }
 
-        public MongodmLazyLoadingException(string message)
+        public ScriniumLazyLoadingException(string message)
             : base(message)
         { }
 
-        public MongodmLazyLoadingException(string message, Exception innerException)
+        public ScriniumLazyLoadingException(string message, Exception innerException)
             : base(message, innerException)
         { }
     }

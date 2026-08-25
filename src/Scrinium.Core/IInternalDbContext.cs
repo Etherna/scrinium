@@ -55,7 +55,7 @@ namespace Etherna.Scrinium.Core
         /// current document type, invoked by the load deduplication when a full load finds
         /// the document with another type of its hierarchy. The outdated instance leaves the
         /// change tracking and starts denying any application interaction, throwing
-        /// <see cref="Exceptions.MongodmOutdatedModelTypeException"/>.
+        /// <see cref="Exceptions.ScriniumOutdatedModelTypeException"/>.
         /// </summary>
         /// <param name="modelId">The model document id</param>
         /// <param name="outdatedModel">The loaded instance with the outdated type</param>

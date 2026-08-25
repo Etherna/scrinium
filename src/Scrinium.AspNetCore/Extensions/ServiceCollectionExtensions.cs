@@ -51,15 +51,15 @@ namespace Etherna.Scrinium.AspNetCore.Extensions
             return services;
         }
 
-        public static IMongODMConfiguration AddMongODM<TTaskRunner>(
+        public static IScriniumConfiguration AddScrinium<TTaskRunner>(
             this IServiceCollection services,
-            Action<MongODMOptions>? configureOptions = null)
+            Action<ScriniumOptions>? configureOptions = null)
             where TTaskRunner : class, ITaskRunner, ITaskRunnerBuilder
         {
             // MongODM generic configuration.
-            var configuration = new MongODMConfiguration(services);
+            var configuration = new ScriniumConfiguration(services);
 
-            services.AddOptions<MongODMOptions>()
+            services.AddOptions<ScriniumOptions>()
                 .Configure(configureOptions ?? (_ => { }))
                 .PostConfigure<ITaskRunnerBuilder>(
                 (options, taskRunnerBuilder) =>
@@ -78,7 +78,7 @@ namespace Etherna.Scrinium.AspNetCore.Extensions
                     configuration.Freeze(options);
 
                     // Link options to services.
-                    taskRunnerBuilder.SetMongODMOptions(options);
+                    taskRunnerBuilder.SetScriniumOptions(options);
                 });
 
             services.AddExecutionContext();

@@ -46,7 +46,7 @@ namespace Etherna.Scrinium.Core.ProxyModels
         /// React to an implicit lazy load, before it runs, honoring
         /// <see cref="Options.IDbContextOptions.ImplicitLazyLoad"/>: log a warning once per
         /// member per scope, stay silent, or deny the load throwing
-        /// <see cref="Exceptions.MongodmLazyLoadingException"/>. Invoked by the proxy models.
+        /// <see cref="Exceptions.ScriniumLazyLoadingException"/>. Invoked by the proxy models.
         /// </summary>
         /// <param name="modelType">The summary model type</param>
         /// <param name="memberName">The read member, null for an unanalyzed domain method</param>
@@ -57,7 +57,7 @@ namespace Etherna.Scrinium.Core.ProxyModels
         /// <see cref="Options.ReactionMode"/> declared by the reference that
         /// deserialized it: log a warning once per model type and source repository per scope,
         /// stay silent, or report the db inconsistency throwing
-        /// <see cref="Exceptions.MongodmMissingOriginDocumentException"/>. Invoked by the proxy
+        /// <see cref="Exceptions.ScriniumMissingOriginDocumentException"/>. Invoked by the proxy
         /// models and by the explicit preloads.
         /// </summary>
         /// <param name="summaryModel">The summary model whose origin document is missing</param>

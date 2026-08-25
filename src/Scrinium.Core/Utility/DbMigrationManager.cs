@@ -82,7 +82,7 @@ namespace Etherna.Scrinium.Core.Utility
                 logger.DbMigrationCancelledWithoutLockClaim(dbMigrationOpId, dbContext.Engine.Options.DbName);
 
                 if (throwOnErrors)
-                    throw new MongodmDbMigrationException(
+                    throw new ScriniumDbMigrationException(
                         $"Error migrating {dbContext.Engine.Identifier} dbContext: operation {dbMigrationOpId} doesn't own the db context lock anymore");
                 return;
             }
@@ -156,7 +156,7 @@ namespace Etherna.Scrinium.Core.Utility
                             lockLostCancellation).ConfigureAwait(false);
 
                         if (!result.Succeded)
-                            errors.Add(new MongodmDbMigrationException(
+                            errors.Add(new ScriniumDbMigrationException(
                                 result.TotDocumentErrors > 0
                                     ? $"Documents migration failed on \"{docMigration.SourceRepository.Name}\" repository with {result.TotDocumentErrors} document errors"
                                     : $"Documents migration failed on \"{docMigration.SourceRepository.Name}\" repository"));
@@ -232,7 +232,7 @@ namespace Etherna.Scrinium.Core.Utility
             // Report errors.
             if (errors.Count > 0)
             {
-                var migrationException = new MongodmDbMigrationException(
+                var migrationException = new ScriniumDbMigrationException(
                     $"Error migrating {dbContext.Engine.Identifier} dbContext",
                     new AggregateException(errors));
 

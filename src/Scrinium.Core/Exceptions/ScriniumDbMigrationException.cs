@@ -16,17 +16,17 @@ using System;
 
 namespace Etherna.Scrinium.Core.Exceptions
 {
-    public class MongodmDbMigrationException : Exception
+    public class ScriniumDbMigrationException : Exception
     {
-        public MongodmDbMigrationException()
+        public ScriniumDbMigrationException()
         {
         }
 
-        public MongodmDbMigrationException(string message) : base(message)
+        public ScriniumDbMigrationException(string message) : base(message)
         {
         }
 
-        public MongodmDbMigrationException(string message, Exception innerException) : base(message, innerException)
+        public ScriniumDbMigrationException(string message, Exception innerException) : base(message, innerException)
         {
         }
     }

@@ -17,14 +17,14 @@ using System.Collections.Generic;
 
 namespace Etherna.Scrinium.Core.Options
 {
-    public sealed class MongODMOptions : IMongODMOptionsBuilder
+    public sealed class ScriniumOptions : IScriniumOptionsBuilder
     {
         // Properties.
         public IEnumerable<Type> DbContextTypes { get; private set; } = Array.Empty<Type>();
         public string DbMaintenanceQueueName { get; set; } = "default";
 
         // Explicit methods.
-        void IMongODMOptionsBuilder.SetDbContextTypes(IEnumerable<Type> dbContextTypes) =>
+        void IScriniumOptionsBuilder.SetDbContextTypes(IEnumerable<Type> dbContextTypes) =>
             DbContextTypes = dbContextTypes;
     }
 }

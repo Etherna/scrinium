@@ -12,7 +12,7 @@
 // You should have received a copy of the GNU Lesser General Public License along with MongODM.
 // If not, see <https://www.gnu.org/licenses/>.
 
-using Etherna.Scrinium.AspNetCore.UI.Areas.MongODM.Pages;
+using Etherna.Scrinium.AspNetCore.UI.Areas.Scrinium.Pages;
 using Etherna.Scrinium.AspNetCore.UI.Auth.Filters;
 using Etherna.Scrinium.Core;
 using Etherna.Scrinium.Core.Domain.Models;
@@ -49,8 +49,8 @@ namespace Etherna.Scrinium.AspNetCore.UI
         /* The exception text of a failing document can quote content of the document itself:
          * a deserialization failure embeds the unrecognized discriminator value. */
         private const string DocumentErrorMessage =
-            "MongodmDiscriminatorException: unknown discriminator <script>alert(1)</script>";
-        private const string PagePath = "/MongODM";
+            "ScriniumDiscriminatorException: unknown discriminator <script>alert(1)</script>";
+        private const string PagePath = "/Scrinium";
 
         // Fields.
         private readonly Mock<IDbContext> dbContextMock;
@@ -89,9 +89,9 @@ namespace Etherna.Scrinium.AspNetCore.UI
         // Tests.
         [Theory]
         [InlineData("/", "")]
-        [InlineData("/MongODM", "MongODM")]
-        [InlineData("MongODM/", "MongODM")]
-        [InlineData("admin//mongodm", "admin/mongodm")]
+        [InlineData("/Scrinium", "Scrinium")]
+        [InlineData("Scrinium/", "Scrinium")]
+        [InlineData("admin//scrinium", "admin/scrinium")]
         [InlineData(null, "")]
         [InlineData(" ", "")]
         public async Task DashboardRegistrationNormalizesTheBasePath(string? basePath, string expectedPath)
@@ -120,8 +120,8 @@ namespace Etherna.Scrinium.AspNetCore.UI
         }
 
         [Theory]
-        [InlineData("MongODM")]
-        [InlineData("admin/mongodm")]
+        [InlineData("Scrinium")]
+        [InlineData("admin/scrinium")]
         public async Task DashboardRegistrationKeepsServingValidBasePaths(string basePath)
         {
             // Setup.
@@ -157,7 +157,7 @@ namespace Etherna.Scrinium.AspNetCore.UI
 
             // Action.
             var exception = Assert.Throws<ArgumentException>(
-                () => new ServiceCollection().AddMongODMAdminDashboard(dashboardOptions));
+                () => new ServiceCollection().AddScriniumAdminDashboard(dashboardOptions));
 
             // Assert.
             Assert.Equal("dashboardOptions", exception.ParamName);
@@ -179,7 +179,7 @@ namespace Etherna.Scrinium.AspNetCore.UI
 
             // Action.
             var exception = Assert.Throws<ArgumentException>(
-                () => new ServiceCollection().AddMongODMAdminDashboard(dashboardOptions));
+                () => new ServiceCollection().AddScriniumAdminDashboard(dashboardOptions));
 
             // Assert.
             Assert.Equal("dashboardOptions", exception.ParamName);
@@ -314,13 +314,13 @@ namespace Etherna.Scrinium.AspNetCore.UI
                     .UseTestServer()
                     .ConfigureServices(services =>
                     {
-                        var mongODMOptions = new MongODMOptions();
-                        ((IMongODMOptionsBuilder)mongODMOptions).SetDbContextTypes([typeof(IDbContext)]);
+                        var mongODMOptions = new ScriniumOptions();
+                        ((IScriniumOptionsBuilder)mongODMOptions).SetDbContextTypes([typeof(IDbContext)]);
 
                         services.AddRazorPages()
                             .AddApplicationPart(typeof(IndexModel).Assembly);
                         services.AddHttpContextAccessor();
-                        services.AddMongODMAdminDashboard(dashboardOptions);
+                        services.AddScriniumAdminDashboard(dashboardOptions);
                         services.AddSingleton(Options.Create(mongODMOptions));
                         services.AddSingleton(dbContextMock.Object);
                     })

@@ -18,6 +18,6 @@ namespace Etherna.Scrinium.Core.Tasks
 {
     public interface ITaskRunnerBuilder
     {
-        void SetMongODMOptions(MongODMOptions options);
+        void SetScriniumOptions(ScriniumOptions options);
     }
 }

@@ -32,7 +32,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace Etherna.Scrinium.AspNetCore.UI.Areas.MongODM.Pages
+namespace Etherna.Scrinium.AspNetCore.UI.Areas.Scrinium.Pages
 {
     public class IndexModel : PageModel
     {
@@ -58,12 +58,12 @@ namespace Etherna.Scrinium.AspNetCore.UI.Areas.MongODM.Pages
         private const int HistoryLength = 5;
 
         // Fields.
-        private readonly MongODMOptions options;
+        private readonly ScriniumOptions options;
         private readonly IServiceProvider serviceProvider;
 
         // Constructor.
         public IndexModel(
-            IOptions<MongODMOptions> options,
+            IOptions<ScriniumOptions> options,
             IServiceProvider serviceProvider)
         {
             ArgumentNullException.ThrowIfNull(options);

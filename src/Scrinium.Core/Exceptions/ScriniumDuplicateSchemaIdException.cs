@@ -16,16 +16,16 @@ using System;
 
 namespace Etherna.Scrinium.Core.Exceptions
 {
-    public class MongodmDuplicateSchemaIdException : Exception
+    public class ScriniumDuplicateSchemaIdException : Exception
     {
         // Constructors.
-        public MongodmDuplicateSchemaIdException()
+        public ScriniumDuplicateSchemaIdException()
         { }
 
-        public MongodmDuplicateSchemaIdException(string message) : base(message)
+        public ScriniumDuplicateSchemaIdException(string message) : base(message)
         { }
 
-        public MongodmDuplicateSchemaIdException(string message, Exception innerException) : base(message, innerException)
+        public ScriniumDuplicateSchemaIdException(string message, Exception innerException) : base(message, innerException)
         { }
     }
 }

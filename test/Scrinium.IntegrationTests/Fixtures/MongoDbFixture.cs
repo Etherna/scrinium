@@ -26,7 +26,7 @@ namespace Etherna.Scrinium.IntegrationTests.Fixtures
 {
     /// <summary>
     /// Provides a MongoDB instance for integration tests: uses the url from the
-    /// MONGODM_TEST_DB_URL environment variable when set (e.g. on CI with a service
+    /// SCRINIUM_TEST_DB_URL environment variable when set (e.g. on CI with a service
     /// container), otherwise spawns a local throwaway mongod process as a single node
     /// replica set, supporting transactions. The provided deployment must support
     /// transactions as well.
@@ -34,7 +34,7 @@ namespace Etherna.Scrinium.IntegrationTests.Fixtures
     internal sealed class MongoDbFixture : IDisposable
     {
         // Consts.
-        private const string DbUrlEnvVariable = "MONGODM_TEST_DB_URL";
+        private const string DbUrlEnvVariable = "SCRINIUM_TEST_DB_URL";
         private const string ReplicaSetName = "rs0";
 
         // Fields.
@@ -123,7 +123,7 @@ namespace Etherna.Scrinium.IntegrationTests.Fixtures
         private string StartLocalMongod()
         {
             var port = GetFreeTcpPort();
-            dataDirectory = Path.Combine(Path.GetTempPath(), "mongodm-it-" + Guid.NewGuid().ToString("N"));
+            dataDirectory = Path.Combine(Path.GetTempPath(), "scrinium-it-" + Guid.NewGuid().ToString("N"));
             Directory.CreateDirectory(dataDirectory);
 
             try

@@ -24,17 +24,17 @@ namespace Etherna.Scrinium.Core.Exceptions
     /// composite (an entity id must serialize to a value, and a document valued id would
     /// render inside the repository id filters as an operator expression).
     /// </summary>
-    public class MongodmInvalidIdMemberException : Exception
+    public class ScriniumInvalidIdMemberException : Exception
     {
         // Constructors.
-        public MongodmInvalidIdMemberException()
+        public ScriniumInvalidIdMemberException()
         { }
 
-        public MongodmInvalidIdMemberException(string message)
+        public ScriniumInvalidIdMemberException(string message)
             : base(message)
         { }
 
-        public MongodmInvalidIdMemberException(string message, Exception innerException)
+        public ScriniumInvalidIdMemberException(string message, Exception innerException)
             : base(message, innerException)
         { }
     }

@@ -21,17 +21,17 @@ namespace Etherna.Scrinium.Core.Exceptions
     /// discriminator, which defaults to the simple type name: the discriminator written by
     /// one of them would resolve more than one candidate model type at read.
     /// </summary>
-    public class MongodmDuplicateDiscriminatorException : Exception
+    public class ScriniumDuplicateDiscriminatorException : Exception
     {
         // Constructors.
-        public MongodmDuplicateDiscriminatorException()
+        public ScriniumDuplicateDiscriminatorException()
         { }
 
-        public MongodmDuplicateDiscriminatorException(string message)
+        public ScriniumDuplicateDiscriminatorException(string message)
             : base(message)
         { }
 
-        public MongodmDuplicateDiscriminatorException(string message, Exception innerException)
+        public ScriniumDuplicateDiscriminatorException(string message, Exception innerException)
             : base(message, innerException)
         { }
     }

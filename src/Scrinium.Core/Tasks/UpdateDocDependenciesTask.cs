@@ -235,7 +235,7 @@ namespace Etherna.Scrinium.Core.Tasks
                 new MemberMapFieldDefinition<TOriginModel, BsonDocument>(
                     subDocumentMemberMap,
                     MemberMapRenderHelper.BuildArrayFilterFieldSelector(lastUndefinedArrayElement),
-                    _ => throw new MongodmElementPathRenderingException("Can't render field with an unknown document key in path"),
+                    _ => throw new ScriniumElementPathRenderingException("Can't render field with an unknown document key in path"),
                     referToFinalItem: true),
                 updatedSubDocument);
 

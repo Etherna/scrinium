@@ -247,7 +247,7 @@ namespace Etherna.Scrinium.Core.Serialization.Mapping
                     string.Join("; ", crossDbContextViolations));
 
             if (violations.Count > 0)
-                throw new MongodmInvalidEntityTypeException(
+                throw new ScriniumInvalidEntityTypeException(
                     $"DbContext {dbContextEngine.DbContextType.Name} has reference serializers declaring incompatible source repositories: " +
                     string.Join("; ", violations));
         }
@@ -404,7 +404,7 @@ namespace Etherna.Scrinium.Core.Serialization.Mapping
             }
 
             if (ambiguousViolations.Count > 0)
-                throw new MongodmAmbiguousRepositoryException(
+                throw new ScriniumAmbiguousRepositoryException(
                     $"DbContext {dbContextEngine.DbContextType.Name} has reference serializers with ambiguous implicit source: " +
                     $"{string.Join("; ", ambiguousViolations)}. Set sourceRepository on the reference serializers to identify the sources");
 
@@ -557,7 +557,7 @@ namespace Etherna.Scrinium.Core.Serialization.Mapping
 
             if (dbContextEngine.Options.NotPropagatedReferences == ReactionMode.Throw &&
                 notPropagatedPaths.Count > 0)
-                throw new MongodmNotPropagatedReferenceException(
+                throw new ScriniumNotPropagatedReferenceException(
                     $"DbContext {dbContextEngine.DbContextType.Name} maps references behind unknown document keys, " +
                     "at element paths the dependencies propagation can't address: " +
                     string.Join("; ", orderedPaths.Select(path => $"{path.ElementPath} of model type {path.ModelType.Name}")) +
@@ -606,7 +606,7 @@ namespace Etherna.Scrinium.Core.Serialization.Mapping
                     violations.Add($"discriminator \"{discriminator}\" is used by model types {string.Join(", ", modelTypes.Select(modelType => modelType.FullName))}");
 
             if (violations.Count > 0)
-                throw new MongodmDuplicateDiscriminatorException(
+                throw new ScriniumDuplicateDiscriminatorException(
                     $"DbContext {dbContextEngine.DbContextType.Name} has model types sharing a document discriminator: " +
                     string.Join("; ", violations) +
                     ". Documents written with a shared discriminator can't resolve their model type at read: " +
@@ -693,7 +693,7 @@ namespace Etherna.Scrinium.Core.Serialization.Mapping
             }
 
             if (violations.Count > 0)
-                throw new MongodmEmbeddedEntityModelException(
+                throw new ScriniumEmbeddedEntityModelException(
                     $"DbContext {dbContextEngine.DbContextType.Name} has members serializing entity models as embedded documents: " +
                     string.Join("; ", violations) +
                     ". Entity models can only be referenced by other documents: serialize these members with a " +
@@ -744,14 +744,14 @@ namespace Etherna.Scrinium.Core.Serialization.Mapping
                 var mappedIdGetter = (idMemberMap.BsonMemberMap.MemberInfo as PropertyInfo)?.GetMethod;
                 if (mappedIdGetter is null ||
                     mappedIdGetter.GetBaseDefinition() != contractIdGetter.GetBaseDefinition())
-                    throw new MongodmInvalidIdMemberException(
+                    throw new ScriniumInvalidIdMemberException(
                         $"Model map schema {idMemberMap.ModelMapSchema.Id} of type {modelType.Name} maps " +
                         $"{idMemberMap.BsonMemberMap.MemberInfo.Name} as its document id, but the id member of " +
                         $"an entity model must be the implicit implementation of " +
                         $"{nameof(IEntityModel<object>)}<TKey>.{nameof(IEntityModel<object>.Id)}");
 
                 if (idMemberMap.BsonMemberMap.GetSerializer() is IBsonDocumentSerializer or IBsonArraySerializer)
-                    throw new MongodmInvalidIdMemberException(
+                    throw new ScriniumInvalidIdMemberException(
                         $"Model map schema {idMemberMap.ModelMapSchema.Id} of type {modelType.Name} maps " +
                         $"{idMemberMap.BsonMemberMap.MemberInfo.Name} of type " +
                         $"{idMemberMap.BsonMemberMap.MemberType.Name} as its document id, but an entity id must " +
@@ -760,7 +760,7 @@ namespace Etherna.Scrinium.Core.Serialization.Mapping
                         "query them");
 
                 if (idMemberMap.BsonMemberMap.MemberType == typeof(object) && !_maps.ContainsKey(typeof(object)))
-                    throw new MongodmInvalidIdMemberException(
+                    throw new ScriniumInvalidIdMemberException(
                         $"Model map schema {idMemberMap.ModelMapSchema.Id} of type {modelType.Name} maps " +
                         $"{idMemberMap.BsonMemberMap.MemberInfo.Name} of type object as its document id, but an " +
                         "object typed id doesn't commit to an id type: the values without a BSON type equivalent " +
@@ -800,7 +800,7 @@ namespace Etherna.Scrinium.Core.Serialization.Mapping
             }
 
             if (violations.Count > 0)
-                throw new MongodmDuplicateSchemaIdException(
+                throw new ScriniumDuplicateSchemaIdException(
                     $"DbContext {dbContextEngine.DbContextType.Name} has model map schemas violating id uniqueness: " +
                     string.Join("; ", violations));
         }

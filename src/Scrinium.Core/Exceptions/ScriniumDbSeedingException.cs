@@ -16,17 +16,17 @@ using System;
 
 namespace Etherna.Scrinium.Core.Exceptions
 {
-    public class MongodmDbSeedingException : Exception
+    public class ScriniumDbSeedingException : Exception
     {
-        public MongodmDbSeedingException()
+        public ScriniumDbSeedingException()
         {
         }
 
-        public MongodmDbSeedingException(string message) : base(message)
+        public ScriniumDbSeedingException(string message) : base(message)
         {
         }
 
-        public MongodmDbSeedingException(string message, Exception innerException) : base(message, innerException)
+        public ScriniumDbSeedingException(string message, Exception innerException) : base(message, innerException)
         {
         }
     }

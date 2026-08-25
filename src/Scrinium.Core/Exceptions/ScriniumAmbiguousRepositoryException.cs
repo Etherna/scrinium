@@ -16,16 +16,16 @@ using System;
 
 namespace Etherna.Scrinium.Core.Exceptions
 {
-    public class MongodmAmbiguousRepositoryException : Exception
+    public class ScriniumAmbiguousRepositoryException : Exception
     {
         // Constructors.
-        public MongodmAmbiguousRepositoryException()
+        public ScriniumAmbiguousRepositoryException()
         { }
 
-        public MongodmAmbiguousRepositoryException(string message) : base(message)
+        public ScriniumAmbiguousRepositoryException(string message) : base(message)
         { }
 
-        public MongodmAmbiguousRepositoryException(string message, Exception innerException) : base(message, innerException)
+        public ScriniumAmbiguousRepositoryException(string message, Exception innerException) : base(message, innerException)
         { }
     }
 }

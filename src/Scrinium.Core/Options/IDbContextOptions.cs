@@ -68,7 +68,7 @@ namespace Etherna.Scrinium.Core.Options
         /// <summary>
         /// How the db context reacts to implicit lazy loads of summary model members:
         /// load logging a warning once per member per scope (the default), load silently, or
-        /// deny them throwing <see cref="Exceptions.MongodmLazyLoadingException"/>.
+        /// deny them throwing <see cref="Exceptions.ScriniumLazyLoadingException"/>.
         /// Preload members explicitly with <see cref="IDbContext.LoadValuesAsync{TModel}(TModel, System.Linq.Expressions.Expression{System.Func{TModel, object?}}[])"/>.
         /// </summary>
         public ReactionMode ImplicitLazyLoad { get; }
@@ -100,7 +100,7 @@ namespace Etherna.Scrinium.Core.Options
         /// element paths with an unknown document key (a dictionary in document
         /// representation), that the dependencies propagation can't address: report a
         /// warning per element path (the default), tolerate silently, or deny the build
-        /// throwing <see cref="Exceptions.MongodmNotPropagatedReferenceException"/>.
+        /// throwing <see cref="Exceptions.ScriniumNotPropagatedReferenceException"/>.
         /// </summary>
         public ReactionMode NotPropagatedReferences { get; }
     }

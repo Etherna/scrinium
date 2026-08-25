@@ -18,26 +18,26 @@ using System;
 
 namespace Etherna.Scrinium.AspNetCore
 {
-    public interface IMongODMConfiguration
+    public interface IScriniumConfiguration
     {
         bool IsFrozen { get; }
 
         // Methods.
-        IMongODMConfiguration AddDbContext<TDbContext>(
+        IScriniumConfiguration AddDbContext<TDbContext>(
             Action<DbContextOptions>? dbContextOptionsConfig = null)
             where TDbContext : DbContext, new();
 
-        IMongODMConfiguration AddDbContext<TDbContext>(
+        IScriniumConfiguration AddDbContext<TDbContext>(
             Func<IServiceProvider, TDbContext> dbContextCreator,
             Action<DbContextOptions>? dbContextOptionsConfig = null)
             where TDbContext : DbContext;
 
-        IMongODMConfiguration AddDbContext<TDbContext, TDbContextImpl>(
+        IScriniumConfiguration AddDbContext<TDbContext, TDbContextImpl>(
             Action<DbContextOptions>? dbContextOptionsConfig = null)
             where TDbContext : class, IDbContext
             where TDbContextImpl : DbContext, TDbContext, new();
 
-        IMongODMConfiguration AddDbContext<TDbContext, TDbContextImpl>(
+        IScriniumConfiguration AddDbContext<TDbContext, TDbContextImpl>(
             Func<IServiceProvider, TDbContextImpl> dbContextCreator,
             Action<DbContextOptions>? dbContextOptionsConfig = null)
             where TDbContext : class, IDbContext
@@ -46,6 +46,6 @@ namespace Etherna.Scrinium.AspNetCore
         /// <summary>
         /// Freeze configuration.
         /// </summary>
-        void Freeze(IMongODMOptionsBuilder mongODMOptionsBuilder);
+        void Freeze(IScriniumOptionsBuilder mongODMOptionsBuilder);
     }
 }

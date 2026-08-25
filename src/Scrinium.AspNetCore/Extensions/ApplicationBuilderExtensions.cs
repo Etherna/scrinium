@@ -49,7 +49,7 @@ namespace Etherna.Scrinium.AspNetCore.Extensions
             ArgumentNullException.ThrowIfNull(builder);
 
             var serviceProvider = builder.ApplicationServices;
-            var mongODMOptions = serviceProvider.GetRequiredService<IOptions<MongODMOptions>>();
+            var mongODMOptions = serviceProvider.GetRequiredService<IOptions<ScriniumOptions>>();
 
             // Get dbcontext instances from a dedicated scope.
             using var serviceScope = serviceProvider.CreateScope();

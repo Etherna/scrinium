@@ -117,14 +117,14 @@ namespace Etherna.Scrinium.IntegrationTests
             Assert.IsAssignableFrom<Web2Account>(staleEditor); //the summary still carries the old type
 
             // Action + assert: the lazy load detects the type change and invalidates the instance.
-            var exception = Assert.Throws<MongodmOutdatedModelTypeException>(() => staleEditor.Username);
+            var exception = Assert.Throws<ScriniumOutdatedModelTypeException>(() => staleEditor.Username);
             Assert.Contains(nameof(Web2Account), exception.Message, StringComparison.Ordinal);
             Assert.Contains(nameof(Web3Account), exception.Message, StringComparison.Ordinal);
             Assert.Contains(editorId, exception.Message, StringComparison.Ordinal);
 
             //the model reports as outdated, and every next interaction keeps throwing
             Assert.True(workDbContext.IsOutdatedModel(staleEditor));
-            Assert.Throws<MongodmOutdatedModelTypeException>(() => staleEditor.Username);
+            Assert.Throws<ScriniumOutdatedModelTypeException>(() => staleEditor.Username);
 
             //the id stays readable on the outdated instance, and drives the reload:
             //the repository hands out the fresh instance with the current type
@@ -156,7 +156,7 @@ namespace Etherna.Scrinium.IntegrationTests
 
             // Assert.
             Assert.True(workDbContext.IsOutdatedModel(staleEditor));
-            Assert.Throws<MongodmOutdatedModelTypeException>(() => staleEditor.Username);
+            Assert.Throws<ScriniumOutdatedModelTypeException>(() => staleEditor.Username);
         }
 
         [Fact]
@@ -175,7 +175,7 @@ namespace Etherna.Scrinium.IntegrationTests
 
             var loadedMessage = await workDbContext.Messages.FindOneAsync(message.Id);
             var staleEditor = loadedMessage.Editor;
-            Assert.Throws<MongodmOutdatedModelTypeException>(() => staleEditor.Username);
+            Assert.Throws<ScriniumOutdatedModelTypeException>(() => staleEditor.Username);
 
             // Action: save an unrelated change on the referencing document.
             loadedMessage.Text = "updated text";

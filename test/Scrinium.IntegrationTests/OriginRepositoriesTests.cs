@@ -59,7 +59,7 @@ namespace Etherna.Scrinium.IntegrationTests
         {
             /* Two repositories handle Post on this db context: resolving the repository
              * from the model type alone is a configuration error, failing fast. */
-            Assert.Throws<MongodmAmbiguousRepositoryException>(
+            Assert.Throws<ScriniumAmbiguousRepositoryException>(
                 () => dbContext.RepositoryRegistry.GetRepositoryByHandledModelType(typeof(Post)));
         }
 
@@ -75,11 +75,11 @@ namespace Etherna.Scrinium.IntegrationTests
             var dependencies = fixture.ServiceProvider.GetRequiredService<IDbDependencies>();
             var options = new DbContextOptions
             {
-                ConnectionString = $"{fixture.MongoDbUrl}/mongodm-it-invalid-source"
+                ConnectionString = $"{fixture.MongoDbUrl}/scrinium-it-invalid-source"
             };
 
             // Action & assert.
-            var exception = Assert.Throws<MongodmInvalidEntityTypeException>(
+            var exception = Assert.Throws<ScriniumInvalidEntityTypeException>(
                 () => dbContext.BuildEngine(dependencies, new MongoClient(fixture.MongoDbUrl), options));
             Assert.Contains(nameof(InvalidSourceDbContext), exception.Message, StringComparison.Ordinal);
             Assert.Contains(nameof(Post), exception.Message, StringComparison.Ordinal);
@@ -100,7 +100,7 @@ namespace Etherna.Scrinium.IntegrationTests
             var dependencies = fixture.ServiceProvider.GetRequiredService<IDbDependencies>();
             var options = new DbContextOptions
             {
-                ConnectionString = $"{fixture.MongoDbUrl}/mongodm-it-invalid-typed-source"
+                ConnectionString = $"{fixture.MongoDbUrl}/scrinium-it-invalid-typed-source"
             };
 
             // Action & assert.
@@ -124,7 +124,7 @@ namespace Etherna.Scrinium.IntegrationTests
             var dependencies = fixture.ServiceProvider.GetRequiredService<IDbDependencies>();
             var options = new DbContextOptions
             {
-                ConnectionString = $"{fixture.MongoDbUrl}/mongodm-it-ambiguous-cross-source"
+                ConnectionString = $"{fixture.MongoDbUrl}/scrinium-it-ambiguous-cross-source"
             };
             options.ParentFor<IFirstNotesDbContext>();
             options.ParentFor<ISecondNotesDbContext>();
@@ -150,7 +150,7 @@ namespace Etherna.Scrinium.IntegrationTests
             var dependencies = fixture.ServiceProvider.GetRequiredService<IDbDependencies>();
             var options = new DbContextOptions
             {
-                ConnectionString = $"{fixture.MongoDbUrl}/mongodm-it-reachable-cross-source"
+                ConnectionString = $"{fixture.MongoDbUrl}/scrinium-it-reachable-cross-source"
             };
             options.ParentFor<ISecondDbContext>();
 
@@ -206,7 +206,7 @@ namespace Etherna.Scrinium.IntegrationTests
             var dependencies = fixture.ServiceProvider.GetRequiredService<IDbDependencies>();
             var options = new DbContextOptions
             {
-                ConnectionString = $"{fixture.MongoDbUrl}/mongodm-it-invalid-missing-source"
+                ConnectionString = $"{fixture.MongoDbUrl}/scrinium-it-invalid-missing-source"
             };
 
             // Action & assert.
@@ -229,11 +229,11 @@ namespace Etherna.Scrinium.IntegrationTests
             var dependencies = fixture.ServiceProvider.GetRequiredService<IDbDependencies>();
             var options = new DbContextOptions
             {
-                ConnectionString = $"{fixture.MongoDbUrl}/mongodm-it-invalid"
+                ConnectionString = $"{fixture.MongoDbUrl}/scrinium-it-invalid"
             };
 
             // Action & assert.
-            var exception = Assert.Throws<MongodmAmbiguousRepositoryException>(
+            var exception = Assert.Throws<ScriniumAmbiguousRepositoryException>(
                 () => dbContext.BuildEngine(dependencies, new MongoClient(fixture.MongoDbUrl), options));
             Assert.Contains(nameof(InvalidDbContext), exception.Message, StringComparison.Ordinal);
             Assert.Contains(nameof(Post), exception.Message, StringComparison.Ordinal);

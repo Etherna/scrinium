@@ -22,17 +22,17 @@ namespace Etherna.Scrinium.Core.Exceptions
     /// embedded entity would be undefined. At most, a reference can denormalize every member:
     /// it is still a reference, with its own source.
     /// </summary>
-    public class MongodmEmbeddedEntityModelException : Exception
+    public class ScriniumEmbeddedEntityModelException : Exception
     {
         // Constructors.
-        public MongodmEmbeddedEntityModelException()
+        public ScriniumEmbeddedEntityModelException()
         { }
 
-        public MongodmEmbeddedEntityModelException(string message)
+        public ScriniumEmbeddedEntityModelException(string message)
             : base(message)
         { }
 
-        public MongodmEmbeddedEntityModelException(string message, Exception innerException)
+        public ScriniumEmbeddedEntityModelException(string message, Exception innerException)
             : base(message, innerException)
         { }
     }

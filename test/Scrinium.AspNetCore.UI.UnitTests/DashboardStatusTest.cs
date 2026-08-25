@@ -12,7 +12,7 @@
 // You should have received a copy of the GNU Lesser General Public License along with MongODM.
 // If not, see <https://www.gnu.org/licenses/>.
 
-using Etherna.Scrinium.AspNetCore.UI.Areas.MongODM.Pages;
+using Etherna.Scrinium.AspNetCore.UI.Areas.Scrinium.Pages;
 using Etherna.Scrinium.AspNetCore.UI.Auth.Filters;
 using Etherna.Scrinium.Core;
 using Etherna.Scrinium.Core.Domain.Models;
@@ -42,7 +42,7 @@ namespace Etherna.Scrinium.AspNetCore.UI
 
         // Consts.
         private const string DbContextIdentifier = "SampleDbContext";
-        private const string StatusPath = "/MongODM?handler=Status";
+        private const string StatusPath = "/Scrinium?handler=Status";
 
         // Fields.
         private readonly Mock<IDbContext> dbContextMock;
@@ -124,13 +124,13 @@ namespace Etherna.Scrinium.AspNetCore.UI
                     .UseTestServer()
                     .ConfigureServices(services =>
                     {
-                        var mongODMOptions = new MongODMOptions();
-                        ((IMongODMOptionsBuilder)mongODMOptions).SetDbContextTypes([typeof(IDbContext)]);
+                        var mongODMOptions = new ScriniumOptions();
+                        ((IScriniumOptionsBuilder)mongODMOptions).SetDbContextTypes([typeof(IDbContext)]);
 
                         services.AddRazorPages()
                             .AddApplicationPart(typeof(IndexModel).Assembly);
                         services.AddHttpContextAccessor();
-                        services.AddMongODMAdminDashboard(new DashboardOptions
+                        services.AddScriniumAdminDashboard(new DashboardOptions
                         {
                             AuthFilters = [new AllowAllAuthFilter()]
                         });

@@ -29,7 +29,7 @@ namespace Etherna.Scrinium.Core.ProxyModels
         /// The current type of the model document, when it doesn't match the instance type
         /// anymore: the document changed type after the instance materialized, and any
         /// application interaction with the instance throws
-        /// <see cref="Exceptions.MongodmOutdatedModelTypeException"/>. Null while the
+        /// <see cref="Exceptions.ScriniumOutdatedModelTypeException"/>. Null while the
         /// instance type is valid.
         /// </summary>
         Type? OutdatedModelType { get; }
@@ -48,7 +48,7 @@ namespace Etherna.Scrinium.Core.ProxyModels
         /// Invalidate the instance because its document now has another type of its
         /// hierarchy: the instance type can't upgrade, so any application interaction
         /// with the instance starts throwing
-        /// <see cref="Exceptions.MongodmOutdatedModelTypeException"/>.
+        /// <see cref="Exceptions.ScriniumOutdatedModelTypeException"/>.
         /// </summary>
         /// <param name="actualModelType">The current model type of the document</param>
         void SetOutdatedModelType(Type actualModelType);

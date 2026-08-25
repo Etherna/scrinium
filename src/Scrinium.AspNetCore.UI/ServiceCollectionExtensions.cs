@@ -24,11 +24,11 @@ namespace Etherna.Scrinium.AspNetCore.UI
 {
     public static class ServiceCollectionExtensions
     {
-        private const string AreaName = "MongODM";
+        private const string AreaName = "Scrinium";
         private const string FolderPath = "/";
-        private const string PolicyName = "mongodmDashboardPolicy";
+        private const string PolicyName = "scriniumDashboardPolicy";
 
-        public static IServiceCollection AddMongODMAdminDashboard(
+        public static IServiceCollection AddScriniumAdminDashboard(
             this IServiceCollection services,
             DashboardOptions? dashboardOptions = null)
         {

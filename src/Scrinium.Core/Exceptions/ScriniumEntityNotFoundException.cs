@@ -16,16 +16,16 @@ using System;
 
 namespace Etherna.Scrinium.Core.Exceptions
 {
-    public class MongodmEntityNotFoundException : Exception
+    public class ScriniumEntityNotFoundException : Exception
     {
         // Constructors.
-        public MongodmEntityNotFoundException()
+        public ScriniumEntityNotFoundException()
         { }
 
-        public MongodmEntityNotFoundException(string message) : base(message)
+        public ScriniumEntityNotFoundException(string message) : base(message)
         { }
 
-        public MongodmEntityNotFoundException(string message, Exception innerException) : base(message, innerException)
+        public ScriniumEntityNotFoundException(string message, Exception innerException) : base(message, innerException)
         { }
     }
 }

@@ -451,7 +451,7 @@ namespace Etherna.Scrinium.Core
             mapRegistry.AddModelMap<BsonArrayIdModel>("bsonArrayIdSchemaId");
 
             // Action.
-            var exception = Assert.Throws<MongodmInvalidIdMemberException>(() => mapRegistry.Freeze());
+            var exception = Assert.Throws<ScriniumInvalidIdMemberException>(() => mapRegistry.Freeze());
 
             // Assert.
             Assert.Contains("bsonArrayIdSchemaId", exception.Message, StringComparison.Ordinal);
@@ -466,7 +466,7 @@ namespace Etherna.Scrinium.Core
             mapRegistry.AddModelMap<BsonDocumentIdModel>("bsonDocumentIdSchemaId");
 
             // Action.
-            var exception = Assert.Throws<MongodmInvalidIdMemberException>(() => mapRegistry.Freeze());
+            var exception = Assert.Throws<ScriniumInvalidIdMemberException>(() => mapRegistry.Freeze());
 
             // Assert.
             Assert.Contains("bsonDocumentIdSchemaId", exception.Message, StringComparison.Ordinal);
@@ -481,7 +481,7 @@ namespace Etherna.Scrinium.Core
             mapRegistry.AddModelMap<BsonValueIdModel>("bsonValueIdSchemaId");
 
             // Action.
-            var exception = Assert.Throws<MongodmInvalidIdMemberException>(() => mapRegistry.Freeze());
+            var exception = Assert.Throws<ScriniumInvalidIdMemberException>(() => mapRegistry.Freeze());
 
             // Assert.
             Assert.Contains("bsonValueIdSchemaId", exception.Message, StringComparison.Ordinal);
@@ -500,7 +500,7 @@ namespace Etherna.Scrinium.Core
             mapRegistry.AddModelMap<InterfaceIdModel>("interfaceIdSchemaId");
 
             // Action.
-            var exception = Assert.Throws<MongodmInvalidIdMemberException>(() => mapRegistry.Freeze());
+            var exception = Assert.Throws<ScriniumInvalidIdMemberException>(() => mapRegistry.Freeze());
 
             // Assert.
             Assert.Contains("interfaceIdSchemaId", exception.Message, StringComparison.Ordinal);
@@ -521,7 +521,7 @@ namespace Etherna.Scrinium.Core
             mapRegistry.AddModelMap<UntypedIdModel>("untypedIdSchemaId");
 
             // Action.
-            var exception = Assert.Throws<MongodmInvalidIdMemberException>(() => mapRegistry.Freeze());
+            var exception = Assert.Throws<ScriniumInvalidIdMemberException>(() => mapRegistry.Freeze());
 
             // Assert.
             Assert.Contains("untypedIdSchemaId", exception.Message, StringComparison.Ordinal);
@@ -536,7 +536,7 @@ namespace Etherna.Scrinium.Core
             mapRegistry.AddModelMap<CompositeIdModel>("compositeIdSchemaId");
 
             // Action.
-            var exception = Assert.Throws<MongodmInvalidIdMemberException>(() => mapRegistry.Freeze());
+            var exception = Assert.Throws<ScriniumInvalidIdMemberException>(() => mapRegistry.Freeze());
 
             // Assert.
             Assert.Contains("compositeIdSchemaId", exception.Message, StringComparison.Ordinal);
@@ -560,7 +560,7 @@ namespace Etherna.Scrinium.Core
             });
 
             // Action.
-            var exception = Assert.Throws<MongodmDuplicateDiscriminatorException>(() => mapRegistry.Freeze());
+            var exception = Assert.Throws<ScriniumDuplicateDiscriminatorException>(() => mapRegistry.Freeze());
 
             // Assert.
             Assert.Contains($"\"{nameof(FirstArea.HomonymBaseModel)}\"", exception.Message, StringComparison.Ordinal);
@@ -582,7 +582,7 @@ namespace Etherna.Scrinium.Core
             mapRegistry.AddModelMap<SecondArea.HomonymModel>("secondHomonym");
 
             // Action.
-            var exception = Assert.Throws<MongodmDuplicateDiscriminatorException>(() => mapRegistry.Freeze());
+            var exception = Assert.Throws<ScriniumDuplicateDiscriminatorException>(() => mapRegistry.Freeze());
 
             // Assert.
             Assert.Contains($"\"{nameof(FirstArea.HomonymModel)}\"", exception.Message, StringComparison.Ordinal);
@@ -600,7 +600,7 @@ namespace Etherna.Scrinium.Core
             mapRegistry.AddModelMap<SecondModel>("shared");
 
             // Action.
-            var exception = Assert.Throws<MongodmDuplicateSchemaIdException>(() => mapRegistry.Freeze());
+            var exception = Assert.Throws<ScriniumDuplicateSchemaIdException>(() => mapRegistry.Freeze());
 
             // Assert.
             Assert.Contains("shared", exception.Message, StringComparison.Ordinal);
@@ -616,7 +616,7 @@ namespace Etherna.Scrinium.Core
             mapRegistry.AddModelMap<SecondModel>("v1");
 
             // Action.
-            var exception = Assert.Throws<MongodmDuplicateSchemaIdException>(() => mapRegistry.Freeze());
+            var exception = Assert.Throws<ScriniumDuplicateSchemaIdException>(() => mapRegistry.Freeze());
 
             // Assert.
             Assert.Contains("v1", exception.Message, StringComparison.Ordinal);
@@ -632,7 +632,7 @@ namespace Etherna.Scrinium.Core
                 .AddSecondarySchema("v1");
 
             // Action.
-            var exception = Assert.Throws<MongodmDuplicateSchemaIdException>(() => mapRegistry.Freeze());
+            var exception = Assert.Throws<ScriniumDuplicateSchemaIdException>(() => mapRegistry.Freeze());
 
             // Assert.
             Assert.Contains("v1", exception.Message, StringComparison.Ordinal);
@@ -656,7 +656,7 @@ namespace Etherna.Scrinium.Core
                     config => config.AddModelMap<ChildModel>("childSchemaId"))));
 
             // Action.
-            var exception = Assert.Throws<MongodmEmbeddedEntityModelException>(() => mapRegistry.Freeze());
+            var exception = Assert.Throws<ScriniumEmbeddedEntityModelException>(() => mapRegistry.Freeze());
 
             // Assert.
             Assert.Contains("childSchemaId", exception.Message, StringComparison.Ordinal);
@@ -676,7 +676,7 @@ namespace Etherna.Scrinium.Core
             mapRegistry.AddModelMap<EntityChildHostModel>("hostSchemaId");
 
             // Action.
-            var exception = Assert.Throws<MongodmEmbeddedEntityModelException>(() => mapRegistry.Freeze());
+            var exception = Assert.Throws<ScriniumEmbeddedEntityModelException>(() => mapRegistry.Freeze());
 
             // Assert.
             Assert.Contains("hostSchemaId", exception.Message, StringComparison.Ordinal);
@@ -703,7 +703,7 @@ namespace Etherna.Scrinium.Core
                 cm.SetMemberSerializer(m => m.Child!, new MappedSerializerAdapter<ChildModel>(dbContextEngineMock.Object)));
 
             // Action.
-            var exception = Assert.Throws<MongodmEmbeddedEntityModelException>(() => mapRegistry.Freeze());
+            var exception = Assert.Throws<ScriniumEmbeddedEntityModelException>(() => mapRegistry.Freeze());
 
             // Assert.
             Assert.Contains($"member {nameof(EntityChildHostModel.Child)} of", exception.Message, StringComparison.Ordinal);
@@ -726,7 +726,7 @@ namespace Etherna.Scrinium.Core
             });
 
             // Action.
-            var exception = Assert.Throws<MongodmInvalidIdMemberException>(() => mapRegistry.Freeze());
+            var exception = Assert.Throws<ScriniumInvalidIdMemberException>(() => mapRegistry.Freeze());
 
             // Assert.
             Assert.Contains(nameof(WrongIdModel), exception.Message, StringComparison.Ordinal);
@@ -747,7 +747,7 @@ namespace Etherna.Scrinium.Core
             AddDictionaryChildHostModelMap();
 
             // Action.
-            var exception = Assert.Throws<MongodmNotPropagatedReferenceException>(() => mapRegistry.Freeze());
+            var exception = Assert.Throws<ScriniumNotPropagatedReferenceException>(() => mapRegistry.Freeze());
 
             // Assert.
             Assert.Contains(
@@ -765,7 +765,7 @@ namespace Etherna.Scrinium.Core
                 .AddSecondarySchema(ModelMapSchema.FallbackId);
 
             // Action.
-            var exception = Assert.Throws<MongodmDuplicateSchemaIdException>(() => mapRegistry.Freeze());
+            var exception = Assert.Throws<ScriniumDuplicateSchemaIdException>(() => mapRegistry.Freeze());
 
             // Assert.
             Assert.Contains(ModelMapSchema.FallbackId, exception.Message, StringComparison.Ordinal);

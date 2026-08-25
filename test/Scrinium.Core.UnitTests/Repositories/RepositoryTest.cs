@@ -268,7 +268,7 @@ namespace Etherna.Scrinium.Core.Repositories
         public async Task TryFindOneDisposesTheAmbientHandlerOnAMissingId()
         {
             /* A miss is ordinary control flow: the collection access throws
-             * MongodmEntityNotFoundException, and TryFindOneAsync turns it into a null
+             * ScriniumEntityNotFoundException, and TryFindOneAsync turns it into a null
              * result. The ambient handler must release also on this path. */
 
             // Setup.

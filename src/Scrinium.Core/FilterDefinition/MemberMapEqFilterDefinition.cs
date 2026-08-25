@@ -55,7 +55,7 @@ namespace Etherna.Scrinium.Core.FilterDefinition
             var memberMapFieldDefinition = new MemberMapFieldDefinition<TDocument, TItem>(
                 memberMap,
                 _ => $".{ElemMatchCommand}",
-                _ => throw new MongodmElementPathRenderingException());
+                _ => throw new ScriniumElementPathRenderingException());
             var renderedField = memberMapFieldDefinition.Render(args);
             var segmentedField = renderedField.FieldName.Split('.');
             var filterDocument = BuildBsonDocument(segmentedField, value, renderedField.ValueSerializer, memberMap.IsIdMember);

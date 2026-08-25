@@ -87,11 +87,11 @@ namespace Etherna.Scrinium.IntegrationTests
             var dependencies = fixture.ServiceProvider.GetRequiredService<IDbDependencies>();
             var options = new DbContextOptions
             {
-                ConnectionString = $"{fixture.MongoDbUrl}/mongodm-it-invalid-embedded"
+                ConnectionString = $"{fixture.MongoDbUrl}/scrinium-it-invalid-embedded"
             };
 
             // Action & assert.
-            var exception = Assert.Throws<MongodmEmbeddedEntityModelException>(
+            var exception = Assert.Throws<ScriniumEmbeddedEntityModelException>(
                 () => dbContext.BuildEngine(dependencies, new MongoClient(fixture.MongoDbUrl), options));
             Assert.Contains(nameof(InvalidEmbeddedEntityDbContext), exception.Message, StringComparison.Ordinal);
             Assert.Contains(nameof(Blog), exception.Message, StringComparison.Ordinal);
@@ -291,7 +291,7 @@ namespace Etherna.Scrinium.IntegrationTests
             //the denormalized member reads from the summary, without any load
             Assert.Equal("post title", referencedPost.Title);
 
-            var exception = Assert.Throws<MongodmMissingOriginDocumentException>(() => referencedPost.Content);
+            var exception = Assert.Throws<ScriniumMissingOriginDocumentException>(() => referencedPost.Content);
             Assert.Contains(post.Id!, exception.Message, StringComparison.Ordinal);
             Assert.Contains(nameof(Post), exception.Message, StringComparison.Ordinal);
             Assert.Contains(dbContext.Posts.Name, exception.Message, StringComparison.Ordinal);
@@ -313,7 +313,7 @@ namespace Etherna.Scrinium.IntegrationTests
 
             // Action and assert.
             //the explicit load reports the inconsistency where it happens, not at the first member read
-            var exception = await Assert.ThrowsAsync<MongodmMissingOriginDocumentException>(
+            var exception = await Assert.ThrowsAsync<ScriniumMissingOriginDocumentException>(
                 () => dbContext.LoadValuesAsync(loadedBlog.LastPost!, p => p.Content));
             Assert.Contains(post.Id!, exception.Message, StringComparison.Ordinal);
         }

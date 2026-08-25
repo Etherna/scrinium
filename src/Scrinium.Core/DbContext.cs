@@ -384,7 +384,7 @@ namespace Etherna.Scrinium.Core
                  * on every db context of the application), so an owner never releasing the
                  * lock must fail this seeding instead of hanging it forever. */
                 if (lockWaitStopwatch.Elapsed >= effectiveLockWaitTimeout)
-                    throw new MongodmDbSeedingException(
+                    throw new ScriniumDbSeedingException(
                         $"Can't seed {GetType().Name} dbContext: another owner held the db context lock " +
                         $"for more than the {effectiveLockWaitTimeout} wait timeout");
 
@@ -430,7 +430,7 @@ namespace Etherna.Scrinium.Core
 
                     // Seed.
                     try { await SeedAsync().ConfigureAwait(false); }
-                    catch (Exception e) { throw new MongodmDbSeedingException($"Error seeding {GetType().Name} dbContext", e); }
+                    catch (Exception e) { throw new ScriniumDbSeedingException($"Error seeding {GetType().Name} dbContext", e); }
 
                     // Report operation.
                     var seedOperation = new SeedOperation(engine);
@@ -667,7 +667,7 @@ namespace Etherna.Scrinium.Core
                     break;
 
                 case ReactionMode.Throw:
-                    throw new MongodmLazyLoadingException(
+                    throw new ScriniumLazyLoadingException(
                         $"Denied implicit lazy load on model type {modelType.Name}" +
                         (memberName is null ? " from a domain method" : $", member {memberName}") +
                         $": preload members with {nameof(LoadValuesAsync)}, or allow implicit lazy loads on the db context options");
@@ -711,7 +711,7 @@ namespace Etherna.Scrinium.Core
                     var modelId = TryGetIdMemberInfo(summaryModel.GetType()) is { } idMemberInfo
                         ? ReflectionHelper.GetValue(summaryModel, idMemberInfo)
                         : null;
-                    throw new MongodmMissingOriginDocumentException(
+                    throw new ScriniumMissingOriginDocumentException(
                         $"Summary model of type {modelType.Name} with id {modelId ?? "null"} has no origin document " +
                         $"on repository {sourceRepository.Name}: the referred document doesn't exist on its collection, " +
                         "and its members can't be loaded. Fix the db inconsistency, or configure the reference to " +

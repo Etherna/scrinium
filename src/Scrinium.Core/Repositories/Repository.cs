@@ -275,7 +275,7 @@ namespace Etherna.Scrinium.Core.Repositories
         public async Task DeleteAsync(IEntityModel model, CancellationToken cancellationToken = default)
         {
             if (model is not TModel castedModel)
-                throw new MongodmInvalidEntityTypeException("Invalid model type");
+                throw new ScriniumInvalidEntityTypeException("Invalid model type");
             await DeleteAsync(castedModel, [], cancellationToken).ConfigureAwait(false);
         }
 
@@ -435,7 +435,7 @@ namespace Etherna.Scrinium.Core.Repositories
                     }
                     catch (InvalidOperationException)
                     {
-                        throw new MongodmIndexBuildingException($"Can't build custom index in collection \"{Name}\"");
+                        throw new ScriniumIndexBuildingException($"Can't build custom index in collection \"{Name}\"");
                     }
 
                     indexOptions.Name ??= $"doc_{string.Join("_", renderedKeys.Names)}";
@@ -645,7 +645,7 @@ namespace Etherna.Scrinium.Core.Repositories
         {
             ArgumentNullException.ThrowIfNull(model);
             if (model is not TModel castedModel)
-                throw new MongodmInvalidEntityTypeException("Invalid model type");
+                throw new ScriniumInvalidEntityTypeException("Invalid model type");
 
             var modelDocument = InternalDbContext.TryGetModelBsonDocument(model);
             if (modelDocument is null)
@@ -853,7 +853,7 @@ namespace Etherna.Scrinium.Core.Repositories
                 return await FindOneAsync(id, cancellationToken).ConfigureAwait(false);
             }
             catch (Exception e) when (e is FormatException or
-                                           MongodmEntityNotFoundException)
+                                           ScriniumEntityNotFoundException)
             {
                 return null;
             }
@@ -867,7 +867,7 @@ namespace Etherna.Scrinium.Core.Repositories
             {
                 return await FindOneAsync(predicate, cancellationToken).ConfigureAwait(false);
             }
-            catch (MongodmEntityNotFoundException)
+            catch (ScriniumEntityNotFoundException)
             {
                 return null;
             }
@@ -1057,9 +1057,9 @@ namespace Etherna.Scrinium.Core.Repositories
             {
                 return await FindOneOnDBAsync(new EntityIdEqFilterDefinition<TModel, TKey>(id), cancellationToken).ConfigureAwait(false);
             }
-            catch (MongodmEntityNotFoundException)
+            catch (ScriniumEntityNotFoundException)
             {
-                throw new MongodmEntityNotFoundException($"Can't find key {id}");
+                throw new ScriniumEntityNotFoundException($"Can't find key {id}");
             }
         }
 
@@ -1068,7 +1068,7 @@ namespace Etherna.Scrinium.Core.Repositories
         {
             ArgumentNullException.ThrowIfNull(model);
             if (model is not TModel castedModel)
-                throw new MongodmInvalidEntityTypeException("Invalid model type");
+                throw new ScriniumInvalidEntityTypeException("Invalid model type");
 
             await CreateOnDBAsync(castedModel, cancellationToken).ConfigureAwait(false);
 
@@ -1410,7 +1410,7 @@ namespace Etherna.Scrinium.Core.Repositories
                 var model = await cursor.FirstOrDefaultAsync(cancellationToken).ConfigureAwait(false);
 
                 if (model == null)
-                    throw new MongodmEntityNotFoundException("Can't find element");
+                    throw new ScriniumEntityNotFoundException("Can't find element");
 
                 logger.RepositoryFoundDocument(Name, DbContext.Engine.Options.DbName, model.Id!.ToString()!);
 

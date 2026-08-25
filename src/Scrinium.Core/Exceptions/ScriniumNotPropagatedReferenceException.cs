@@ -24,17 +24,17 @@ namespace Etherna.Scrinium.Core.Exceptions
     /// propagation can't address the path, so its summaries would go stale when the
     /// referenced models change.
     /// </summary>
-    public class MongodmNotPropagatedReferenceException : Exception
+    public class ScriniumNotPropagatedReferenceException : Exception
     {
         // Constructors.
-        public MongodmNotPropagatedReferenceException()
+        public ScriniumNotPropagatedReferenceException()
         { }
 
-        public MongodmNotPropagatedReferenceException(string message)
+        public ScriniumNotPropagatedReferenceException(string message)
             : base(message)
         { }
 
-        public MongodmNotPropagatedReferenceException(string message, Exception innerException)
+        public ScriniumNotPropagatedReferenceException(string message, Exception innerException)
             : base(message, innerException)
         { }
     }

@@ -149,8 +149,8 @@ namespace Etherna.Scrinium.Core.Serialization.Mapping
 
                         var renderedInternalElementPath = RenderInternalItemElementPath(
                             internalElementPathToRender,
-                            _ => throw new MongodmElementPathRenderingException("Can't exist arrays with undefined index here"),
-                            _ => throw new MongodmElementPathRenderingException("Can't render field with an unknown document key in path"));
+                            _ => throw new ScriniumElementPathRenderingException("Can't exist arrays with undefined index here"),
+                            _ => throw new ScriniumElementPathRenderingException("Can't render field with an unknown document key in path"));
 
                         return mm != lastUndefinedArrayElement.MemberMap ?
                             mm.BsonMemberMap.ElementName + renderedInternalElementPath :

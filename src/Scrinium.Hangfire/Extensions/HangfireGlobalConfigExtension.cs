@@ -20,7 +20,7 @@ namespace Hangfire
     public static class HangfireGlobalConfigExtension
     {
 #pragma warning disable IDE0060 // Remove unused parameter
-        public static void UseMongODM(this IGlobalConfiguration config)
+        public static void UseScrinium(this IGlobalConfiguration config)
 #pragma warning restore IDE0060 // Remove unused parameter
         {
             // Add a default execution context running with any Hangfire task.

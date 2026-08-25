@@ -35,7 +35,7 @@ namespace Etherna.Scrinium.AspNetCore
             IDiscriminatorRegistry discriminatorRegistry,
             IExecutionContext executionContext,
             IMapRegistry mapRegistry,
-            IOptions<MongODMOptions> mongODMOptions,
+            IOptions<ScriniumOptions> mongODMOptions,
             IProxyGenerator proxyGenerator,
             IRepositoryRegistry repositoryRegistry,
             ISerializerModifierAccessor serializerModifierAccessor)
@@ -47,7 +47,7 @@ namespace Etherna.Scrinium.AspNetCore
             DiscriminatorRegistry = discriminatorRegistry;
             ExecutionContext = executionContext;
             MapRegistry = mapRegistry;
-            MongODMOptions = mongODMOptions.Value;
+            ScriniumOptions = mongODMOptions.Value;
             ProxyGenerator = proxyGenerator;
             RepositoryRegistry = repositoryRegistry;
             SerializerModifierAccessor = serializerModifierAccessor;
@@ -59,7 +59,7 @@ namespace Etherna.Scrinium.AspNetCore
         public IDiscriminatorRegistry DiscriminatorRegistry { get; }
         public IExecutionContext ExecutionContext { get; }
         public IMapRegistry MapRegistry { get; }
-        public MongODMOptions MongODMOptions { get; }
+        public ScriniumOptions ScriniumOptions { get; }
         public IProxyGenerator ProxyGenerator { get; }
         public IRepositoryRegistry RepositoryRegistry { get; }
         public ISerializerModifierAccessor SerializerModifierAccessor { get; }

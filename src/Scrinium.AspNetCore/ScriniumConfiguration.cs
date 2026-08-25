@@ -27,8 +27,8 @@ using System.Linq;
 
 namespace Etherna.Scrinium.AspNetCore
 {
-    public class MongODMConfiguration(IServiceCollection services)
-        : IMongODMConfiguration
+    public class ScriniumConfiguration(IServiceCollection services)
+        : IScriniumConfiguration
     {
         // Fields.
         private readonly object configLock = new();
@@ -38,18 +38,18 @@ namespace Etherna.Scrinium.AspNetCore
         public bool IsFrozen { get; private set; }
 
         // Methods.
-        public IMongODMConfiguration AddDbContext<TDbContext>(
+        public IScriniumConfiguration AddDbContext<TDbContext>(
             Action<DbContextOptions>? dbContextOptionsConfig = null)
             where TDbContext : DbContext, new() =>
             AddDbContext<TDbContext, TDbContext>(dbContextOptionsConfig);
 
-        public IMongODMConfiguration AddDbContext<TDbContext>(
+        public IScriniumConfiguration AddDbContext<TDbContext>(
             Func<IServiceProvider, TDbContext> dbContextCreator,
             Action<DbContextOptions>? dbContextOptionsConfig = null)
             where TDbContext : DbContext =>
             AddDbContext<TDbContext, TDbContext>(dbContextCreator, dbContextOptionsConfig);
 
-        public IMongODMConfiguration AddDbContext<TDbContext, TDbContextImpl>(
+        public IScriniumConfiguration AddDbContext<TDbContext, TDbContextImpl>(
             Action<DbContextOptions>? dbContextOptionsConfig = null)
             where TDbContext : class, IDbContext
             where TDbContextImpl : DbContext, TDbContext, new() =>
@@ -57,7 +57,7 @@ namespace Etherna.Scrinium.AspNetCore
                 _ => Activator.CreateInstance<TDbContextImpl>(),
                 dbContextOptionsConfig);
 
-        public IMongODMConfiguration AddDbContext<TDbContext, TDbContextImpl>(
+        public IScriniumConfiguration AddDbContext<TDbContext, TDbContextImpl>(
             Func<IServiceProvider, TDbContextImpl> dbContextCreator,
             Action<DbContextOptions>? dbContextOptionsConfig)
             where TDbContext : class, IDbContext
@@ -123,7 +123,7 @@ namespace Etherna.Scrinium.AspNetCore
             }
         }
 
-        public void Freeze(IMongODMOptionsBuilder mongODMOptionsBuilder)
+        public void Freeze(IScriniumOptionsBuilder mongODMOptionsBuilder)
         {
             ArgumentNullException.ThrowIfNull(mongODMOptionsBuilder);
 

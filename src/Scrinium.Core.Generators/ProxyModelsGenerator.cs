@@ -549,7 +549,7 @@ namespace Etherna.Scrinium.Core.Generators
             b.AppendLine("             * member diffs of a referencing model at save time). */");
             b.AppendLine("            if (proxyOutdatedModelType is null || proxyDbContext?.IsChangeTrackingSuppressed == true)");
             b.AppendLine("                return;");
-            b.AppendLine("            throw new global::Etherna.Scrinium.Core.Exceptions.MongodmOutdatedModelTypeException(");
+            b.AppendLine("            throw new global::Etherna.Scrinium.Core.Exceptions.ScriniumOutdatedModelTypeException(");
             b.AppendLine($"                $\"Model {{base.{info.IdPropertyName}}} was loaded as type {info.ModelName}, but its document is now of type \" +");
             b.AppendLine("                $\"{proxyOutdatedModelType.Name}: reload the model from its repository to get the current type\");");
             b.AppendLine("        }");

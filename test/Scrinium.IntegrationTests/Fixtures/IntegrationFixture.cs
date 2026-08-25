@@ -37,26 +37,26 @@ namespace Etherna.Scrinium.IntegrationTests.Fixtures
 
         // Properties.
         public ICustomIdDbContext CustomIdDbContext { get; private set; } = null!;
-        public string CustomIdDbName { get; } = "mongodm-it-customid-" + Guid.NewGuid().ToString("N");
+        public string CustomIdDbName { get; } = "scrinium-it-customid-" + Guid.NewGuid().ToString("N");
         public IImplicitSourceDbContext ImplicitSourceDbContext { get; private set; } = null!;
-        public string ImplicitSourceDbName { get; } = "mongodm-it-implicit-" + Guid.NewGuid().ToString("N");
-        public string MigrationsDbName { get; } = "mongodm-it-migrations-" + Guid.NewGuid().ToString("N");
+        public string ImplicitSourceDbName { get; } = "scrinium-it-implicit-" + Guid.NewGuid().ToString("N");
+        public string MigrationsDbName { get; } = "scrinium-it-migrations-" + Guid.NewGuid().ToString("N");
         public LogEventCollector MigrationsLogEvents { get; } = new();
         public IMixedAccessDbContext MixedAccessDbContext { get; private set; } = null!;
         public string MongoDbUrl => mongoDb.DbUrl;
         public IObjectMembersDbContext ObjectMembersDbContext { get; private set; } = null!;
-        public string ObjectMembersDbName { get; } = "mongodm-it-objmembers-" + Guid.NewGuid().ToString("N");
-        public string ParentDbName { get; } = "mongodm-it-parent-" + Guid.NewGuid().ToString("N");
+        public string ObjectMembersDbName { get; } = "scrinium-it-objmembers-" + Guid.NewGuid().ToString("N");
+        public string ParentDbName { get; } = "scrinium-it-parent-" + Guid.NewGuid().ToString("N");
         public IReadOnlyDbContext ReadOnlyDbContext { get; private set; } = null!;
         public ISecondDbContext SecondDbContext { get; private set; } = null!;
-        public string SecondDbName { get; } = "mongodm-it-second-" + Guid.NewGuid().ToString("N");
-        public string SeedObserverOneDbName { get; } = "mongodm-it-seedobs1-" + Guid.NewGuid().ToString("N");
-        public string SeedObserverTwoDbName { get; } = "mongodm-it-seedobs2-" + Guid.NewGuid().ToString("N");
+        public string SecondDbName { get; } = "scrinium-it-second-" + Guid.NewGuid().ToString("N");
+        public string SeedObserverOneDbName { get; } = "scrinium-it-seedobs1-" + Guid.NewGuid().ToString("N");
+        public string SeedObserverTwoDbName { get; } = "scrinium-it-seedobs2-" + Guid.NewGuid().ToString("N");
         public ConcurrentDictionary<string, IDictionary<object, object?>?> SeedingObservations { get; } = new();
         public IServiceProvider ServiceProvider => serviceProvider;
         internal InlineTaskRunner TaskRunner { get; private set; } = null!;
         public ITestDbContext TestDbContext { get; private set; } = null!;
-        public string TestDbName { get; } = "mongodm-it-test-" + Guid.NewGuid().ToString("N");
+        public string TestDbName { get; } = "scrinium-it-test-" + Guid.NewGuid().ToString("N");
 
         // Methods.
         public async Task DisposeAsync()
@@ -85,7 +85,7 @@ namespace Etherna.Scrinium.IntegrationTests.Fixtures
             var services = new ServiceCollection();
             services.AddLogging();
 
-            services.AddMongODM<InlineTaskRunner>()
+            services.AddScrinium<InlineTaskRunner>()
                 .AddDbContext<ITestDbContext, TestDbContext>(
                     _ => new TestDbContext(),
                     options =>

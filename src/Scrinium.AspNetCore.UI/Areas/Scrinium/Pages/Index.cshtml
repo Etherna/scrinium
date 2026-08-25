@@ -1,5 +1,5 @@
 @page
-@using Etherna.Scrinium.AspNetCore.UI.Areas.MongODM.Pages
+@using Etherna.Scrinium.AspNetCore.UI.Areas.Scrinium.Pages
 @using Etherna.Scrinium.Core.Serialization.Mapping
 @using Etherna.Scrinium.Core.Utility
 @using Microsoft.AspNetCore.Mvc.Razor
@@ -8,7 +8,7 @@
     ViewData["Title"] = "Db contexts";
 }
 
-@* Antiforgery token, sent by mongodmDash.js as request header on every POST. *@
+@* Antiforgery token, sent by scriniumDash.js as request header on every POST. *@
 @Html.AntiForgeryToken()
 
 @{
@@ -205,7 +205,7 @@
                             <code>@ModelMapSchema.IdElementName</code> name carry it in the
                             <code>@ModelMapSchema.DeprecatedIdElementName</code> element,
                             still recognized while reading them: they keep loading, but that name is
-                            <strong>deprecated</strong>, and a future version of MongODM will stop reading it.
+                            <strong>deprecated</strong>, and a future version of Scrinium will stop reading it.
                             Counting them scans the whole collection, so it runs
                             only on request, one collection at a time. The migration rewrites each of those
                             documents whole with its current active schema, so the current name carries the

@@ -135,6 +135,6 @@ namespace Etherna.Scrinium.IntegrationTests.Fixtures
             }
         }
 
-        public void SetMongODMOptions(MongODMOptions options) { }
+        public void SetScriniumOptions(ScriniumOptions options) { }
     }
 }

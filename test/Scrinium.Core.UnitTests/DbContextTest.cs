@@ -141,7 +141,7 @@ namespace Etherna.Scrinium.Core
             options.ImplicitLazyLoad = ReactionMode.Throw;
 
             // Action and assert.
-            var exception = Assert.Throws<MongodmLazyLoadingException>(
+            var exception = Assert.Throws<ScriniumLazyLoadingException>(
                 () => internalDbContext.OnImplicitLazyLoad(typeof(FakeModel), "StringProp"));
             Assert.Contains(nameof(FakeModel), exception.Message, StringComparison.Ordinal);
             Assert.Contains("StringProp", exception.Message, StringComparison.Ordinal);
@@ -168,7 +168,7 @@ namespace Etherna.Scrinium.Core
             ((IReferenceable)model).SetAsSummary([], ReactionMode.Throw);
 
             // Action and assert.
-            var exception = Assert.Throws<MongodmMissingOriginDocumentException>(
+            var exception = Assert.Throws<ScriniumMissingOriginDocumentException>(
                 () => internalDbContext.OnMissingOriginDocument(model));
             Assert.Contains(nameof(FakeModel), exception.Message, StringComparison.Ordinal);
             Assert.Contains("id", exception.Message, StringComparison.Ordinal);
@@ -209,7 +209,7 @@ namespace Etherna.Scrinium.Core
                 .ReturnsAsync(NewEmptyCursor);
 
             // Action and assert.
-            var exception = await Assert.ThrowsAsync<MongodmMissingOriginDocumentException>(
+            var exception = await Assert.ThrowsAsync<ScriniumMissingOriginDocumentException>(
                 () => dbContext.LoadValuesAsync(model, m => m.StringProp));
             Assert.Contains("id", exception.Message, StringComparison.Ordinal);
         }
@@ -1090,7 +1090,7 @@ namespace Etherna.Scrinium.Core
                 new DbContextOptions());
 
             // Action.
-            var seedingException = await Assert.ThrowsAsync<MongodmDbSeedingException>(
+            var seedingException = await Assert.ThrowsAsync<ScriniumDbSeedingException>(
                 () => seedingDbContext.SeedIfNeededAsync(TimeSpan.FromMilliseconds(200)).WaitAsync(SeedingWaitBound));
 
             // Assert.
@@ -1179,7 +1179,7 @@ namespace Etherna.Scrinium.Core
 
             // Action.
             //without an explicit wait, the lease duration of this seeding is the one bounding it
-            var seedingException = await Assert.ThrowsAsync<MongodmDbSeedingException>(
+            var seedingException = await Assert.ThrowsAsync<ScriniumDbSeedingException>(
                 () => seedingDbContext.SeedIfNeededAsync(lockLeaseDuration: TimeSpan.FromMilliseconds(200))
                                       .WaitAsync(SeedingWaitBound));
 

@@ -23,17 +23,17 @@ namespace Etherna.Scrinium.Core.Exceptions
     /// the referred document doesn't exist anymore on the origin collection, so the summary
     /// can't complete its members.
     /// </summary>
-    public class MongodmMissingOriginDocumentException : Exception
+    public class ScriniumMissingOriginDocumentException : Exception
     {
         // Constructors.
-        public MongodmMissingOriginDocumentException()
+        public ScriniumMissingOriginDocumentException()
         { }
 
-        public MongodmMissingOriginDocumentException(string message)
+        public ScriniumMissingOriginDocumentException(string message)
             : base(message)
         { }
 
-        public MongodmMissingOriginDocumentException(string message, Exception innerException)
+        public ScriniumMissingOriginDocumentException(string message, Exception innerException)
             : base(message, innerException)
         { }
     }

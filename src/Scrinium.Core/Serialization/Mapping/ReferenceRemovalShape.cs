@@ -105,7 +105,7 @@ namespace Etherna.Scrinium.Core.Serialization.Mapping
             var idElementPath = idMemberMap.RenderElementPath(
                 referToFinalItem: true,
                 _ => "",
-                _ => throw new MongodmElementPathRenderingException("Can't render field with an unknown document key in path"));
+                _ => throw new ScriniumElementPathRenderingException("Can't render field with an unknown document key in path"));
 
             var referenceMemberMap = idMemberMap.ParentMemberMap!;
 
@@ -122,7 +122,7 @@ namespace Etherna.Scrinium.Core.Serialization.Mapping
                 var renderedPath = referenceMemberMap.RenderElementPath(
                     referToFinalItem: true,
                     _ => ".$[]",
-                    _ => throw new MongodmElementPathRenderingException("Can't render field with an unknown document key in path"));
+                    _ => throw new ScriniumElementPathRenderingException("Can't render field with an unknown document key in path"));
                 pullFieldPath = renderedPath[..^".$[]".Length];
                 pullIdElementPath = idMemberMap.BsonMemberMap.ElementName;
             }
@@ -136,7 +136,7 @@ namespace Etherna.Scrinium.Core.Serialization.Mapping
                 setFieldPath = referenceMemberMap.RenderElementPath(
                     referToFinalItem: true,
                     MemberMapRenderHelper.BuildArrayFilterFieldSelector(lastUndefinedArrayElement),
-                    _ => throw new MongodmElementPathRenderingException("Can't render field with an unknown document key in path"));
+                    _ => throw new ScriniumElementPathRenderingException("Can't render field with an unknown document key in path"));
 
                 if (lastUndefinedArrayElement is not null)
                     arrayFilterIdPath = MemberMapRenderHelper.RenderArrayFilterIdPath(idMemberMap, lastUndefinedArrayElement);

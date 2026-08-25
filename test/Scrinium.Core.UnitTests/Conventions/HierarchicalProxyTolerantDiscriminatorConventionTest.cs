@@ -86,10 +86,10 @@ namespace Etherna.Scrinium.Core.Conventions
 
             discriminatorRegistryMock.Setup(r => r.IsTypeDiscriminated(typeof(ForeignModel)))
                 .Returns(true);
-            discriminatorRegistryMock.Setup(r => r.LookupActualType(typeof(ForeignModel), "mongodm"))
+            discriminatorRegistryMock.Setup(r => r.LookupActualType(typeof(ForeignModel), "scrinium"))
                 .Returns(typeof(DerivedForeignModel));
 
-            using var bsonReader = new BsonDocumentReader(new BsonDocument("_t", "mongodm"));
+            using var bsonReader = new BsonDocumentReader(new BsonDocument("_t", "scrinium"));
 
             // Action.
             var actualType = convention.GetActualType(bsonReader, typeof(ForeignModel));
@@ -97,7 +97,7 @@ namespace Etherna.Scrinium.Core.Conventions
             // Assert.
             //the db context engine discriminator registry resolves the type, not the driver one
             Assert.Equal(typeof(DerivedForeignModel), actualType);
-            discriminatorRegistryMock.Verify(r => r.LookupActualType(typeof(ForeignModel), "mongodm"), Times.Once);
+            discriminatorRegistryMock.Verify(r => r.LookupActualType(typeof(ForeignModel), "scrinium"), Times.Once);
         }
 
         [Fact]
