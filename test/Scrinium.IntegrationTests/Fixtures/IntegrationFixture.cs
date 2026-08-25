@@ -142,7 +142,7 @@ namespace Etherna.Scrinium.IntegrationTests.Fixtures
                     {
                         options.ConnectionString = $"{mongoDb.DbUrl}/{SecondDbName}";
                     })
-                //dedicated context for the custom serialized entity id tests (MODM-176)
+                //dedicated context for the custom serialized entity id tests (SCR-176)
                 .AddDbContext<ICustomIdDbContext, CustomIdDbContext>(
                     _ => new CustomIdDbContext(),
                     options =>

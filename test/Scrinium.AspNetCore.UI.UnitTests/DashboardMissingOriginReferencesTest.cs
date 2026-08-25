@@ -37,7 +37,7 @@ using Xunit;
 
 namespace Etherna.Scrinium.AspNetCore.UI
 {
-    /* MODM-117: the dashboard finds and removes the references to missing origin documents,
+    /* SCR-117: the dashboard finds and removes the references to missing origin documents,
      * one collection at a time, delegating the scans to the collection repository. */
     public class DashboardMissingOriginReferencesTest
     {

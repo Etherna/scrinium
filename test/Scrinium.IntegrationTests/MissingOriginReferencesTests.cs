@@ -55,7 +55,7 @@ namespace Etherna.Scrinium.IntegrationTests
         [Fact]
         public async Task FindReportsTheReferencesToMissingOriginDocuments()
         {
-            /* MODM-117: the scan reads the distinct referenced ids of every reference element
+            /* SCR-117: the scan reads the distinct referenced ids of every reference element
              * path and verifies them against the origin collection: a deleted origin document
              * reports on every path referencing it, while valid and null references stay out. */
 

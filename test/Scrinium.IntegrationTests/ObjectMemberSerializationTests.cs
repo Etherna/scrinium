@@ -27,7 +27,7 @@ using Xunit;
 
 namespace Etherna.Scrinium.IntegrationTests
 {
-    /* MODM-231: typeof(object) never gets a model map, so the driver ObjectSerializer
+    /* SCR-231: typeof(object) never gets a model map, so the driver ObjectSerializer
      * stays the registered serializer for object. Its allowed types guard denies mapped
      * model types selected by document discriminators into object shaped members, and
      * its presence unblocks interface typed members, whose driver serializer requires it. */

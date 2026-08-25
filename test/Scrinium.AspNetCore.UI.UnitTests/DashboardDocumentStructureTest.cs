@@ -245,7 +245,7 @@ namespace Etherna.Scrinium.AspNetCore.UI
         [Fact]
         public void ShapesReportTheReferencedModelsWithoutARepository()
         {
-            /* MODM-101: a reference sourced on another db context is saved there, and the
+            /* SCR-101: a reference sourced on another db context is saved there, and the
              * dependencies update propagation stays per engine: its summaries are never
              * rewritten by this db context. */
 

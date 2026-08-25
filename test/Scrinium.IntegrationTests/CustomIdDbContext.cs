@@ -36,9 +36,9 @@ namespace Etherna.Scrinium.IntegrationTests
 
     /// <summary>
     /// A db context whose entities use ids of assorted non default types: a custom
-    /// serialized value type on <see cref="Artifact"/> (MODM-176), int on
+    /// serialized value type on <see cref="Artifact"/> (SCR-176), int on
     /// <see cref="Badge"/>, a custom value type serialized as document on
-    /// <see cref="Locker"/> (MODM-222), Guid on <see cref="Ticket"/>, native ObjectId on
+    /// <see cref="Locker"/> (SCR-222), Guid on <see cref="Ticket"/>, native ObjectId on
     /// <see cref="Voucher"/>, with the custom type also serialized as plain member by
     /// <see cref="Seal"/>.
     /// </summary>

@@ -219,7 +219,7 @@ namespace Etherna.Scrinium.Core
         [Fact]
         public void ActiveSchemasCreateInstancesWithProxyGeneratorOnlyForEntityModels()
         {
-            /* MODM-189: only entity model schemas replace their creators with the proxy
+            /* SCR-189: only entity model schemas replace their creators with the proxy
              * generator; any other model keeps its natural class map creators. */
 
             // Setup.
@@ -246,7 +246,7 @@ namespace Etherna.Scrinium.Core
         [Fact]
         public void AddCustomSerializerMapClaimsSerializerRegistrySlot()
         {
-            /* MODM-176: claiming the slot at registration makes later lookups resolve the
+            /* SCR-176: claiming the slot at registration makes later lookups resolve the
              * custom serializer also for types otherwise served by the driver serialization
              * providers (e.g. Guid, resolved as entity id type by the driver id generator
              * convention at automap). */
@@ -308,7 +308,7 @@ namespace Etherna.Scrinium.Core
         [Fact]
         public void FreezeAcceptsFabricatedSerializerCachedBeforeMapsRegistration()
         {
-            /* MODM-176: a serializer lookup executed while maps are still registering
+            /* SCR-176: a serializer lookup executed while maps are still registering
              * (e.g. the driver id generator convention, resolving the id member serializer
              * of an entity model at auto map) caches the serializer fabricated by the
              * serialization provider. The freeze keeps it as the registered serializer:
@@ -346,7 +346,7 @@ namespace Etherna.Scrinium.Core
         [Fact]
         public void FreezeBuildsChildMemberMapsForRepeatedEmbeddedModelMembers()
         {
-            /* MODM-224: the member maps walk skips only the schemas already open on its own
+            /* SCR-224: the member maps walk skips only the schemas already open on its own
              * recursion path: a schema reached again on a sibling branch builds its child
              * member maps once per branch. */
 
@@ -381,7 +381,7 @@ namespace Etherna.Scrinium.Core
         [Fact]
         public void FreezeDoesntCreateProxiesNorProxyMaps()
         {
-            /* MODM-189: model maps register only model types: the schema discovery doesn't
+            /* SCR-189: model maps register only model types: the schema discovery doesn't
              * create proxy instances, and proxy types have no maps of their own. */
 
             // Setup.
@@ -439,7 +439,7 @@ namespace Etherna.Scrinium.Core
                 Times.Never());
         }
 
-        /* MODM-222: an entity id is always a value. A composite id is addressed by no atomic
+        /* SCR-222: an entity id is always a value. A composite id is addressed by no atomic
          * key, and a document valued id is the only shape MongoDB reads as an operator
          * expression instead of a value: a hostile {"$ne": null} would match an arbitrary
          * document. Every id serializer declaring a document or an array representation is
@@ -511,7 +511,7 @@ namespace Etherna.Scrinium.Core
         [Fact]
         public void FreezeFailsWithUntypedIdMemberType()
         {
-            /* MODM-222: an object typed id doesn't commit to an id type. The values with
+            /* SCR-222: an object typed id doesn't commit to an id type. The values with
              * no BSON type equivalent discriminate into a document, and the ones with it
              * read back as the type of their BSON type — an enum id writes 1 and reads
              * back an Int32 — while the typed entity id contract, the identity map keys
@@ -547,7 +547,7 @@ namespace Etherna.Scrinium.Core
         [Fact]
         public void FreezeFailsWithDiscriminatorSharedByConcreteAndAbstractModelTypes()
         {
-            /* MODM-238: a concrete model type writes its discriminator into its documents,
+            /* SCR-238: a concrete model type writes its discriminator into its documents,
              * and any other model type declaring the same value stays a candidate at read,
              * abstract ones included. */
 
@@ -571,7 +571,7 @@ namespace Etherna.Scrinium.Core
         [Fact]
         public void FreezeFailsWithDiscriminatorSharedByModelTypes()
         {
-            /* MODM-238: discriminators default to the simple type name, so two model types
+            /* SCR-238: discriminators default to the simple type name, so two model types
              * with the same name in different namespaces write the same value into their
              * documents. Reads of a member whose nominal type both types satisfy (any
              * object shaped member) would resolve an ambiguous model type: the collision
@@ -736,7 +736,7 @@ namespace Etherna.Scrinium.Core
         [Fact]
         public void FreezeFailsWithNotPropagatedReferencePathsOnThrowMode()
         {
-            /* MODM-205: a db context declaring the throw reaction denies the engine build
+            /* SCR-205: a db context declaring the throw reaction denies the engine build
              * on any reference path the dependencies propagation can't address, with every
              * element path detailed: the strict opt-in of the applications that must not
              * host silently stale summaries. */
@@ -795,7 +795,7 @@ namespace Etherna.Scrinium.Core
         [Fact]
         public void FreezeKeepsDriverObjectSerializerForObjectType()
         {
-            /* MODM-231: linking base model maps stops before typeof(object), so no model
+            /* SCR-231: linking base model maps stops before typeof(object), so no model
              * map serializer registers for object in place of the driver ObjectSerializer,
              * whose allowed types guard protects object shaped members. */
 
@@ -820,7 +820,7 @@ namespace Etherna.Scrinium.Core
         [Fact]
         public void FreezeRegistersMemberMapsAtEveryNestingDepth()
         {
-            /* MODM-248: the member maps walk descends to every depth, so a reference
+            /* SCR-248: the member maps walk descends to every depth, so a reference
              * denormalized under three embedding levels enters the registers the
              * dependencies propagation resolves against: the member map of a summarized
              * member by id and by member info, and the id member map by element path. */
@@ -876,7 +876,7 @@ namespace Etherna.Scrinium.Core
         [Fact]
         public void FreezeSucceedsWithAbstractModelTypesSharingDiscriminator()
         {
-            /* MODM-238: an abstract model type is never the concrete type of a serialized
+            /* SCR-238: an abstract model type is never the concrete type of a serialized
              * instance, so its discriminator is never written into a document, nor looked
              * up: base model types with the same simple name keep their defaults. */
 
@@ -931,7 +931,7 @@ namespace Etherna.Scrinium.Core
         [Fact]
         public void FreezeSucceedsWithCyclicReferenceSummarySchemas()
         {
-            /* MODM-224: a reference summary schema can reach itself through the reference
+            /* SCR-224: a reference summary schema can reach itself through the reference
              * members it denormalizes: the member maps walk stops when a schema repeats on
              * its recursion path, instead of overflowing the stack at engine build. */
 
@@ -1010,7 +1010,7 @@ namespace Etherna.Scrinium.Core
         [Fact]
         public void FreezeSucceedsWithExplicitDiscriminatorsOnHomonymModelTypes()
         {
-            /* MODM-238: model types with the same simple name coexist by declaring
+            /* SCR-238: model types with the same simple name coexist by declaring
              * distinct discriminators, the way out of the default collision. */
 
             // Setup.
@@ -1051,7 +1051,7 @@ namespace Etherna.Scrinium.Core
         [Fact]
         public void FreezeSucceedsWithNotPropagatedReferencePathsOnSilentMode()
         {
-            /* MODM-205: a db context declaring the silent reaction tolerates the reference
+            /* SCR-205: a db context declaring the silent reaction tolerates the reference
              * paths the dependencies propagation can't address without any report: the
              * explicit opt-out of the applications accepting stale summaries. */
 
@@ -1105,7 +1105,7 @@ namespace Etherna.Scrinium.Core
         [Fact]
         public void FreezeSucceedsWithSelfNestingModelMembers()
         {
-            /* MODM-224: a mapped type reachable from itself through its member serializers
+            /* SCR-224: a mapped type reachable from itself through its member serializers
              * is a legal non entity configuration: the member maps walk stops when a schema
              * repeats on its recursion path, building each member map path once instead of
              * overflowing the stack at engine build. */
@@ -1179,7 +1179,7 @@ namespace Etherna.Scrinium.Core
         [Fact]
         public void FreezeWarnsNotPropagatedReferencePaths()
         {
-            /* MODM-205: a dictionary in document representation writes its keys as element
+            /* SCR-205: a dictionary in document representation writes its keys as element
              * names, unknown to the maps: the dependencies propagation can't address the
              * reference id element path, so the freeze reports the path with a warning by
              * default, making the limitation a conscious configuration choice. The schemas

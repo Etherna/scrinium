@@ -51,7 +51,7 @@ namespace Etherna.Scrinium.IntegrationTests
         [Fact]
         public async Task CountsDocumentsGroupedBySchemaId()
         {
-            /* MODM-204: a single server side scan groups the collection documents by their
+            /* SCR-204: a single server side scan groups the collection documents by their
              * schema id, read from the current element name or from the deprecated one.
              * Schema ids not registered on the db context report too, and documents without
              * any schema id element count aside: both identify documents needing attention. */

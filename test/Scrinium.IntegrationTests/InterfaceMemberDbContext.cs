@@ -24,7 +24,7 @@ namespace Etherna.Scrinium.IntegrationTests
     /// A db context mapping a model with an interface typed member: the driver
     /// discriminated interface serializer requires the registered serializer for object
     /// to be the driver ObjectSerializer, so the engine build must succeed with it in
-    /// place (MODM-231).
+    /// place (SCR-231).
     /// </summary>
     internal sealed class InterfaceMemberDbContext : DbContext
     {

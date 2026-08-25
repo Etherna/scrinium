@@ -53,7 +53,7 @@ namespace Etherna.Scrinium.IntegrationTests
         public IRepository<Blog, string> Blogs { get; } = new Repository<Blog, string>(
             new RepositoryOptions<Blog>("blogs")
             {
-                //custom index on a referenced document id path (MODM-98)
+                //custom index on a referenced document id path (SCR-98)
                 IndexBuilders =
                 [
                     (Builders<Blog>.IndexKeys.Ascending(b => b.LastPost!.Id),

@@ -39,7 +39,7 @@ using Xunit;
 
 namespace Etherna.Scrinium.AspNetCore.UI
 {
-    /* MODM-256: the dashboard counts the documents carrying their schema id under a deprecated
+    /* SCR-256: the dashboard counts the documents carrying their schema id under a deprecated
      * element name and migrates them, one collection at a time, delegating the work to the
      * collection repository. */
     public class DashboardDeprecatedSchemaIdDocumentsTest

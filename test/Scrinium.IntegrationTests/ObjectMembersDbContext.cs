@@ -29,7 +29,7 @@ namespace Etherna.Scrinium.IntegrationTests
     /// A db context hosting object shaped members (a plain object payload and a metadata
     /// bag on <see cref="Capsule"/>) beside another mapped model type
     /// (<see cref="Secret"/>), reachable by discriminator: object shaped values must stay
-    /// guarded by the allowed types of the driver object serializer (MODM-231).
+    /// guarded by the allowed types of the driver object serializer (SCR-231).
     /// </summary>
     internal sealed class ObjectMembersDbContext : DbContext, IObjectMembersDbContext
     {

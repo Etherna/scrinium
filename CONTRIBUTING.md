@@ -40,7 +40,7 @@ Before creating bug reports, please check [this list](#before-submitting-a-bug-r
 #### Before Submitting A Bug Report
 
 * **Check the [discussions](https://github.com/Etherna/etherna/discussions)** for a list of common questions and problems.
-* **Perform a [issue search](https://etherna.atlassian.net/browse/MODM)** to see if the problem has already been reported. If it has **and the issue is still open**, add a comment to the existing issue instead of opening a new one.
+* **Perform a [issue search](https://etherna.atlassian.net/browse/SCR)** to see if the problem has already been reported. If it has **and the issue is still open**, add a comment to the existing issue instead of opening a new one.
 
 #### How Do I Submit A (Good) Bug Report?
 
@@ -80,7 +80,7 @@ Before creating enhancement suggestions, please check [this list](#before-submit
 #### Before Submitting An Enhancement Suggestion
 
 * **Determine which repository the enhancement should be suggested in.**
-* **Perform a [issue search](https://etherna.atlassian.net/browse/MODM)** to see if the enhancement has already been suggested. If it has, add a comment to the existing issue instead of opening a new one.
+* **Perform a [issue search](https://etherna.atlassian.net/browse/SCR)** to see if the enhancement has already been suggested. If it has, add a comment to the existing issue instead of opening a new one.
 
 #### How Do I Submit A (Good) Enhancement Suggestion?
 

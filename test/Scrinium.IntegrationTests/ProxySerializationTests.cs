@@ -52,7 +52,7 @@ namespace Etherna.Scrinium.IntegrationTests
         [Fact]
         public async Task SerializingADerivedProxyMatchesThePlainInstanceDocument()
         {
-            /* MODM-189: proxy types have no registered model maps, and a proxy instance
+            /* SCR-189: proxy types have no registered model maps, and a proxy instance
              * serializes through the class map of its purged concrete type. Replacing an
              * untouched loaded model (a proxy of the derived type, read from the base
              * typed repository) must rewrite a document identical to the created one:
@@ -90,7 +90,7 @@ namespace Etherna.Scrinium.IntegrationTests
         [Fact]
         public async Task SerializingAProxyReferenceMatchesThePlainReferenceDocument()
         {
-            /* MODM-189: reference serializer configurations too have no proxy model maps: a
+            /* SCR-189: reference serializer configurations too have no proxy model maps: a
              * reference member valued with a loaded (proxy) instance writes the same reference
              * document written by a plain instance - the summary members of the reference
              * schema, with the reference schema id. */

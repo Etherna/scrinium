@@ -181,7 +181,7 @@ namespace Etherna.Scrinium.Core
         [Fact]
         public void DeserializeClearsExtraElementsAfterModelFix()
         {
-            /* MODM-3: unmapped document elements populate the extra elements bag, read by
+            /* SCR-3: unmapped document elements populate the extra elements bag, read by
              * the model fix during deserialization. After the fix the bag is emptied: a
              * loaded model doesn't carry the extra data around for its whole lifetime. */
 
@@ -433,7 +433,7 @@ namespace Etherna.Scrinium.Core
         [InlineData("_m")]
         public void DeserializeResolvesSchemaIdFromItsDocumentElement(string schemaIdElementName)
         {
-            /* MODM-153: the schema id element name is "_s"; documents written with the
+            /* SCR-153: the schema id element name is "_s"; documents written with the
              * previous "_m" name keep resolving their schema through the deprecated
              * name. The recognized element is removed before the schema deserialization:
              * an unremoved element would fail it, not matching any mapped member. */
@@ -529,7 +529,7 @@ namespace Etherna.Scrinium.Core
         [Fact]
         public void DeserializeWarnsOnceOnUnrecognizedSchemaId()
         {
-            /* MODM-237: the schema id is document content, so a document can select which
+            /* SCR-237: the schema id is document content, so a document can select which
              * schema, and which model fix, deserialize it. An id matching no registered schema,
              * with no fallback configured, degrades to a read with the active schema: report it
              * once per model type and id, instead of degrading silently. */
@@ -751,7 +751,7 @@ namespace Etherna.Scrinium.Core
         [Fact]
         public void SerializeProxyModelThroughItsPurgedModelMap()
         {
-            /* MODM-189: proxy types have no registered model maps: a proxy instance serializes
+            /* SCR-189: proxy types have no registered model maps: a proxy instance serializes
              * through the model map of its purged type, writing the same document of a plain
              * instance - same members, same schema id, no proxy type traces. */
 

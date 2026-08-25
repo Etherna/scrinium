@@ -57,7 +57,7 @@ namespace Etherna.Scrinium.IntegrationTests
         [Fact]
         public async Task CountsTheDocumentsCarryingTheSchemaIdWithADeprecatedElementName()
         {
-            /* MODM-256: the documents written before the schema id element took its current
+            /* SCR-256: the documents written before the schema id element took its current
              * name carry it under a deprecated one, matched at their root. */
 
             // Setup.

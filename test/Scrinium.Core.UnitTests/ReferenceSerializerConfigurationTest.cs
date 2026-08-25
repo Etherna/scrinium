@@ -96,7 +96,7 @@ namespace Etherna.Scrinium.Core
         [Fact]
         public void GetSerializerBoundsReportedUnrecognizedSchemaIds()
         {
-            /* MODM-237: schema ids come from documents, so remembering every reported one would
+            /* SCR-237: schema ids come from documents, so remembering every reported one would
              * let whoever writes the reference documents grow the reported ids set without any
              * bound: the reports stop at the bound. */
 
@@ -276,7 +276,7 @@ namespace Etherna.Scrinium.Core
         [Fact]
         public void GetSerializerWarnsOnceOnUnrecognizedSchemaId()
         {
-            /* MODM-237: the schema id is document content. An id matching no registered schema,
+            /* SCR-237: the schema id is document content. An id matching no registered schema,
              * with no fallback configured, degrades the read to the reference id alone, and every
              * member access of the resulting summary lazy loads the whole origin document: report
              * it once per model type and id, instead of amplifying reads silently. */

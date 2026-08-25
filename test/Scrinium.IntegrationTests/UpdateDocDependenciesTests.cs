@@ -344,7 +344,7 @@ namespace Etherna.Scrinium.IntegrationTests
         [Fact]
         public async Task ReadOnlyRepositoriesAreSkippedWithoutFailing()
         {
-            /* MODM-205: a read-only repository can host referencing documents, owned by
+            /* SCR-205: a read-only repository can host referencing documents, owned by
              * another application: the update fan-out skips it — its summaries are not
              * this task's to refresh, and every write would be denied, failing the whole
              * task — while the summaries on the writable repositories refresh normally. */
@@ -431,7 +431,7 @@ namespace Etherna.Scrinium.IntegrationTests
         [Fact]
         public async Task SummariesUnderUnknownDocumentKeysStayStale()
         {
-            /* MODM-205: a dictionary in document representation writes its keys as element
+            /* SCR-205: a dictionary in document representation writes its keys as element
              * names, unknown to the maps: the task can't address the path server side
              * (querying unknown document keys is unsupported, see upstream SERVER-267), so
              * it skips the path — without failing the task — and the summaries hosted
@@ -500,7 +500,7 @@ namespace Etherna.Scrinium.IntegrationTests
         [Fact]
         public async Task UnknownRepositoryNamesAreSkipped()
         {
-            /* MODM-205: like the member map identifiers, the repository name of a
+            /* SCR-205: like the member map identifiers, the repository name of a
              * scheduled task can address a configuration that doesn't exist anymore
              * (e.g. after a software upgrade): the task skips without failing, without
              * touching the documents. */
@@ -613,7 +613,7 @@ namespace Etherna.Scrinium.IntegrationTests
         [Fact]
         public async Task UpdatesSummariesHostedByArrayOfArraysDictionaries()
         {
-            /* MODM-205: the array of arrays representation writes the dictionary entries
+            /* SCR-205: the array of arrays representation writes the dictionary entries
              * as [key, value] arrays, hosting the summary at the fixed value position: the
              * reference id element path stays addressable through the fixed index, and the
              * entry values refresh, only on the entries of the changed model. */
@@ -653,7 +653,7 @@ namespace Etherna.Scrinium.IntegrationTests
         [Fact]
         public async Task UpdatesSummariesHostedByArrayOfDocumentsDictionaries()
         {
-            /* MODM-205: the array of documents representation writes the dictionary
+            /* SCR-205: the array of documents representation writes the dictionary
              * entries as documents with fixed "k"/"v" element names: the reference id
              * element path stays addressable, and the summaries hosted by the entry
              * values refresh like on any other collection member, only on the entries
@@ -738,7 +738,7 @@ namespace Etherna.Scrinium.IntegrationTests
         [Fact]
         public async Task UpdatesSummariesHostedByNestedArraysOfEmbeddedDocuments()
         {
-            /* MODM-205: two array levels with undefined index in the path — an array of
+            /* SCR-205: two array levels with undefined index in the path — an array of
              * embedded documents, each hosting a collection of references — render the
              * outer level as all positions ($[]) and the inner one as the filtered item
              * ($[idfilter]): the summaries of the changed model refresh in every outer
@@ -789,7 +789,7 @@ namespace Etherna.Scrinium.IntegrationTests
         [Fact]
         public async Task UpdatesSummariesHostedUnderThreeEmbeddingLevels()
         {
-            /* MODM-248: a reference denormalized under three embedding levels (the
+            /* SCR-248: a reference denormalized under three embedding levels (the
              * dispatch, its envelope, the recipients collection) has its member maps at
              * the fourth level from the document root: they register like the shallower
              * ones, so the change of the referenced account refreshes the deep summary. */

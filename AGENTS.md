@@ -64,11 +64,11 @@ Key cross-cutting points:
 
 ## Issue tracker
 
-Bugs and features are tracked in Jira project **MODM** (https://etherna.atlassian.net/projects/MODM). Branch names follow `feature/MODM-<id>-<slug>` / `improve/MODM-<id>-<slug>` / `fix/MODM-<id>-<slug>` — match this when creating branches.
+Bugs and features are tracked in Jira project **SCR** (https://etherna.atlassian.net/projects/SCR). Branch names follow `feature/SCR-<id>-<slug>` / `improve/SCR-<id>-<slug>` / `fix/SCR-<id>-<slug>` — match this when creating branches.
 
 ## Release 0.25.0 work line
 
-The 0.25.0 release removes DbCache and rebuilds the db context lifecycle (scoped contexts over singleton engines, per-instance changed models and identity map, member level saves, source repositories). Landed on `dev`: MODM-179, MODM-82, MODM-195, MODM-197; in flight: MODM-49 (origin/source repositories). Every remaining 0.25.0 issue follows the same workflow: branch from `dev` (`improve/MODM-xxx-*` or `feature/MODM-xxx-*`), tests and AGENTS aligned in the same change, commits only after human review, one PR per issue to `dev`.
+The 0.25.0 release removes DbCache and rebuilds the db context lifecycle (scoped contexts over singleton engines, per-instance changed models and identity map, member level saves, source repositories). Landed on `dev`: SCR-179, SCR-82, SCR-195, SCR-197; in flight: SCR-49 (origin/source repositories). Every remaining 0.25.0 issue follows the same workflow: branch from `dev` (`improve/SCR-xxx-*` or `feature/SCR-xxx-*`), tests and AGENTS aligned in the same change, commits only after human review, one PR per issue to `dev`.
 
 After the library work, the Etherna services must be migrated: see [SERVICES-MIGRATION.md](SERVICES-MIGRATION.md) for the breaking changes summary, the per-service critical points (captive singleton consumers, root provider resolutions, identity map growth spots, test helper rewrites) and the live integration test checklist gating the release.
 

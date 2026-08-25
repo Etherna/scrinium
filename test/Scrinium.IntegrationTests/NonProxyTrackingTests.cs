@@ -50,7 +50,7 @@ namespace Etherna.Scrinium.IntegrationTests
         [Fact]
         public async Task ChangesOfACreatedInstanceAreTracked()
         {
-            /* MODM-38: a model created with a plain constructor is not a proxy, but its
+            /* SCR-38: a model created with a plain constructor is not a proxy, but its
              * changes after the create must still be saved. Change tracking is snapshot
              * based and doesn't depend on the model being a proxy. */
 
@@ -107,7 +107,7 @@ namespace Etherna.Scrinium.IntegrationTests
         [Fact]
         public async Task ReplaceConvertsADocumentToANewTypeInPlace()
         {
-            /* MODM-83: a document handled by a base type repository can change its concrete type
+            /* SCR-83: a document handled by a base type repository can change its concrete type
              * keeping the same id. The converted instance is a brand new, non proxy object: the
              * replace must persist it, upgrading the stored document to the new type. */
 
@@ -134,7 +134,7 @@ namespace Etherna.Scrinium.IntegrationTests
         [Fact]
         public async Task ReadingAMutableCollectionFlagsTheModelForSave()
         {
-            /* MODM-193 Phase B: exposing a mutable collection is legal, but reading it flags the model
+            /* SCR-193 Phase B: exposing a mutable collection is legal, but reading it flags the model
              * for a diff at save, so a change made through the handed out collection (bypassing the
              * setter and any domain method) is still detected and persisted. */
 

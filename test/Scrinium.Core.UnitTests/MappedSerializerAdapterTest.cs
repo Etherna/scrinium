@@ -55,7 +55,7 @@ namespace Etherna.Scrinium.Core
         [Fact]
         public void DeserializeDelegatesToMappedSerializer()
         {
-            /* MODM-176: the adapter is fabricated by the serialization provider for types
+            /* SCR-176: the adapter is fabricated by the serialization provider for types
              * resolved through the serializer registry (e.g. an entity id type, resolved
              * while maps are still registering): every operation delegates to the
              * serializer mapped by the map registry. */

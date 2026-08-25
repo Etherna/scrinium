@@ -451,7 +451,7 @@ Contributions are welcome. Please read [CONTRIBUTING.md](CONTRIBUTING.md) and ou
 ## Issue reports
 
 If you've discovered a bug, or have an idea for a new feature, please report it to our issue manager
-based on Jira: https://etherna.atlassian.net/projects/MODM.
+based on Jira: https://etherna.atlassian.net/projects/SCR.
 
 Detailed reports with stack traces, actual and expected behaviours are welcome.
 

@@ -54,7 +54,7 @@ namespace Etherna.Scrinium.IntegrationTests
         [Fact]
         public async Task DomainDeleteRemovesTheReferencesByDefault()
         {
-            /* MODM-19: a reference without a declared origin delete policy gets removed from
+            /* SCR-19: a reference without a declared origin delete policy gets removed from
              * the referencing documents when the referenced model is deleted through its
              * repository — the default, so a domain delete never leaves dangling references:
              * a reference hosted as an array item is pulled out of its array, a single valued

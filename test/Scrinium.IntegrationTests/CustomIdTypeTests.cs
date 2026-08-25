@@ -27,7 +27,7 @@ using Xunit;
 
 namespace Etherna.Scrinium.IntegrationTests
 {
-    /* MODM-176: an entity id of a type serialized with a custom serializer map, with the
+    /* SCR-176: an entity id of a type serialized with a custom serializer map, with the
      * same type also serialized as plain member by other models. The db context boot
      * itself is part of the regression: registering the custom serializer must tolerate
      * the serializer fabricated for the id type while maps were still registering. */
@@ -119,7 +119,7 @@ namespace Etherna.Scrinium.IntegrationTests
         [Fact]
         public async Task CreateRefusesADocumentSerializedId()
         {
-            /* MODM-222: an entity id is always a value. A custom serializer emitting a
+            /* SCR-222: an entity id is always a value. A custom serializer emitting a
              * document is invisible to the engine build, so the write refuses it: a
              * document persisted with an id the id filters can't render couldn't be found,
              * updated nor deleted afterwards. */
@@ -218,7 +218,7 @@ namespace Etherna.Scrinium.IntegrationTests
         [Fact]
         public async Task OperatorShapedIdValueDoesntMatchAnyDocument()
         {
-            /* MODM-222: an id value serialized to a document whose first element name
+            /* SCR-222: an id value serialized to a document whose first element name
              * starts with "$" would be read by MongoDB as an operator expression, so a
              * caller sending {"$ne": null} as id would receive, delete or overwrite an
              * arbitrary document. The id filters refuse to render it: FindOneAsync

@@ -44,7 +44,7 @@ namespace Etherna.Scrinium.Core.FilterDefinition
             public DocumentKey Id { get; set; } = null!;
         }
         /* A custom id serializer emitting a document whose first element name derives from
-         * the id value: the serialized shape MODM-222 guards against, since a caller
+         * the id value: the serialized shape SCR-222 guards against, since a caller
          * controlled name starting with "$" would render as an operator expression. */
         public sealed class DocumentKeySerializer : SerializerBase<DocumentKey>
         {
@@ -110,7 +110,7 @@ namespace Etherna.Scrinium.Core.FilterDefinition
         [InlineData("$ne")]
         public void RenderRefusesADocumentSerializedIdValue(string keyName)
         {
-            /* MODM-222: an entity id is always a value, and the id serializers emitting a
+            /* SCR-222: an entity id is always a value, and the id serializers emitting a
              * document are the ones the engine build can't see. An hostile value carrying
              * an operator ("$ne") is the reason for the rule: MongoDB would read it as an
              * operator expression, matching an arbitrary document instead of an id. */

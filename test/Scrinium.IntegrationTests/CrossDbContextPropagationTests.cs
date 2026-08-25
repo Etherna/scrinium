@@ -88,7 +88,7 @@ namespace Etherna.Scrinium.IntegrationTests
         [Fact]
         public async Task ChangedChildModelUpdatesSummariesOnParentDbContextDocuments()
         {
-            /* MODM-243: a change of the child model enqueues one dependencies update task
+            /* SCR-243: a change of the child model enqueues one dependencies update task
              * for each parent db context of the application denormalizing the changed
              * members — the writable parent only, since the read-only parent consumes
              * documents owned by another application — and the task refreshes the
@@ -150,7 +150,7 @@ namespace Etherna.Scrinium.IntegrationTests
         [Fact]
         public async Task DeletedChildModelRemovesReferencesOnParentDbContextDocuments()
         {
-            /* MODM-243: a domain delete of the child model enqueues one dependencies
+            /* SCR-243: a domain delete of the child model enqueues one dependencies
              * delete task for each parent db context of the application declaring an
              * origin delete policy on it, and the task removes the references from the
              * parent documents — only from the ones referencing the deleted model. */

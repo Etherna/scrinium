@@ -29,7 +29,7 @@ namespace Etherna.Scrinium.Core.FilterDefinition
     {
         // Internal classes.
         /* A custom serializer emitting a document whose first element name derives from
-         * the serialized value: the shape MODM-222 guards against, since a caller
+         * the serialized value: the shape SCR-222 guards against, since a caller
          * controlled name starting with "$" would render as an operator expression. The
          * dependencies update task builds this filter with an object typed value, like
          * the tested one. */
@@ -86,7 +86,7 @@ namespace Etherna.Scrinium.Core.FilterDefinition
         [InlineData("$ne")]
         public void RenderComparesADocumentSerializedValueLiterally(string keyName)
         {
-            /* MODM-222: any member but an id compares whatever it holds, a document
+            /* SCR-222: any member but an id compares whatever it holds, a document
              * included. The comparison is explicit, so a value serialized to a document
              * whose first element name starts with "$" — the shape MongoDB would read as
              * an operator expression — compares like any other value. */
@@ -108,7 +108,7 @@ namespace Etherna.Scrinium.Core.FilterDefinition
         [Fact]
         public void RenderRefusesACompositeIdMemberValue()
         {
-            /* MODM-222: an entity id is always a value, on the reference id paths the
+            /* SCR-222: an entity id is always a value, on the reference id paths the
              * dependencies update task filters by, like on the repository id filters. */
 
             // Setup.

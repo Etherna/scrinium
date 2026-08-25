@@ -73,7 +73,7 @@ namespace Etherna.Scrinium.Core
         [Fact]
         public void DeserializeClearsExtraElementsOnLoadedSummary()
         {
-            /* MODM-3: members can be removed from a reference schema without changing its id
+            /* SCR-3: members can be removed from a reference schema without changing its id
              * (the document model tolerates added and removed fields), so a document written
              * when the member was still serialized resolves the schema, landing the unmapped
              * element in the extra elements bag. The bag is emptied after the load: extra
@@ -441,7 +441,7 @@ namespace Etherna.Scrinium.Core
         [Fact]
         public void SerializeThrowsOnReferredModelWithoutId()
         {
-            /* MODM-164: a reference document without id deserializes to null, so writing it
+            /* SCR-164: a reference document without id deserializes to null, so writing it
              * would silently lose the link. Outside of a new referred models discovery pass
              * (where the model is collected for auto creation instead), serializing a
              * reference to a model without id fails loudly. */

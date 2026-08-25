@@ -52,7 +52,7 @@ namespace Etherna.Scrinium.IntegrationTests
         [Fact]
         public async Task LoadsDocumentsCarryingTheDeprecatedSchemaIdElementName()
         {
-            /* MODM-153: the schema id element name is "_s"; documents written with the
+            /* SCR-153: the schema id element name is "_s"; documents written with the
              * previous "_m" name keep loading through the deprecated element name,
              * without reporting the recognized element into extra elements. */
 

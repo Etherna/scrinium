@@ -23,7 +23,7 @@ using Xunit;
 
 namespace Etherna.Scrinium.IntegrationTests
 {
-    /* MODM-98: the blogs repository declares a custom index on the id path of its last
+    /* SCR-98: the blogs repository declares a custom index on the id path of its last
      * post reference. The server denies two indexes with the same key pattern, so the
      * automatic reference index has to leave the field to the custom one. */
     [Collection("Integration")]
