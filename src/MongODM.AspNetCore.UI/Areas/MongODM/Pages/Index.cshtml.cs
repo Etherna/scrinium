@@ -109,14 +109,11 @@ namespace Etherna.MongODM.AspNetCore.UI.Areas.MongODM.Pages
         {
             ArgumentNullException.ThrowIfNull(repository);
 
-            return repository.DbContext.Engine.MapRegistry.MapsByModelType.Values
-                .OfType<IModelMap>()
-                .Where(map => !map.ModelType.IsAbstract &&
-                    repository.ModelType.IsAssignableFrom(map.ModelType))
-                .OrderBy(map => map.ModelType.Name)
-                .SelectMany(map => map.SecondarySchemas
-                    .Select(schema => (ModelTypeName: map.ModelType.Name, SchemaId: schema.Id, IsActiveSchema: false))
-                    .Prepend((ModelTypeName: map.ModelType.Name, SchemaId: map.ActiveSchema.Id, IsActiveSchema: true)));
+            return GetStorableSchemas(repository.ModelType, repository.DbContext.Engine.MapRegistry)
+                .Select(storable => (
+                    ModelTypeName: storable.Map.ModelType.Name,
+                    SchemaId: storable.Schema.Id,
+                    storable.IsActiveSchema));
         }
 
         public void OnGet()
@@ -642,18 +639,30 @@ namespace Etherna.MongODM.AspNetCore.UI.Areas.MongODM.Pages
             IMapRegistry mapRegistry,
             IRepository[] repositories,
             HashSet<IModelMapSchema> exploringSchemas) =>
-            mapRegistry.MapsByModelType.Values
-                .OfType<IModelMap>()
-                .Where(map => !map.ModelType.IsAbstract && modelType.IsAssignableFrom(map.ModelType))
-                .OrderBy(map => map.ModelType.Name, StringComparer.Ordinal)
-                .SelectMany(map => map.SecondarySchemas.Prepend(map.ActiveSchema))
-                .Select(schema => BuildDocumentShape(
-                    schema.ModelMap.DefinedMemberMaps.Where(memberMap => memberMap.ModelMapSchema == schema),
-                    schema,
+            GetStorableSchemas(modelType, mapRegistry)
+                .Select(storable => BuildDocumentShape(
+                    storable.Schema.ModelMap.DefinedMemberMaps.Where(
+                        memberMap => memberMap.ModelMapSchema == storable.Schema),
+                    storable.Schema,
                     mapRegistry,
                     repositories,
                     exploringSchemas))
                 .ToArray();
+
+        /* The model map schemas a document stored where the model type is declared can carry:
+         * those of the concrete model types assignable to it, active schema first, since a
+         * document carries the active schema id of its own concrete type. Fallback schemas
+         * stay out, their reserved id is never written. */
+        private static IEnumerable<(IModelMap Map, IModelMapSchema Schema, bool IsActiveSchema)> GetStorableSchemas(
+            Type modelType,
+            IMapRegistry mapRegistry) =>
+            mapRegistry.MapsByModelType.Values
+                .OfType<IModelMap>()
+                .Where(map => !map.ModelType.IsAbstract && modelType.IsAssignableFrom(map.ModelType))
+                .OrderBy(map => map.ModelType.Name, StringComparer.Ordinal)
+                .SelectMany(map => map.SecondarySchemas
+                    .Select(schema => (Map: map, Schema: schema, IsActiveSchema: false))
+                    .Prepend((Map: map, Schema: map.ActiveSchema, IsActiveSchema: true)));
 
         private static string RenderTypeName(Type type) =>
             type.IsGenericType ?
