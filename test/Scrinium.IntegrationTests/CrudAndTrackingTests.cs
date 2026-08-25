@@ -1,15 +1,15 @@
 ﻿// Copyright 2020-present Etherna SA
-// This file is part of MongODM.
+// This file is part of Scrinium.
 //
-// MongODM is free software: you can redistribute it and/or modify it under the terms of the
+// Scrinium is free software: you can redistribute it and/or modify it under the terms of the
 // GNU Lesser General Public License as published by the Free Software Foundation,
 // either version 3 of the License, or (at your option) any later version.
 //
-// MongODM is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
+// Scrinium is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
 // without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 // See the GNU Lesser General Public License for more details.
 //
-// You should have received a copy of the GNU Lesser General Public License along with MongODM.
+// You should have received a copy of the GNU Lesser General Public License along with Scrinium.
 // If not, see <https://www.gnu.org/licenses/>.
 
 using Etherna.MongoDB.Bson;
@@ -238,7 +238,7 @@ namespace Etherna.Scrinium.IntegrationTests
             /* The on insert instructions can't set whole an element that an updated field
              * navigates into, or the server refuses the update as a conflict: the element
              * splits into its sub elements, so the document created by the upsert keeps the
-             * siblings of the nested updated fields, the ones MongODM writes included. */
+             * siblings of the nested updated fields, the ones Scrinium writes included. */
 
             // Setup.
             using var contextHandler = AsyncLocalContext.Instance.InitAsyncLocalContext();

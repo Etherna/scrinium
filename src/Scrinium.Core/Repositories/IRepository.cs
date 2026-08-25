@@ -1,15 +1,15 @@
 ﻿// Copyright 2020-present Etherna SA
-// This file is part of MongODM.
+// This file is part of Scrinium.
 // 
-// MongODM is free software: you can redistribute it and/or modify it under the terms of the
+// Scrinium is free software: you can redistribute it and/or modify it under the terms of the
 // GNU Lesser General Public License as published by the Free Software Foundation,
 // either version 3 of the License, or (at your option) any later version.
 // 
-// MongODM is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
+// Scrinium is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
 // without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 // See the GNU Lesser General Public License for more details.
 // 
-// You should have received a copy of the GNU Lesser General Public License along with MongODM.
+// You should have received a copy of the GNU Lesser General Public License along with Scrinium.
 // If not, see <https://www.gnu.org/licenses/>.
 
 using Etherna.MongoDB.Driver;
@@ -59,7 +59,7 @@ namespace Etherna.Scrinium.Core.Repositories
 
         /// <summary>
         /// Count the collection documents carrying their model map schema id under the
-        /// deprecated element name MongODM still recognizes
+        /// deprecated element name Scrinium still recognizes
         /// (<see cref="Serialization.Mapping.ModelMapSchema.DeprecatedIdElementName"/>), matched at
         /// their root: a document whose root carries the current
         /// element name was written whole by a version writing it, its sub-documents

@@ -1,15 +1,15 @@
 // Copyright 2020-present Etherna SA
-// This file is part of MongODM.
+// This file is part of Scrinium.
 //
-// MongODM is free software: you can redistribute it and/or modify it under the terms of the
+// Scrinium is free software: you can redistribute it and/or modify it under the terms of the
 // GNU Lesser General Public License as published by the Free Software Foundation,
 // either version 3 of the License, or (at your option) any later version.
 //
-// MongODM is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
+// Scrinium is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
 // without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 // See the GNU Lesser General Public License for more details.
 //
-// You should have received a copy of the GNU Lesser General Public License along with MongODM.
+// You should have received a copy of the GNU Lesser General Public License along with Scrinium.
 // If not, see <https://www.gnu.org/licenses/>.
 
 using Etherna.Scrinium.Core.ExecContext;
@@ -22,7 +22,7 @@ namespace Etherna.Scrinium.Core.Utility
 {
     /// <summary>
     /// Marks the current execution flow as the one registering the maps of a db context engine.
-    /// The conventions that MongODM registers on the driver global convention registry apply only
+    /// The conventions that Scrinium registers on the driver global convention registry apply only
     /// to the class maps built inside it, so any other type automapped in the process keeps the
     /// driver defaults.
     /// </summary>
@@ -62,7 +62,7 @@ namespace Etherna.Scrinium.Core.Utility
             ArgumentNullException.ThrowIfNull(context);
 
             /* Invoked by the driver while it looks up the conventions of a class map, from any
-             * flow of the process: without an execution context there is no MongODM registration
+             * flow of the process: without an execution context there is no Scrinium registration
              * in progress, and reporting it is the answer, not an error. */
             var requests = context.TryGetItemsList<MapsRegistrationHandler>(HandlerKey);
             if (requests is null)

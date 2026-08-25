@@ -1,15 +1,15 @@
 ﻿// Copyright 2020-present Etherna SA
-// This file is part of MongODM.
+// This file is part of Scrinium.
 //
-// MongODM is free software: you can redistribute it and/or modify it under the terms of the
+// Scrinium is free software: you can redistribute it and/or modify it under the terms of the
 // GNU Lesser General Public License as published by the Free Software Foundation,
 // either version 3 of the License, or (at your option) any later version.
 //
-// MongODM is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
+// Scrinium is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
 // without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 // See the GNU Lesser General Public License for more details.
 //
-// You should have received a copy of the GNU Lesser General Public License along with MongODM.
+// You should have received a copy of the GNU Lesser General Public License along with Scrinium.
 // If not, see <https://www.gnu.org/licenses/>.
 
 using Etherna.MongoDB.Bson;
@@ -105,7 +105,7 @@ namespace Etherna.Scrinium.Core
 
             // Register model maps.
             /* Maps registration builds the class maps of the db context: the conventions that
-             * MongODM registers on the driver global convention registry apply only inside this
+             * Scrinium registers on the driver global convention registry apply only inside this
              * scope, leaving every other type automapped in the process to the driver defaults. */
             using (new MapsRegistrationHandler(ExecutionContext))
             {
@@ -236,7 +236,7 @@ namespace Etherna.Scrinium.Core
             ArgumentException.ThrowIfNullOrEmpty(resourceNamespace);
             ArgumentException.ThrowIfNullOrEmpty(resourceId);
 
-            /* The lock identifier is a plain string, like every MongODM id: the namespace and
+            /* The lock identifier is a plain string, like every Scrinium id: the namespace and
              * the resource id serialize into one value, joined by the separator. A namespace
              * carrying the separator would make different resources alias one lock document
              * (namespace "a" with id "b/c", and namespace "a/b" with id "c"), so it is

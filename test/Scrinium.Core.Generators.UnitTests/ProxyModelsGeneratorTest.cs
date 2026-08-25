@@ -1,15 +1,15 @@
 // Copyright 2020-present Etherna SA
-// This file is part of MongODM.
+// This file is part of Scrinium.
 //
-// MongODM is free software: you can redistribute it and/or modify it under the terms of the
+// Scrinium is free software: you can redistribute it and/or modify it under the terms of the
 // GNU Lesser General Public License as published by the Free Software Foundation,
 // either version 3 of the License, or (at your option) any later version.
 //
-// MongODM is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
+// Scrinium is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
 // without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 // See the GNU Lesser General Public License for more details.
 //
-// You should have received a copy of the GNU Lesser General Public License along with MongODM.
+// You should have received a copy of the GNU Lesser General Public License along with Scrinium.
 // If not, see <https://www.gnu.org/licenses/>.
 
 using Etherna.Scrinium.Core.Domain.Models;
@@ -148,7 +148,7 @@ namespace Etherna.Scrinium.Core.Generators
         // Helpers.
         private static GeneratorDriverRunResult RunGenerator(string modelSource, out Compilation outputCompilation)
         {
-            /* Compile the model source against the MongODM core and the runtime assemblies,
+            /* Compile the model source against the Scrinium core and the runtime assemblies,
              * run the generator on it, and return both the run result and the augmented
              * compilation, for asserts on the emitted sources and on their compilation. */
             var references = AppDomain.CurrentDomain.GetAssemblies()
