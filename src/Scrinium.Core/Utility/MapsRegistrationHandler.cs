@@ -12,13 +12,13 @@
 // You should have received a copy of the GNU Lesser General Public License along with MongODM.
 // If not, see <https://www.gnu.org/licenses/>.
 
-using Etherna.MongODM.Core.ExecContext;
-using Etherna.MongODM.Core.Extensions;
+using Etherna.Scrinium.Core.ExecContext;
+using Etherna.Scrinium.Core.Extensions;
 using System;
 using System.Collections;
 using System.Collections.Generic;
 
-namespace Etherna.MongODM.Core.Utility
+namespace Etherna.Scrinium.Core.Utility
 {
     /// <summary>
     /// Marks the current execution flow as the one registering the maps of a db context engine.

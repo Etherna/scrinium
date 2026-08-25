@@ -13,10 +13,10 @@
 // If not, see <https://www.gnu.org/licenses/>.
 
 using Etherna.MongoDB.Bson.Serialization;
-using Etherna.MongODM.Core.Utility;
+using Etherna.Scrinium.Core.Utility;
 using System;
 
-namespace Etherna.MongODM.Core.Serialization.Mapping
+namespace Etherna.Scrinium.Core.Serialization.Mapping
 {
     public interface IMap : IFreezableConfig
     {

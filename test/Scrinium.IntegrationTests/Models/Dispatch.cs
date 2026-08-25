@@ -12,7 +12,7 @@
 // You should have received a copy of the GNU Lesser General Public License along with MongODM.
 // If not, see <https://www.gnu.org/licenses/>.
 
-namespace Etherna.MongODM.IntegrationTests.Models
+namespace Etherna.Scrinium.IntegrationTests.Models
 {
     /// <summary>
     /// A value object embedded by <see cref="Message"/>, wrapping an <see cref="Envelope"/>

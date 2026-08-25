@@ -12,7 +12,7 @@
 // You should have received a copy of the GNU Lesser General Public License along with MongODM.
 // If not, see <https://www.gnu.org/licenses/>.
 
-namespace Etherna.MongODM.AspNetCoreSample.Models
+namespace Etherna.Scrinium.AspNetCoreSample.Models
 {
     /// <summary>
     /// The owner of a cat, referred by its document. Renaming a person propagates the new

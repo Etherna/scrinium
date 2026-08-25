@@ -14,12 +14,12 @@
 
 using Etherna.MongoDB.Bson.Serialization;
 using Etherna.MongoDB.Bson.Serialization.Options;
-using Etherna.MongODM.Core.Extensions;
+using Etherna.Scrinium.Core.Extensions;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 
-namespace Etherna.MongODM.Core.Serialization.Mapping
+namespace Etherna.Scrinium.Core.Serialization.Mapping
 {
     /// <summary>
     /// Identify a member map with a reference to its root model map, and path to reach it

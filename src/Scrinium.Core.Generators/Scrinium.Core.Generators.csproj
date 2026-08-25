@@ -3,7 +3,7 @@
   <PropertyGroup>
     <TargetFramework>netstandard2.0</TargetFramework>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
-    <RootNamespace>Etherna.MongODM.Core.Generators</RootNamespace>
+    <RootNamespace>Etherna.Scrinium.Core.Generators</RootNamespace>
     <AssemblyName>Etherna.Scrinium.Core.Generators</AssemblyName>
 
     <Authors>Etherna SA</Authors>

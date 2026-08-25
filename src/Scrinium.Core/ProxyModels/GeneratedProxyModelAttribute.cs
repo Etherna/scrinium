@@ -14,7 +14,7 @@
 
 using System;
 
-namespace Etherna.MongODM.Core.ProxyModels
+namespace Etherna.Scrinium.Core.ProxyModels
 {
     /// <summary>
     /// Declares at assembly level the proxy model type generated for a model type.

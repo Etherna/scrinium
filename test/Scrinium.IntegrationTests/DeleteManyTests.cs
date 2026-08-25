@@ -12,15 +12,15 @@
 // You should have received a copy of the GNU Lesser General Public License along with MongODM.
 // If not, see <https://www.gnu.org/licenses/>.
 
-using Etherna.MongODM.Core.ExecContext.AsyncLocal;
-using Etherna.MongODM.IntegrationTests.Fixtures;
-using Etherna.MongODM.IntegrationTests.Models;
+using Etherna.Scrinium.Core.ExecContext.AsyncLocal;
+using Etherna.Scrinium.IntegrationTests.Fixtures;
+using Etherna.Scrinium.IntegrationTests.Models;
 using Microsoft.Extensions.DependencyInjection;
 using System;
 using System.Threading.Tasks;
 using Xunit;
 
-namespace Etherna.MongODM.IntegrationTests
+namespace Etherna.Scrinium.IntegrationTests
 {
     [Collection("Integration")]
     public class DeleteManyTests : IDisposable

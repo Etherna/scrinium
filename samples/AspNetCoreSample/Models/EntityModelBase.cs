@@ -12,9 +12,9 @@
 // You should have received a copy of the GNU Lesser General Public License along with MongODM.
 // If not, see <https://www.gnu.org/licenses/>.
 
-using Etherna.MongODM.Core.Domain.Models;
+using Etherna.Scrinium.Core.Domain.Models;
 
-namespace Etherna.MongODM.AspNetCoreSample.Models
+namespace Etherna.Scrinium.AspNetCoreSample.Models
 {
     public abstract class EntityModelBase<TKey> : ModelBase, IEntityModel<TKey>
     {

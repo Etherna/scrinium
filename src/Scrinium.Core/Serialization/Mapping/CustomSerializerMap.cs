@@ -14,7 +14,7 @@
 
 using Etherna.MongoDB.Bson.Serialization;
 
-namespace Etherna.MongODM.Core.Serialization.Mapping
+namespace Etherna.Scrinium.Core.Serialization.Mapping
 {
     internal sealed class CustomSerializerMap<TModel>(IBsonSerializer<TModel> customSerializer)
         : MapBase(typeof(TModel)), ICustomSerializerMapBuilder<TModel>

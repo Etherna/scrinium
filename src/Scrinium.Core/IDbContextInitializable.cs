@@ -14,7 +14,7 @@
 
 using Microsoft.Extensions.Logging;
 
-namespace Etherna.MongODM.Core
+namespace Etherna.Scrinium.Core
 {
     public interface IDbContextInitializable
     {

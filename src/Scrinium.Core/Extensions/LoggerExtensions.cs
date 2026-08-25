@@ -16,7 +16,7 @@ using Microsoft.Extensions.Logging;
 using System;
 using System.Collections.Generic;
 
-namespace Etherna.MongODM.Core.Extensions
+namespace Etherna.Scrinium.Core.Extensions
 {
     /*
      * Always group similar log delegates by type, always use incremental event ids.

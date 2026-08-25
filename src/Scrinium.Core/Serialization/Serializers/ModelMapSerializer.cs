@@ -17,16 +17,16 @@ using Etherna.MongoDB.Bson.IO;
 using Etherna.MongoDB.Bson.Serialization;
 using Etherna.MongoDB.Bson.Serialization.Conventions;
 using Etherna.MongoDB.Bson.Serialization.Serializers;
-using Etherna.MongODM.Core.Domain.Models;
-using Etherna.MongODM.Core.Extensions;
-using Etherna.MongODM.Core.ProxyModels;
-using Etherna.MongODM.Core.Serialization.Mapping;
-using Etherna.MongODM.Core.Utility;
+using Etherna.Scrinium.Core.Domain.Models;
+using Etherna.Scrinium.Core.Extensions;
+using Etherna.Scrinium.Core.ProxyModels;
+using Etherna.Scrinium.Core.Serialization.Mapping;
+using Etherna.Scrinium.Core.Utility;
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 
-namespace Etherna.MongODM.Core.Serialization.Serializers
+namespace Etherna.Scrinium.Core.Serialization.Serializers
 {
     public class ModelMapSerializer<TModel>(IDbContextEngine dbContextEngine) :
         SerializerBase<TModel>,

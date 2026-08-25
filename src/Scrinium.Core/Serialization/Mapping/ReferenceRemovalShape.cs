@@ -13,10 +13,10 @@
 // If not, see <https://www.gnu.org/licenses/>.
 
 using Etherna.MongoDB.Bson;
-using Etherna.MongODM.Core.Exceptions;
+using Etherna.Scrinium.Core.Exceptions;
 using System.Linq;
 
-namespace Etherna.MongODM.Core.Serialization.Mapping
+namespace Etherna.Scrinium.Core.Serialization.Mapping
 {
     /// <summary>
     /// The update shape removing a reference from the documents hosting it, precomputed from

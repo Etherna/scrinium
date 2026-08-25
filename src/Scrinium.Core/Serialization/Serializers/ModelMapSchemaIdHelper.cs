@@ -13,10 +13,10 @@
 // If not, see <https://www.gnu.org/licenses/>.
 
 using Etherna.MongoDB.Bson;
-using Etherna.MongODM.Core.Serialization.Mapping;
+using Etherna.Scrinium.Core.Serialization.Mapping;
 using System;
 
-namespace Etherna.MongODM.Core.Serialization.Serializers
+namespace Etherna.Scrinium.Core.Serialization.Serializers
 {
     internal static class ModelMapSchemaIdHelper
     {

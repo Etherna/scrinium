@@ -14,7 +14,7 @@
 
 using System.Collections.Generic;
 
-namespace Etherna.MongODM.Core.Domain.Models.DbMigrationOpAgg
+namespace Etherna.Scrinium.Core.Domain.Models.DbMigrationOpAgg
 {
     public class DocumentMigrationLog : MigrationLogBase
     {

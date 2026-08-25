@@ -15,7 +15,7 @@
 using System;
 using System.Collections.Generic;
 
-namespace Etherna.MongODM.Core.Options
+namespace Etherna.Scrinium.Core.Options
 {
     public interface IMongODMOptionsBuilder
     {

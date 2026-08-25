@@ -20,7 +20,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace Etherna.MongODM.Core.Utility
+namespace Etherna.Scrinium.Core.Utility
 {
     /* The database handed out by a guarded collection. Collection retrieval returns
      * collections guarded by the same engine and read-only flag; database level writes

@@ -16,7 +16,7 @@ using Moq;
 using System.Collections.Generic;
 using Xunit;
 
-namespace Etherna.MongODM.Core.ExecContext
+namespace Etherna.Scrinium.Core.ExecContext
 {
     public class ExecutionContextSelectorTests
     {

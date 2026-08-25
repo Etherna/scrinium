@@ -14,7 +14,7 @@
 
 using System;
 
-namespace Etherna.MongODM.Core.Utility
+namespace Etherna.Scrinium.Core.Utility
 {
     public abstract class FreezableConfig : IFreezableConfig
     {

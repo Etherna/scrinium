@@ -14,7 +14,7 @@
 
 using System;
 
-namespace Etherna.MongODM.Core.Utility
+namespace Etherna.Scrinium.Core.Utility
 {
     /* The in flight span of one guarded operation: disposed when the operation completes,
      * exiting the count it entered. An uncounted scope closes nothing: the span of an

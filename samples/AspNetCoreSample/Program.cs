@@ -12,10 +12,10 @@
 // You should have received a copy of the GNU Lesser General Public License along with MongODM.
 // If not, see <https://www.gnu.org/licenses/>.
 
-using Etherna.MongODM.AspNetCore.Extensions;
-using Etherna.MongODM.AspNetCore.UI;
-using Etherna.MongODM.AspNetCoreSample.Persistence;
-using Etherna.MongODM.Extensions;
+using Etherna.Scrinium.AspNetCore.Extensions;
+using Etherna.Scrinium.AspNetCore.UI;
+using Etherna.Scrinium.AspNetCoreSample.Persistence;
+using Etherna.Scrinium.Extensions;
 using Hangfire;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
@@ -24,7 +24,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using System;
 
-namespace Etherna.MongODM.AspNetCoreSample
+namespace Etherna.Scrinium.AspNetCoreSample
 {
     public class Program
     {

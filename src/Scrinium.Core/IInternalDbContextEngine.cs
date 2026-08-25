@@ -12,9 +12,9 @@
 // You should have received a copy of the GNU Lesser General Public License along with MongODM.
 // If not, see <https://www.gnu.org/licenses/>.
 
-using Etherna.MongODM.Core.Utility;
+using Etherna.Scrinium.Core.Utility;
 
-namespace Etherna.MongODM.Core
+namespace Etherna.Scrinium.Core
 {
     /// <summary>
     /// The engine surface invoked only inside the library, by the guarded collections it

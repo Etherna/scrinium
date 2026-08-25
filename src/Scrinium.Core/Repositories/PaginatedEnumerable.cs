@@ -14,7 +14,7 @@
 
 using System.Collections.Generic;
 
-namespace Etherna.MongODM.Core.Repositories
+namespace Etherna.Scrinium.Core.Repositories
 {
     public class PaginatedEnumerable<TClass>
     {

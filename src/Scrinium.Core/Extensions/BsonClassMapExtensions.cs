@@ -13,13 +13,13 @@
 // If not, see <https://www.gnu.org/licenses/>.
 
 using Etherna.MongoDB.Bson.Serialization;
-using Etherna.MongODM.Core.Domain.Models;
-using Etherna.MongODM.Core.Serialization.Serializers;
+using Etherna.Scrinium.Core.Domain.Models;
+using Etherna.Scrinium.Core.Serialization.Serializers;
 using System;
 using System.Linq.Expressions;
 using System.Reflection;
 
-namespace Etherna.MongODM.Core.Extensions
+namespace Etherna.Scrinium.Core.Extensions
 {
     public static class BsonClassMapExtensions
     {

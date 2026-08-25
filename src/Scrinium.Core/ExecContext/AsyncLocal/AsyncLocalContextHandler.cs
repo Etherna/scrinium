@@ -14,7 +14,7 @@
 
 using System.Collections.Generic;
 
-namespace Etherna.MongODM.Core.ExecContext.AsyncLocal
+namespace Etherna.Scrinium.Core.ExecContext.AsyncLocal
 {
     /// <summary>
     ///     The handler for an <see cref="AsyncLocalContext"/> initialization.

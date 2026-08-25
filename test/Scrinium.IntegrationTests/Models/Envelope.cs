@@ -14,7 +14,7 @@
 
 using System.Collections.Generic;
 
-namespace Etherna.MongODM.IntegrationTests.Models
+namespace Etherna.Scrinium.IntegrationTests.Models
 {
     /// <summary>
     /// A value object embedded by <see cref="Message"/>, hosting account references

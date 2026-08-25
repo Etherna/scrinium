@@ -24,7 +24,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace Etherna.MongODM.Core.Utility
+namespace Etherna.Scrinium.Core.Utility
 {
     /* Each operation is implemented once by its session overload, that relaxes the session
      * parameter to nullable: an explicit session is used verbatim, a null one resolves to

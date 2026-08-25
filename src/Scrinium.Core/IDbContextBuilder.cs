@@ -13,11 +13,11 @@
 // If not, see <https://www.gnu.org/licenses/>.
 
 using Etherna.MongoDB.Driver;
-using Etherna.MongODM.Core.Options;
-using Etherna.MongODM.Core.Repositories;
+using Etherna.Scrinium.Core.Options;
+using Etherna.Scrinium.Core.Repositories;
 using System.Collections.Generic;
 
-namespace Etherna.MongODM.Core
+namespace Etherna.Scrinium.Core
 {
     public interface IDbContextBuilder
     {

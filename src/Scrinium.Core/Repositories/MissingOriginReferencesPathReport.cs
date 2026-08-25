@@ -14,7 +14,7 @@
 
 using System.Collections.Generic;
 
-namespace Etherna.MongODM.Core.Repositories
+namespace Etherna.Scrinium.Core.Repositories
 {
     /// <summary>
     /// The missing origin documents found scanning one reference element path of a collection.

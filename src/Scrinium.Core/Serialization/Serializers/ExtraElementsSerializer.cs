@@ -19,7 +19,7 @@ using Etherna.MongoDB.Bson.Serialization.Serializers;
 using System;
 using System.Collections.Generic;
 
-namespace Etherna.MongODM.Core.Serialization.Serializers
+namespace Etherna.Scrinium.Core.Serialization.Serializers
 {
     /// <summary>
     /// Utility serializer used for help into document migration scripts.

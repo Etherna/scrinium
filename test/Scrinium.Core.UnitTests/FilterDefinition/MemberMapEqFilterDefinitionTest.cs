@@ -17,13 +17,13 @@ using Etherna.MongoDB.Bson.IO;
 using Etherna.MongoDB.Bson.Serialization;
 using Etherna.MongoDB.Bson.Serialization.Serializers;
 using Etherna.MongoDB.Driver;
-using Etherna.MongODM.Core.Models;
-using Etherna.MongODM.Core.Serialization.Mapping;
+using Etherna.Scrinium.Core.Models;
+using Etherna.Scrinium.Core.Serialization.Mapping;
 using Moq;
 using System;
 using Xunit;
 
-namespace Etherna.MongODM.Core.FilterDefinition
+namespace Etherna.Scrinium.Core.FilterDefinition
 {
     public class MemberMapEqFilterDefinitionTest
     {

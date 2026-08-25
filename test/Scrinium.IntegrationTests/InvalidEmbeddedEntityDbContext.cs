@@ -12,13 +12,13 @@
 // You should have received a copy of the GNU Lesser General Public License along with MongODM.
 // If not, see <https://www.gnu.org/licenses/>.
 
-using Etherna.MongODM.Core;
-using Etherna.MongODM.Core.Repositories;
-using Etherna.MongODM.Core.Serialization;
-using Etherna.MongODM.IntegrationTests.Models;
+using Etherna.Scrinium.Core;
+using Etherna.Scrinium.Core.Repositories;
+using Etherna.Scrinium.Core.Serialization;
+using Etherna.Scrinium.IntegrationTests.Models;
 using System.Collections.Generic;
 
-namespace Etherna.MongODM.IntegrationTests
+namespace Etherna.Scrinium.IntegrationTests
 {
     /// <summary>
     /// A misconfigured db context: the Blog model map embeds its Post members as full

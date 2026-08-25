@@ -16,7 +16,7 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 
-namespace Etherna.MongODM.Core.ExecContext.AsyncLocal
+namespace Etherna.Scrinium.Core.ExecContext.AsyncLocal
 {
     /// <summary>
     ///     Async local context implementation. This can be used as singleton or with multiple instances.

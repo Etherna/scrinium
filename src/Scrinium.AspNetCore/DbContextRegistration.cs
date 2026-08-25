@@ -12,10 +12,10 @@
 // You should have received a copy of the GNU Lesser General Public License along with MongODM.
 // If not, see <https://www.gnu.org/licenses/>.
 
-using Etherna.MongODM.Core.Options;
+using Etherna.Scrinium.Core.Options;
 using System;
 
-namespace Etherna.MongODM.AspNetCore
+namespace Etherna.Scrinium.AspNetCore
 {
     /// <summary>
     /// A db context registered with the service collection: the service type exposed to the

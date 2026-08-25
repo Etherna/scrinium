@@ -20,7 +20,7 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace Etherna.MongODM.Core.Utility
+namespace Etherna.Scrinium.Core.Utility
 {
     /* Index management operations are writes on the collection: index creations and drops
      * enter the write operation scope of the owning collection, listings and metadata

@@ -12,9 +12,9 @@
 // You should have received a copy of the GNU Lesser General Public License along with MongODM.
 // If not, see <https://www.gnu.org/licenses/>.
 
-using Etherna.MongODM.Core.Domain.Models;
+using Etherna.Scrinium.Core.Domain.Models;
 
-namespace Etherna.MongODM.IntegrationTests.Models
+namespace Etherna.Scrinium.IntegrationTests.Models
 {
     public abstract class AccountBase : EntityModelBase<string>
     {

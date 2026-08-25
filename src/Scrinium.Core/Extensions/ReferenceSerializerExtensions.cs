@@ -12,11 +12,11 @@
 // You should have received a copy of the GNU Lesser General Public License along with MongODM.
 // If not, see <https://www.gnu.org/licenses/>.
 
-using Etherna.MongODM.Core.Repositories;
-using Etherna.MongODM.Core.Serialization.Serializers;
+using Etherna.Scrinium.Core.Repositories;
+using Etherna.Scrinium.Core.Serialization.Serializers;
 using System;
 
-namespace Etherna.MongODM.Core.Extensions
+namespace Etherna.Scrinium.Core.Extensions
 {
     internal static class ReferenceSerializerExtensions
     {

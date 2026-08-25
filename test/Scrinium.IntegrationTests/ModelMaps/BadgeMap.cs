@@ -12,12 +12,12 @@
 // You should have received a copy of the GNU Lesser General Public License along with MongODM.
 // If not, see <https://www.gnu.org/licenses/>.
 
-using Etherna.MongODM.Core;
-using Etherna.MongODM.Core.Domain.Models;
-using Etherna.MongODM.Core.Serialization;
-using Etherna.MongODM.IntegrationTests.Models;
+using Etherna.Scrinium.Core;
+using Etherna.Scrinium.Core.Domain.Models;
+using Etherna.Scrinium.Core.Serialization;
+using Etherna.Scrinium.IntegrationTests.Models;
 
-namespace Etherna.MongODM.IntegrationTests.ModelMaps
+namespace Etherna.Scrinium.IntegrationTests.ModelMaps
 {
     internal sealed class BadgeMap : IModelMapsCollector
     {

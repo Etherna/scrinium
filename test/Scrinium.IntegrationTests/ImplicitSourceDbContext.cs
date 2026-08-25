@@ -14,16 +14,16 @@
 
 using Etherna.MongoDB.Bson;
 using Etherna.MongoDB.Bson.Serialization.Serializers;
-using Etherna.MongODM.Core;
-using Etherna.MongODM.Core.Domain.Models;
-using Etherna.MongODM.Core.Extensions;
-using Etherna.MongODM.Core.Repositories;
-using Etherna.MongODM.Core.Serialization;
-using Etherna.MongODM.Core.Serialization.Serializers;
-using Etherna.MongODM.IntegrationTests.Models;
+using Etherna.Scrinium.Core;
+using Etherna.Scrinium.Core.Domain.Models;
+using Etherna.Scrinium.Core.Extensions;
+using Etherna.Scrinium.Core.Repositories;
+using Etherna.Scrinium.Core.Serialization;
+using Etherna.Scrinium.Core.Serialization.Serializers;
+using Etherna.Scrinium.IntegrationTests.Models;
 using System.Collections.Generic;
 
-namespace Etherna.MongODM.IntegrationTests
+namespace Etherna.Scrinium.IntegrationTests
 {
     /// <summary>
     /// A db context with reference serializers NOT declaring their source repository:

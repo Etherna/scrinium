@@ -12,13 +12,13 @@
 // You should have received a copy of the GNU Lesser General Public License along with MongODM.
 // If not, see <https://www.gnu.org/licenses/>.
 
-using Etherna.MongODM.Core;
+using Etherna.Scrinium.Core;
 using Microsoft.Extensions.DependencyInjection;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 
-namespace Etherna.MongODM.AspNetCore
+namespace Etherna.Scrinium.AspNetCore
 {
     internal sealed class ParentEnginesProvider(
         IEnumerable<DbContextRegistration> dbContextRegistrations,

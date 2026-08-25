@@ -14,7 +14,7 @@
 
 using System;
 
-namespace Etherna.MongODM.AspNetCoreSample.Models
+namespace Etherna.Scrinium.AspNetCoreSample.Models
 {
     public class Cat : EntityModelBase<string>
     {

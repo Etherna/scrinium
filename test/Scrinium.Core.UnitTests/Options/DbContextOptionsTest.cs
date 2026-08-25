@@ -16,7 +16,7 @@ using Etherna.MongoDB.Driver;
 using System;
 using Xunit;
 
-namespace Etherna.MongODM.Core.Options
+namespace Etherna.Scrinium.Core.Options
 {
     public class DbContextOptionsTest
     {

@@ -17,14 +17,14 @@ using Etherna.MongoDB.Bson.IO;
 using Etherna.MongoDB.Bson.Serialization;
 using Etherna.MongoDB.Bson.Serialization.Conventions;
 using Etherna.MongoDB.Bson.Serialization.Serializers;
-using Etherna.MongODM.Core.ExecContext;
-using Etherna.MongODM.Core.Utility;
+using Etherna.Scrinium.Core.ExecContext;
+using Etherna.Scrinium.Core.Utility;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 
-namespace Etherna.MongODM.Core.Conventions
+namespace Etherna.Scrinium.Core.Conventions
 {
     public class HierarchicalProxyTolerantDiscriminatorConvention : IHierarchicalDiscriminatorConvention
     {

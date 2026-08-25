@@ -16,16 +16,16 @@ using Etherna.MongoDB.Bson;
 using Etherna.MongoDB.Bson.IO;
 using Etherna.MongoDB.Bson.Serialization;
 using Etherna.MongoDB.Driver;
-using Etherna.MongODM.Core.Domain.Models;
-using Etherna.MongODM.Core.Domain.Models.DbMigrationOpAgg;
-using Etherna.MongODM.Core.Repositories;
-using Etherna.MongODM.Core.Utility;
+using Etherna.Scrinium.Core.Domain.Models;
+using Etherna.Scrinium.Core.Domain.Models.DbMigrationOpAgg;
+using Etherna.Scrinium.Core.Repositories;
+using Etherna.Scrinium.Core.Utility;
 using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace Etherna.MongODM.Core.Migration
+namespace Etherna.Scrinium.Core.Migration
 {
     public abstract class DocumentMigration
     {

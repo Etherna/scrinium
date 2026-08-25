@@ -12,11 +12,11 @@
 // You should have received a copy of the GNU Lesser General Public License along with MongODM.
 // If not, see <https://www.gnu.org/licenses/>.
 
-using Etherna.MongODM.Core.ExecContext.AsyncLocal;
-using Etherna.MongODM.Core.ExecContext.Exceptions;
+using Etherna.Scrinium.Core.ExecContext.AsyncLocal;
+using Etherna.Scrinium.Core.ExecContext.Exceptions;
 using Xunit;
 
-namespace Etherna.MongODM.Core.Utility
+namespace Etherna.Scrinium.Core.Utility
 {
     public class MapsRegistrationHandlerTest
     {

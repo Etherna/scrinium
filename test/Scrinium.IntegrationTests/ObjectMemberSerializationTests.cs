@@ -14,18 +14,18 @@
 
 using Etherna.MongoDB.Bson;
 using Etherna.MongoDB.Driver;
-using Etherna.MongODM.Core;
-using Etherna.MongODM.Core.ExecContext.AsyncLocal;
-using Etherna.MongODM.Core.Options;
-using Etherna.MongODM.IntegrationTests.Fixtures;
-using Etherna.MongODM.IntegrationTests.Models;
+using Etherna.Scrinium.Core;
+using Etherna.Scrinium.Core.ExecContext.AsyncLocal;
+using Etherna.Scrinium.Core.Options;
+using Etherna.Scrinium.IntegrationTests.Fixtures;
+using Etherna.Scrinium.IntegrationTests.Models;
 using Microsoft.Extensions.DependencyInjection;
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using Xunit;
 
-namespace Etherna.MongODM.IntegrationTests
+namespace Etherna.Scrinium.IntegrationTests
 {
     /* MODM-231: typeof(object) never gets a model map, so the driver ObjectSerializer
      * stays the registered serializer for object. Its allowed types guard denies mapped

@@ -13,9 +13,9 @@
 // If not, see <https://www.gnu.org/licenses/>.
 
 using Etherna.MongoDB.Bson.Serialization;
-using Etherna.MongODM.Core.Domain.Models;
-using Etherna.MongODM.Core.Extensions;
-using Etherna.MongODM.Core.Utility;
+using Etherna.Scrinium.Core.Domain.Models;
+using Etherna.Scrinium.Core.Extensions;
+using Etherna.Scrinium.Core.Utility;
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
@@ -23,7 +23,7 @@ using System.Linq;
 using System.Reflection;
 using System.Threading.Tasks;
 
-namespace Etherna.MongODM.Core.Serialization.Mapping
+namespace Etherna.Scrinium.Core.Serialization.Mapping
 {
     public abstract class ModelMapSchema : FreezableConfig, IModelMapSchema
     {

@@ -12,13 +12,13 @@
 // You should have received a copy of the GNU Lesser General Public License along with MongODM.
 // If not, see <https://www.gnu.org/licenses/>.
 
-using Etherna.MongODM.AspNetCore.UI.Areas.MongODM.Pages;
-using Etherna.MongODM.AspNetCore.UI.Auth.Filters;
-using Etherna.MongODM.Core;
-using Etherna.MongODM.Core.Domain.Models;
-using Etherna.MongODM.Core.Options;
-using Etherna.MongODM.Core.Repositories;
-using Etherna.MongODM.Core.Utility;
+using Etherna.Scrinium.AspNetCore.UI.Areas.MongODM.Pages;
+using Etherna.Scrinium.AspNetCore.UI.Auth.Filters;
+using Etherna.Scrinium.Core;
+using Etherna.Scrinium.Core.Domain.Models;
+using Etherna.Scrinium.Core.Options;
+using Etherna.Scrinium.Core.Repositories;
+using Etherna.Scrinium.Core.Utility;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
@@ -30,7 +30,7 @@ using System;
 using System.Threading.Tasks;
 using Xunit;
 
-namespace Etherna.MongODM.AspNetCore.UI
+namespace Etherna.Scrinium.AspNetCore.UI
 {
     public class DashboardStatusTest
     {

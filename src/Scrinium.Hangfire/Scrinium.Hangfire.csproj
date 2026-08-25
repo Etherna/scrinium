@@ -3,7 +3,7 @@
   <PropertyGroup>
     <TargetFrameworks>net8.0;net9.0;net10.0</TargetFrameworks>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
-    <RootNamespace>Etherna.MongODM.HF</RootNamespace>
+    <RootNamespace>Etherna.Scrinium.HF</RootNamespace>
     
     <Authors>Etherna SA</Authors>
     <Description>Linker for use MongoDB with Hangfire</Description>

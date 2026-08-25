@@ -16,16 +16,16 @@ using Etherna.MongoDB.Bson;
 using Etherna.MongoDB.Bson.IO;
 using Etherna.MongoDB.Driver;
 using Etherna.MongoDB.Driver.Linq;
-using Etherna.MongODM.Core.ExecContext.AsyncLocal;
-using Etherna.MongODM.IntegrationTests.Fixtures;
-using Etherna.MongODM.IntegrationTests.Models;
+using Etherna.Scrinium.Core.ExecContext.AsyncLocal;
+using Etherna.Scrinium.IntegrationTests.Fixtures;
+using Etherna.Scrinium.IntegrationTests.Models;
 using Microsoft.Extensions.DependencyInjection;
 using System;
 using System.Linq;
 using System.Threading.Tasks;
 using Xunit;
 
-namespace Etherna.MongODM.IntegrationTests
+namespace Etherna.Scrinium.IntegrationTests
 {
     /* MODM-176: an entity id of a type serialized with a custom serializer map, with the
      * same type also serialized as plain member by other models. The db context boot
@@ -134,9 +134,10 @@ namespace Etherna.MongODM.IntegrationTests
             // Assert.
             Assert.Contains("must serialize to a value", exception.Message, StringComparison.Ordinal);
 
-            //nothing written
+            //nothing written by this create (other tests of the class write raw fixture documents here)
             var lockersCollection = dbContext.Engine.Database.GetCollection<BsonDocument>("lockers");
-            Assert.Equal(0, await lockersCollection.CountDocumentsAsync(Builders<BsonDocument>.Filter.Empty));
+            Assert.Equal(0, await lockersCollection.CountDocumentsAsync(
+                Builders<BsonDocument>.Filter.Eq(nameof(Locker.Label), "gym")));
         }
 
         [Fact]

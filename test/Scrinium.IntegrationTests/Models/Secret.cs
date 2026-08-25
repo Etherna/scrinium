@@ -12,10 +12,10 @@
 // You should have received a copy of the GNU Lesser General Public License along with MongODM.
 // If not, see <https://www.gnu.org/licenses/>.
 
-using Etherna.MongODM.Core.Domain.Models;
+using Etherna.Scrinium.Core.Domain.Models;
 using System.Threading;
 
-namespace Etherna.MongODM.IntegrationTests.Models
+namespace Etherna.Scrinium.IntegrationTests.Models
 {
     /// <summary>
     /// A mapped entity never legitimately hosted by the object shaped members of

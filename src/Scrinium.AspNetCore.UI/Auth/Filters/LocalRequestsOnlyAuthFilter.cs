@@ -16,7 +16,7 @@ using Microsoft.AspNetCore.Http;
 using System.Net;
 using System.Threading.Tasks;
 
-namespace Etherna.MongODM.AspNetCore.UI.Auth.Filters
+namespace Etherna.Scrinium.AspNetCore.UI.Auth.Filters
 {
     /// <summary>
     /// Authorize only requests coming directly from the host running the application.

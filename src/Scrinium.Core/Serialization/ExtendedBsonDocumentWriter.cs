@@ -15,7 +15,7 @@
 using Etherna.MongoDB.Bson;
 using Etherna.MongoDB.Bson.IO;
 
-namespace Etherna.MongODM.Core.Serialization
+namespace Etherna.Scrinium.Core.Serialization
 {
     public class ExtendedBsonDocumentWriter : BsonDocumentWriter
     {

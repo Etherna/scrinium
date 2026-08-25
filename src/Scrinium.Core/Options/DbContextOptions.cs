@@ -13,11 +13,11 @@
 // If not, see <https://www.gnu.org/licenses/>.
 
 using Etherna.MongoDB.Driver;
-using Etherna.MongODM.Core.Migration;
+using Etherna.Scrinium.Core.Migration;
 using System;
 using System.Collections.Generic;
 
-namespace Etherna.MongODM.Core.Options
+namespace Etherna.Scrinium.Core.Options
 {
     public class DbContextOptions : IDbContextOptions
     {

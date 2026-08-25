@@ -14,13 +14,13 @@
 
 using Etherna.MongoDB.Bson;
 using Etherna.MongoDB.Bson.Serialization.Serializers;
-using Etherna.MongODM.Core;
-using Etherna.MongODM.Core.Domain.Models;
-using Etherna.MongODM.Core.Serialization;
-using Etherna.MongODM.IntegrationTests.Models;
+using Etherna.Scrinium.Core;
+using Etherna.Scrinium.Core.Domain.Models;
+using Etherna.Scrinium.Core.Serialization;
+using Etherna.Scrinium.IntegrationTests.Models;
 using System;
 
-namespace Etherna.MongODM.IntegrationTests.ModelMaps
+namespace Etherna.Scrinium.IntegrationTests.ModelMaps
 {
     internal sealed class TicketMap : IModelMapsCollector
     {

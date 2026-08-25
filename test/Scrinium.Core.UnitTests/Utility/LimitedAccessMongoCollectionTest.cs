@@ -16,15 +16,15 @@ using Etherna.MongoDB.Bson;
 using Etherna.MongoDB.Bson.Serialization;
 using Etherna.MongoDB.Driver;
 using Etherna.MongoDB.Driver.Search;
-using Etherna.MongODM.Core.ExecContext.AsyncLocal;
-using Etherna.MongODM.Core.Models;
+using Etherna.Scrinium.Core.ExecContext.AsyncLocal;
+using Etherna.Scrinium.Core.Models;
 using Moq;
 using System;
 using System.Threading;
 using System.Threading.Tasks;
 using Xunit;
 
-namespace Etherna.MongODM.Core.Utility
+namespace Etherna.Scrinium.Core.Utility
 {
     public class LimitedAccessMongoCollectionTest
     {

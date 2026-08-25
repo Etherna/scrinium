@@ -12,17 +12,17 @@
 // You should have received a copy of the GNU Lesser General Public License along with MongODM.
 // If not, see <https://www.gnu.org/licenses/>.
 
-using Etherna.MongODM.Core.Domain.Models;
-using Etherna.MongODM.Core.Migration;
-using Etherna.MongODM.Core.Repositories;
-using Etherna.MongODM.Core.Utility;
+using Etherna.Scrinium.Core.Domain.Models;
+using Etherna.Scrinium.Core.Migration;
+using Etherna.Scrinium.Core.Repositories;
+using Etherna.Scrinium.Core.Utility;
 using System;
 using System.Collections.Generic;
 using System.Linq.Expressions;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace Etherna.MongODM.Core
+namespace Etherna.Scrinium.Core
 {
     /// <summary>
     /// Interface of <see cref="DbContext"/> implementation. The unit of work over

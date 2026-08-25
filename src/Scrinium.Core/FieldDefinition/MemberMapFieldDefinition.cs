@@ -14,11 +14,10 @@
 
 using Etherna.MongoDB.Bson.Serialization;
 using Etherna.MongoDB.Driver;
-using Etherna.MongoDB.Driver.Linq;
-using Etherna.MongODM.Core.Serialization.Mapping;
+using Etherna.Scrinium.Core.Serialization.Mapping;
 using System;
 
-namespace Etherna.MongODM.Core.FieldDefinition
+namespace Etherna.Scrinium.Core.FieldDefinition
 {
     public class MemberMapFieldDefinition<TDocument> : FieldDefinition<TDocument>
     {

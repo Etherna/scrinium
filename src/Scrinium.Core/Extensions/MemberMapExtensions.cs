@@ -13,12 +13,12 @@
 // If not, see <https://www.gnu.org/licenses/>.
 
 using Etherna.MongoDB.Bson.Serialization;
-using Etherna.MongODM.Core.Serialization.Mapping;
-using Etherna.MongODM.Core.Serialization.Serializers;
+using Etherna.Scrinium.Core.Serialization.Mapping;
+using Etherna.Scrinium.Core.Serialization.Serializers;
 using System;
 using System.Collections.Generic;
 
-namespace Etherna.MongODM.Core.Extensions
+namespace Etherna.Scrinium.Core.Extensions
 {
     internal static class MemberMapExtensions
     {

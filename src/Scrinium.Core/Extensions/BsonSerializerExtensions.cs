@@ -18,7 +18,7 @@ using Etherna.MongoDB.Bson.Serialization;
 using System;
 using System.Diagnostics.CodeAnalysis;
 
-namespace Etherna.MongODM.Core.Extensions
+namespace Etherna.Scrinium.Core.Extensions
 {
     internal static class BsonSerializerExtensions
     {

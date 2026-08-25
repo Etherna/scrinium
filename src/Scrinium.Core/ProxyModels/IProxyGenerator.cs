@@ -14,7 +14,7 @@
 
 using System;
 
-namespace Etherna.MongODM.Core.ProxyModels
+namespace Etherna.Scrinium.Core.ProxyModels
 {
     public interface IProxyGenerator
     {

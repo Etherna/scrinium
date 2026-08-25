@@ -16,15 +16,15 @@ using Etherna.MongoDB.Bson;
 using Etherna.MongoDB.Bson.IO;
 using Etherna.MongoDB.Bson.Serialization;
 using Etherna.MongoDB.Driver;
-using Etherna.MongODM.Core.Exceptions;
-using Etherna.MongODM.Core.FieldDefinition;
-using Etherna.MongODM.Core.Serialization.Mapping;
+using Etherna.Scrinium.Core.Exceptions;
+using Etherna.Scrinium.Core.FieldDefinition;
+using Etherna.Scrinium.Core.Serialization.Mapping;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 
-namespace Etherna.MongODM.Core.FilterDefinition
+namespace Etherna.Scrinium.Core.FilterDefinition
 {
     public class MemberMapEqFilterDefinition<TDocument, TItem> : FilterDefinition<TDocument>
     {

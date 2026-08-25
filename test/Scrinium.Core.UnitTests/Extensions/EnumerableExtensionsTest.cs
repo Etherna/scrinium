@@ -19,7 +19,7 @@ using System.Linq;
 using System.Linq.Expressions;
 using Xunit;
 
-namespace Etherna.MongODM.Core.Extensions
+namespace Etherna.Scrinium.Core.Extensions
 {
     public class EnumerableExtensionsTest
     {

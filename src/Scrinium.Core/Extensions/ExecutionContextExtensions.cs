@@ -12,12 +12,12 @@
 // You should have received a copy of the GNU Lesser General Public License along with MongODM.
 // If not, see <https://www.gnu.org/licenses/>.
 
-using Etherna.MongODM.Core.ExecContext;
-using Etherna.MongODM.Core.ExecContext.Exceptions;
+using Etherna.Scrinium.Core.ExecContext;
+using Etherna.Scrinium.Core.ExecContext.Exceptions;
 using System;
 using System.Collections.Generic;
 
-namespace Etherna.MongODM.Core.Extensions
+namespace Etherna.Scrinium.Core.Extensions
 {
     /// <summary>
     /// Access helpers for the ambient state lists kept in <see cref="IExecutionContext.Items"/>.

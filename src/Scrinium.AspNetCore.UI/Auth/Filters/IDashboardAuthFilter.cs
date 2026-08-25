@@ -15,7 +15,7 @@
 using Microsoft.AspNetCore.Http;
 using System.Threading.Tasks;
 
-namespace Etherna.MongODM.AspNetCore.UI.Auth.Filters
+namespace Etherna.Scrinium.AspNetCore.UI.Auth.Filters
 {
     public interface IDashboardAuthFilter
     {

@@ -16,11 +16,11 @@ using Etherna.MongoDB.Bson;
 using Etherna.MongoDB.Bson.Serialization;
 using Etherna.MongoDB.Bson.Serialization.Serializers;
 using Etherna.MongoDB.Driver;
-using Etherna.MongODM.Core.ExecContext;
-using Etherna.MongODM.Core.Models;
-using Etherna.MongODM.Core.Options;
-using Etherna.MongODM.Core.Serialization.Mapping;
-using Etherna.MongODM.Core.Utility;
+using Etherna.Scrinium.Core.ExecContext;
+using Etherna.Scrinium.Core.Models;
+using Etherna.Scrinium.Core.Options;
+using Etherna.Scrinium.Core.Serialization.Mapping;
+using Etherna.Scrinium.Core.Utility;
 using Microsoft.Extensions.Logging;
 using Moq;
 using System;
@@ -30,7 +30,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Xunit;
 
-namespace Etherna.MongODM.Core.Repositories
+namespace Etherna.Scrinium.Core.Repositories
 {
     public class RepositoryTest
     {

@@ -17,7 +17,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Linq;
 
-namespace Etherna.MongODM.IntegrationTests.Fixtures
+namespace Etherna.Scrinium.IntegrationTests.Fixtures
 {
     /// <summary>
     /// A logger recording the events emitted by a db context, so that a test can observe a

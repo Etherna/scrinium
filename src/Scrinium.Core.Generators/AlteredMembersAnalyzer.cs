@@ -19,7 +19,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 
-namespace Etherna.MongODM.Core.Generators
+namespace Etherna.Scrinium.Core.Generators
 {
     /// <summary>
     /// Computes, for each model method, the properties it alters: the members whose backing
@@ -33,7 +33,7 @@ namespace Etherna.MongODM.Core.Generators
     internal sealed class AlteredMembersAnalyzer
     {
         // Consts.
-        private const string FrameworkModelsNamespace = "Etherna.MongODM.Core.Domain.Models";
+        private const string FrameworkModelsNamespace = "Etherna.Scrinium.Core.Domain.Models";
 
         // Fields.
         private readonly Dictionary<IMethodSymbol, List<string>?> analyzedMethods = new(SymbolEqualityComparer.Default);

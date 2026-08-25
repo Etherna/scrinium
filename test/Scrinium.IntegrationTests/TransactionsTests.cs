@@ -13,16 +13,16 @@
 // If not, see <https://www.gnu.org/licenses/>.
 
 using Etherna.MongoDB.Driver.Linq;
-using Etherna.MongODM.Core.ExecContext.AsyncLocal;
-using Etherna.MongODM.IntegrationTests.Fixtures;
-using Etherna.MongODM.IntegrationTests.Models;
+using Etherna.Scrinium.Core.ExecContext.AsyncLocal;
+using Etherna.Scrinium.IntegrationTests.Fixtures;
+using Etherna.Scrinium.IntegrationTests.Models;
 using Microsoft.Extensions.DependencyInjection;
 using System;
 using System.Linq;
 using System.Threading.Tasks;
 using Xunit;
 
-namespace Etherna.MongODM.IntegrationTests
+namespace Etherna.Scrinium.IntegrationTests
 {
     [Collection("Integration")]
     public class TransactionsTests : IDisposable

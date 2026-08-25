@@ -13,14 +13,14 @@
 // If not, see <https://www.gnu.org/licenses/>.
 
 using Etherna.MongoDB.Bson.Serialization;
-using Etherna.MongODM.Core.ExecContext;
-using Etherna.MongODM.Core.ProxyModels;
-using Etherna.MongODM.Core.Repositories;
-using Etherna.MongODM.Core.Serialization.Mapping;
-using Etherna.MongODM.Core.Serialization.Modifiers;
-using Etherna.MongODM.Core.Utility;
+using Etherna.Scrinium.Core.ExecContext;
+using Etherna.Scrinium.Core.ProxyModels;
+using Etherna.Scrinium.Core.Repositories;
+using Etherna.Scrinium.Core.Serialization.Mapping;
+using Etherna.Scrinium.Core.Serialization.Modifiers;
+using Etherna.Scrinium.Core.Utility;
 
-namespace Etherna.MongODM.Core
+namespace Etherna.Scrinium.Core
 {
     public interface IDbDependencies
     {

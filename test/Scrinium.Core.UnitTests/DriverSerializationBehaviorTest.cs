@@ -18,7 +18,7 @@ using Etherna.MongoDB.Bson.Serialization;
 using Etherna.MongoDB.Bson.Serialization.Serializers;
 using Xunit;
 
-namespace Etherna.MongODM.Core
+namespace Etherna.Scrinium.Core
 {
     public class DriverSerializationBehaviorTest
     {

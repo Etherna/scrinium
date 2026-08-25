@@ -12,9 +12,9 @@
 // You should have received a copy of the GNU Lesser General Public License along with MongODM.
 // If not, see <https://www.gnu.org/licenses/>.
 
-using Etherna.MongODM.AspNetCore.Extensions;
-using Etherna.MongODM.Core.ExecContext.AsyncLocal;
-using Etherna.MongODM.Core.Tasks;
+using Etherna.Scrinium.AspNetCore.Extensions;
+using Etherna.Scrinium.Core.ExecContext.AsyncLocal;
+using Etherna.Scrinium.Core.Tasks;
 using Microsoft.Extensions.DependencyInjection;
 using System;
 using System.Collections.Concurrent;
@@ -22,7 +22,7 @@ using System.Collections.Generic;
 using System.Threading.Tasks;
 using Xunit;
 
-namespace Etherna.MongODM.IntegrationTests.Fixtures
+namespace Etherna.Scrinium.IntegrationTests.Fixtures
 {
     /// <summary>
     /// Bootstraps the MongODM stack against a real MongoDB instance, mirroring the

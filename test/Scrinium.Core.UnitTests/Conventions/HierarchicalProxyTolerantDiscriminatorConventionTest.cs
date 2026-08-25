@@ -16,14 +16,14 @@ using Etherna.MongoDB.Bson;
 using Etherna.MongoDB.Bson.IO;
 using Etherna.MongoDB.Bson.Serialization;
 using Etherna.MongoDB.Bson.Serialization.Conventions;
-using Etherna.MongODM.Core.ExecContext.AsyncLocal;
-using Etherna.MongODM.Core.Serialization.Mapping;
-using Etherna.MongODM.Core.Utility;
+using Etherna.Scrinium.Core.ExecContext.AsyncLocal;
+using Etherna.Scrinium.Core.Serialization.Mapping;
+using Etherna.Scrinium.Core.Utility;
 using Moq;
 using System;
 using Xunit;
 
-namespace Etherna.MongODM.Core.Conventions
+namespace Etherna.Scrinium.Core.Conventions
 {
     public class HierarchicalProxyTolerantDiscriminatorConventionTest
     {

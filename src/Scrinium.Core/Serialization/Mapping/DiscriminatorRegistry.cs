@@ -14,15 +14,15 @@
 
 using Etherna.MongoDB.Bson;
 using Etherna.MongoDB.Bson.Serialization.Conventions;
-using Etherna.MongODM.Core.Conventions;
-using Etherna.MongODM.Core.Extensions;
+using Etherna.Scrinium.Core.Conventions;
+using Etherna.Scrinium.Core.Extensions;
 using Microsoft.Extensions.Logging;
 using System;
 using System.Collections.Generic;
 using System.Reflection;
 using System.Threading;
 
-namespace Etherna.MongODM.Core.Serialization.Mapping
+namespace Etherna.Scrinium.Core.Serialization.Mapping
 {
     public class DiscriminatorRegistry : IDiscriminatorRegistry, IDisposable
     {

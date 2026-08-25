@@ -16,12 +16,12 @@ using Etherna.MongoDB.Bson.Serialization;
 using Etherna.MongoDB.Bson.Serialization.Serializers;
 using Etherna.MongoDB.Driver.GeoJsonObjectModel;
 using Etherna.MongoDB.Driver.GeoJsonObjectModel.Serializers;
-using Etherna.MongODM.Core.ProxyModels;
+using Etherna.Scrinium.Core.ProxyModels;
 using System;
 using System.Linq.Expressions;
 using System.Reflection;
 
-namespace Etherna.MongODM.Core.Serialization.Serializers
+namespace Etherna.Scrinium.Core.Serialization.Serializers
 {
     public class GeoPointSerializer<TInModel>(
         IDbContextEngine dbContextEngine,

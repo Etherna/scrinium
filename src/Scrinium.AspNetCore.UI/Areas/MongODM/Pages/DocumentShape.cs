@@ -14,7 +14,7 @@
 
 using System.Collections.Generic;
 
-namespace Etherna.MongODM.AspNetCore.UI.Areas.MongODM.Pages
+namespace Etherna.Scrinium.AspNetCore.UI.Areas.MongODM.Pages
 {
     /// <summary>
     /// The shape of the document, or of the sub-document, written by a model map schema.

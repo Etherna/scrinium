@@ -12,16 +12,16 @@
 // You should have received a copy of the GNU Lesser General Public License along with MongODM.
 // If not, see <https://www.gnu.org/licenses/>.
 
-using Etherna.MongODM.Core;
-using Etherna.MongODM.Core.Migration;
-using Etherna.MongODM.Core.Repositories;
-using Etherna.MongODM.Core.Serialization;
-using Etherna.MongODM.IntegrationTests.ModelMaps;
-using Etherna.MongODM.IntegrationTests.Models;
+using Etherna.Scrinium.Core;
+using Etherna.Scrinium.Core.Migration;
+using Etherna.Scrinium.Core.Repositories;
+using Etherna.Scrinium.Core.Serialization;
+using Etherna.Scrinium.IntegrationTests.ModelMaps;
+using Etherna.Scrinium.IntegrationTests.Models;
 using Microsoft.Extensions.Logging;
 using System.Collections.Generic;
 
-namespace Etherna.MongODM.IntegrationTests
+namespace Etherna.Scrinium.IntegrationTests
 {
     public interface IMigrationsDbContext : IDbContext
     {

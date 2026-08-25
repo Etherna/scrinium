@@ -12,12 +12,12 @@
 // You should have received a copy of the GNU Lesser General Public License along with MongODM.
 // If not, see <https://www.gnu.org/licenses/>.
 
-using Etherna.MongODM.AspNetCore.UI.Auth.Requirements;
+using Etherna.Scrinium.AspNetCore.UI.Auth.Requirements;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using System.Threading.Tasks;
 
-namespace Etherna.MongODM.AspNetCore.UI.Auth.Handlers
+namespace Etherna.Scrinium.AspNetCore.UI.Auth.Handlers
 {
     internal sealed class ValidFiltersHandler(IHttpContextAccessor httpContextAccessor)
         : AuthorizationHandler<ValidFiltersRequirement>

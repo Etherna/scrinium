@@ -14,18 +14,18 @@
 
 using Etherna.MongoDB.Driver;
 using Etherna.MongoDB.Driver.Core.Configuration;
-using Etherna.MongODM.AspNetCore.ExecContext;
-using Etherna.MongODM.Core;
-using Etherna.MongODM.Core.ExecContext;
-using Etherna.MongODM.Core.Options;
-using Etherna.MongODM.Core.Repositories;
+using Etherna.Scrinium.AspNetCore.ExecContext;
+using Etherna.Scrinium.Core;
+using Etherna.Scrinium.Core.ExecContext;
+using Etherna.Scrinium.Core.Options;
+using Etherna.Scrinium.Core.Repositories;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 
-namespace Etherna.MongODM.AspNetCore
+namespace Etherna.Scrinium.AspNetCore
 {
     public class MongODMConfiguration(IServiceCollection services)
         : IMongODMConfiguration

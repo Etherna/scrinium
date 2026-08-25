@@ -12,12 +12,12 @@
 // You should have received a copy of the GNU Lesser General Public License along with MongODM.
 // If not, see <https://www.gnu.org/licenses/>.
 
-using Etherna.MongODM.Core.ExecContext.AsyncLocal;
+using Etherna.Scrinium.Core.ExecContext.AsyncLocal;
 using Hangfire.Server;
 using System;
 using System.Collections.Generic;
 
-namespace Etherna.MongODM.HF.Filters
+namespace Etherna.Scrinium.HF.Filters
 {
     public class AsyncLocalContextHangfireFilter(IAsyncLocalContext asyncLocalContext) : IServerFilter
     {

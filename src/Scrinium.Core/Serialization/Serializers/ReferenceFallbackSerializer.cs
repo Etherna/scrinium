@@ -16,10 +16,10 @@ using Etherna.MongoDB.Bson;
 using Etherna.MongoDB.Bson.IO;
 using Etherna.MongoDB.Bson.Serialization;
 using Etherna.MongoDB.Bson.Serialization.Serializers;
-using Etherna.MongODM.Core.Serialization.Mapping;
+using Etherna.Scrinium.Core.Serialization.Mapping;
 using System;
 
-namespace Etherna.MongODM.Core.Serialization.Serializers
+namespace Etherna.Scrinium.Core.Serialization.Serializers
 {
     /// <summary>
     /// Default fallback deserializer for reference documents with an unrecognized model map schema id.

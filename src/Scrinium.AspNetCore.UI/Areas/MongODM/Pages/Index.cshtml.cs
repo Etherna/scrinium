@@ -15,12 +15,12 @@
 using Etherna.MongoDB.Bson;
 using Etherna.MongoDB.Bson.Serialization;
 using Etherna.MongoDB.Bson.Serialization.Options;
-using Etherna.MongODM.Core;
-using Etherna.MongODM.Core.Domain.Models;
-using Etherna.MongODM.Core.Domain.Models.DbMigrationOpAgg;
-using Etherna.MongODM.Core.Options;
-using Etherna.MongODM.Core.Repositories;
-using Etherna.MongODM.Core.Serialization.Mapping;
+using Etherna.Scrinium.Core;
+using Etherna.Scrinium.Core.Domain.Models;
+using Etherna.Scrinium.Core.Domain.Models.DbMigrationOpAgg;
+using Etherna.Scrinium.Core.Options;
+using Etherna.Scrinium.Core.Repositories;
+using Etherna.Scrinium.Core.Serialization.Mapping;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Filters;
 using Microsoft.AspNetCore.Mvc.RazorPages;
@@ -32,7 +32,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace Etherna.MongODM.AspNetCore.UI.Areas.MongODM.Pages
+namespace Etherna.Scrinium.AspNetCore.UI.Areas.MongODM.Pages
 {
     public class IndexModel : PageModel
     {

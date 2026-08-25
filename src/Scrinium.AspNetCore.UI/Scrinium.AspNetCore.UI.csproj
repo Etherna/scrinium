@@ -4,7 +4,7 @@
     <TargetFrameworks>net8.0;net9.0;net10.0</TargetFrameworks>
     <AddRazorSupportForMvc>true</AddRazorSupportForMvc>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
-    <RootNamespace>Etherna.MongODM.AspNetCore.UI</RootNamespace>
+    <RootNamespace>Etherna.Scrinium.AspNetCore.UI</RootNamespace>
     
     <Authors>Etherna SA</Authors>
     <Description>Scrinium Dashboard UI for Asp.NET Core</Description>

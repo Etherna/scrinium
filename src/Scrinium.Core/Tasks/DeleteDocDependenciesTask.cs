@@ -14,12 +14,12 @@
 
 using Etherna.MongoDB.Bson;
 using Etherna.MongoDB.Driver;
-using Etherna.MongODM.Core.Domain.Models;
-using Etherna.MongODM.Core.Extensions;
-using Etherna.MongODM.Core.Options;
-using Etherna.MongODM.Core.Repositories;
-using Etherna.MongODM.Core.Serialization.Mapping;
-using Etherna.MongODM.Core.Utility;
+using Etherna.Scrinium.Core.Domain.Models;
+using Etherna.Scrinium.Core.Extensions;
+using Etherna.Scrinium.Core.Options;
+using Etherna.Scrinium.Core.Repositories;
+using Etherna.Scrinium.Core.Serialization.Mapping;
+using Etherna.Scrinium.Core.Utility;
 using Microsoft.Extensions.Logging;
 using System;
 using System.Collections.Generic;
@@ -27,7 +27,7 @@ using System.Linq;
 using System.Reflection;
 using System.Threading.Tasks;
 
-namespace Etherna.MongODM.Core.Tasks
+namespace Etherna.Scrinium.Core.Tasks
 {
     public class DeleteDocDependenciesTask(
         ILogger<DeleteDocDependenciesTask> logger,

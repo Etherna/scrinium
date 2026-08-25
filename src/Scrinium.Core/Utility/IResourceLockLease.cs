@@ -15,7 +15,7 @@
 using System;
 using System.Threading;
 
-namespace Etherna.MongODM.Core.Utility
+namespace Etherna.Scrinium.Core.Utility
 {
     /// <summary>
     /// An active lease of a <see cref="IResourceLock"/>, renewed in background until its

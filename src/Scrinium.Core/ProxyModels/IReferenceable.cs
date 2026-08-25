@@ -12,11 +12,11 @@
 // You should have received a copy of the GNU Lesser General Public License along with MongODM.
 // If not, see <https://www.gnu.org/licenses/>.
 
-using Etherna.MongODM.Core.Options;
-using Etherna.MongODM.Core.Repositories;
+using Etherna.Scrinium.Core.Options;
+using Etherna.Scrinium.Core.Repositories;
 using System.Collections.Generic;
 
-namespace Etherna.MongODM.Core.ProxyModels
+namespace Etherna.Scrinium.Core.ProxyModels
 {
     public interface IReferenceable
 	{

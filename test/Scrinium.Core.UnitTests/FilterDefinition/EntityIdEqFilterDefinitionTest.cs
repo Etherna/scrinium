@@ -17,12 +17,12 @@ using Etherna.MongoDB.Bson.IO;
 using Etherna.MongoDB.Bson.Serialization;
 using Etherna.MongoDB.Bson.Serialization.Serializers;
 using Etherna.MongoDB.Driver;
-using Etherna.MongODM.Core.Domain.Models;
+using Etherna.Scrinium.Core.Domain.Models;
 using System;
 using System.Collections.Generic;
 using Xunit;
 
-namespace Etherna.MongODM.Core.FilterDefinition
+namespace Etherna.Scrinium.Core.FilterDefinition
 {
     public class EntityIdEqFilterDefinitionTest
     {

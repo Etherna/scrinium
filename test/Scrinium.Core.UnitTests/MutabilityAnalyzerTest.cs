@@ -12,13 +12,13 @@
 // You should have received a copy of the GNU Lesser General Public License along with MongODM.
 // If not, see <https://www.gnu.org/licenses/>.
 
-using Etherna.MongODM.Core.Models;
-using Etherna.MongODM.Core.ProxyModels;
+using Etherna.Scrinium.Core.Models;
+using Etherna.Scrinium.Core.ProxyModels;
 using System;
 using System.Collections.Generic;
 using Xunit;
 
-namespace Etherna.MongODM.Core
+namespace Etherna.Scrinium.Core
 {
     public class MutabilityAnalyzerTest
     {

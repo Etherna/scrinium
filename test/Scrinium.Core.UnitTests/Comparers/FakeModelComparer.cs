@@ -12,11 +12,11 @@
 // You should have received a copy of the GNU Lesser General Public License along with MongODM.
 // If not, see <https://www.gnu.org/licenses/>.
 
-using Etherna.MongODM.Core.Models;
+using Etherna.Scrinium.Core.Models;
 using System.Collections.Generic;
 using System.Linq;
 
-namespace Etherna.MongODM.Core.Comparers
+namespace Etherna.Scrinium.Core.Comparers
 {
     public class FakeModelComparer : EqualityComparer<FakeModel?>
     {

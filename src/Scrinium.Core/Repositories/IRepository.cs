@@ -13,8 +13,8 @@
 // If not, see <https://www.gnu.org/licenses/>.
 
 using Etherna.MongoDB.Driver;
-using Etherna.MongODM.Core.Domain.Models;
-using Etherna.MongODM.Core.Migration;
+using Etherna.Scrinium.Core.Domain.Models;
+using Etherna.Scrinium.Core.Migration;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -22,7 +22,7 @@ using System.Linq.Expressions;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace Etherna.MongODM.Core.Repositories
+namespace Etherna.Scrinium.Core.Repositories
 {
     public interface IRepository : IDbContextInitializable
     {

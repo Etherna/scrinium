@@ -12,11 +12,11 @@
 // You should have received a copy of the GNU Lesser General Public License along with MongODM.
 // If not, see <https://www.gnu.org/licenses/>.
 
-using Etherna.MongODM.Core.Domain.Models;
+using Etherna.Scrinium.Core.Domain.Models;
 using System;
 using System.Threading.Tasks;
 
-namespace Etherna.MongODM.Core.Tasks
+namespace Etherna.Scrinium.Core.Tasks
 {
     public class MigrateDbContextTask(IServiceProvider serviceProvider)
         : IMigrateDbContextTask

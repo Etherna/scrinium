@@ -14,7 +14,7 @@
 
 using System;
 
-namespace Etherna.MongODM.Core.Domain.Models.DbMigrationOpAgg
+namespace Etherna.Scrinium.Core.Domain.Models.DbMigrationOpAgg
 {
     [Obsolete("Replaced by build and delete separate logs")]
     public class IndexMigrationLog : MigrationLogBase

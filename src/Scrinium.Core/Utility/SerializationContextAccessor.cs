@@ -13,9 +13,9 @@
 // If not, see <https://www.gnu.org/licenses/>.
 
 using Etherna.MongoDB.Bson.Serialization;
-using Etherna.MongODM.Core.ExecContext;
+using Etherna.Scrinium.Core.ExecContext;
 
-namespace Etherna.MongODM.Core.Utility
+namespace Etherna.Scrinium.Core.Utility
 {
     public class SerializationContextAccessor(IExecutionContext executionContext)
         : ISerializationContextAccessor

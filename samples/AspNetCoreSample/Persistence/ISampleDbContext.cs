@@ -12,11 +12,11 @@
 // You should have received a copy of the GNU Lesser General Public License along with MongODM.
 // If not, see <https://www.gnu.org/licenses/>.
 
-using Etherna.MongODM.AspNetCoreSample.Models;
-using Etherna.MongODM.Core;
-using Etherna.MongODM.Core.Repositories;
+using Etherna.Scrinium.AspNetCoreSample.Models;
+using Etherna.Scrinium.Core;
+using Etherna.Scrinium.Core.Repositories;
 
-namespace Etherna.MongODM.AspNetCoreSample.Persistence
+namespace Etherna.Scrinium.AspNetCoreSample.Persistence
 {
     public interface ISampleDbContext : IDbContext
     {

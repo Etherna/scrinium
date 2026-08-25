@@ -12,18 +12,18 @@
 // You should have received a copy of the GNU Lesser General Public License along with MongODM.
 // If not, see <https://www.gnu.org/licenses/>.
 
-using Etherna.MongODM.Core.Domain.Models;
-using Etherna.MongODM.Core.Exceptions;
-using Etherna.MongODM.Core.Models;
-using Etherna.MongODM.Core.Options;
-using Etherna.MongODM.Core.ProxyModels;
-using Etherna.MongODM.Core.Repositories;
+using Etherna.Scrinium.Core.Domain.Models;
+using Etherna.Scrinium.Core.Exceptions;
+using Etherna.Scrinium.Core.Models;
+using Etherna.Scrinium.Core.Options;
+using Etherna.Scrinium.Core.ProxyModels;
+using Etherna.Scrinium.Core.Repositories;
 using Moq;
 using System;
 using System.Threading;
 using Xunit;
 
-namespace Etherna.MongODM.Core
+namespace Etherna.Scrinium.Core
 {
     public class GeneratedProxyModelTest
     {

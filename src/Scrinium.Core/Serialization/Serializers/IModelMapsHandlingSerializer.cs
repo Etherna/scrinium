@@ -12,10 +12,10 @@
 // You should have received a copy of the GNU Lesser General Public License along with MongODM.
 // If not, see <https://www.gnu.org/licenses/>.
 
-using Etherna.MongODM.Core.Serialization.Mapping;
+using Etherna.Scrinium.Core.Serialization.Mapping;
 using System.Collections.Generic;
 
-namespace Etherna.MongODM.Core.Serialization.Serializers
+namespace Etherna.Scrinium.Core.Serialization.Serializers
 {
     public interface IModelMapsHandlingSerializer
     {

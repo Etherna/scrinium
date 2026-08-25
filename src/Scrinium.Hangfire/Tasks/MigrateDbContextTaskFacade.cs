@@ -12,13 +12,13 @@
 // You should have received a copy of the GNU Lesser General Public License along with MongODM.
 // If not, see <https://www.gnu.org/licenses/>.
 
-using Etherna.MongODM.Core.Tasks;
+using Etherna.Scrinium.Core.Tasks;
 using Hangfire.Server;
 using System;
 using System.Reflection;
 using System.Threading.Tasks;
 
-namespace Etherna.MongODM.HF.Tasks
+namespace Etherna.Scrinium.HF.Tasks
 {
     internal sealed class MigrateDbContextTaskFacade(IMigrateDbContextTask task)
     {

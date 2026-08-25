@@ -15,7 +15,7 @@
 using Etherna.MongoDB.Bson.Serialization;
 using System;
 
-namespace Etherna.MongODM.Core.Serialization.Mapping
+namespace Etherna.Scrinium.Core.Serialization.Mapping
 {
     /// <summary>
     /// Builder surface of the model maps declared by a reference serializer configuration.

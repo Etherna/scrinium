@@ -12,14 +12,14 @@
 // You should have received a copy of the GNU Lesser General Public License along with MongODM.
 // If not, see <https://www.gnu.org/licenses/>.
 
-using Etherna.MongODM.Core.ExecContext.Exceptions;
-using Etherna.MongODM.Core.Extensions;
+using Etherna.Scrinium.Core.ExecContext.Exceptions;
+using Etherna.Scrinium.Core.Extensions;
 using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 
-namespace Etherna.MongODM.Core.Utility
+namespace Etherna.Scrinium.Core.Utility
 {
     internal sealed class ExclusiveAccessHandler : IDisposable
     {

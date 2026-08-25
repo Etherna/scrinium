@@ -13,8 +13,8 @@
 // If not, see <https://www.gnu.org/licenses/>.
 
 using Etherna.MongoDB.Driver.Linq;
-using Etherna.MongODM.AspNetCoreSample.Models;
-using Etherna.MongODM.AspNetCoreSample.Persistence;
+using Etherna.Scrinium.AspNetCoreSample.Models;
+using Etherna.Scrinium.AspNetCoreSample.Persistence;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using System;
@@ -23,7 +23,7 @@ using System.ComponentModel.DataAnnotations;
 using System.Linq;
 using System.Threading.Tasks;
 
-namespace Etherna.MongODM.AspNetCoreSample.Pages
+namespace Etherna.Scrinium.AspNetCoreSample.Pages
 {
     public class IndexModel : PageModel
     {

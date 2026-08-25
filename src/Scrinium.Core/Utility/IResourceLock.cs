@@ -15,7 +15,7 @@
 using System;
 using System.Threading.Tasks;
 
-namespace Etherna.MongODM.Core.Utility
+namespace Etherna.Scrinium.Core.Utility
 {
     /// <summary>
     /// Server side lease lock over a resource, coordinating works across every application

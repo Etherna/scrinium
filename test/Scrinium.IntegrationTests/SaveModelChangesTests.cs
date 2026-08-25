@@ -14,16 +14,16 @@
 
 using Etherna.MongoDB.Bson;
 using Etherna.MongoDB.Driver;
-using Etherna.MongODM.Core.ExecContext.AsyncLocal;
-using Etherna.MongODM.Core.ProxyModels;
-using Etherna.MongODM.IntegrationTests.Fixtures;
-using Etherna.MongODM.IntegrationTests.Models;
+using Etherna.Scrinium.Core.ExecContext.AsyncLocal;
+using Etherna.Scrinium.Core.ProxyModels;
+using Etherna.Scrinium.IntegrationTests.Fixtures;
+using Etherna.Scrinium.IntegrationTests.Models;
 using Microsoft.Extensions.DependencyInjection;
 using System;
 using System.Threading.Tasks;
 using Xunit;
 
-namespace Etherna.MongODM.IntegrationTests
+namespace Etherna.Scrinium.IntegrationTests
 {
     [Collection("Integration")]
     public class SaveModelChangesTests : IDisposable

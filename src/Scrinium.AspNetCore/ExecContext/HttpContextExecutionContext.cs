@@ -12,11 +12,11 @@
 // You should have received a copy of the GNU Lesser General Public License along with MongODM.
 // If not, see <https://www.gnu.org/licenses/>.
 
-using Etherna.MongODM.Core.ExecContext;
+using Etherna.Scrinium.Core.ExecContext;
 using Microsoft.AspNetCore.Http;
 using System.Collections.Generic;
 
-namespace Etherna.MongODM.AspNetCore.ExecContext
+namespace Etherna.Scrinium.AspNetCore.ExecContext
 {
     public class HttpContextExecutionContext(IHttpContextAccessor httpContextAccessor)
         : IExecutionContext

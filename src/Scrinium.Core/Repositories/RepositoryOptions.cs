@@ -16,7 +16,7 @@ using Etherna.MongoDB.Driver;
 using System;
 using System.Collections.Generic;
 
-namespace Etherna.MongODM.Core.Repositories
+namespace Etherna.Scrinium.Core.Repositories
 {
     public class RepositoryOptions<TModel>(string name)
     {

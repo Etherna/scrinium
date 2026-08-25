@@ -12,12 +12,12 @@
 // You should have received a copy of the GNU Lesser General Public License along with MongODM.
 // If not, see <https://www.gnu.org/licenses/>.
 
-using Etherna.MongODM.Core.Domain.Models;
-using Etherna.MongODM.Core.Repositories;
+using Etherna.Scrinium.Core.Domain.Models;
+using Etherna.Scrinium.Core.Repositories;
 using System.Collections.Generic;
 using System.Reflection;
 
-namespace Etherna.MongODM.Core.Utility
+namespace Etherna.Scrinium.Core.Utility
 {
     /// <summary>
     /// Interface for <see cref="DbMaintainer"/> implementation.

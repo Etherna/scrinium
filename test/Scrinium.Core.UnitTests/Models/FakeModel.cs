@@ -14,7 +14,7 @@
 
 using System.Collections.Generic;
 
-namespace Etherna.MongODM.Core.Models
+namespace Etherna.Scrinium.Core.Models
 {
     public class FakeModel : FakeEntityModelBase<string>
     {

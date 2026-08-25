@@ -12,11 +12,11 @@
 // You should have received a copy of the GNU Lesser General Public License along with MongODM.
 // If not, see <https://www.gnu.org/licenses/>.
 
-using Etherna.MongODM.Core;
-using Etherna.MongODM.Core.Extensions;
-using Etherna.MongODM.Core.Serialization;
+using Etherna.Scrinium.Core;
+using Etherna.Scrinium.Core.Extensions;
+using Etherna.Scrinium.Core.Serialization;
 
-namespace Etherna.MongODM.AspNetCoreSample.Models.ModelMaps
+namespace Etherna.Scrinium.AspNetCoreSample.Models.ModelMaps
 {
     class CatMap : IModelMapsCollector
     {

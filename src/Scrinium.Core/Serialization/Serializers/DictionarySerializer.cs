@@ -15,11 +15,11 @@
 using Etherna.MongoDB.Bson.Serialization;
 using Etherna.MongoDB.Bson.Serialization.Options;
 using Etherna.MongoDB.Bson.Serialization.Serializers;
-using Etherna.MongODM.Core.Serialization.Mapping;
+using Etherna.Scrinium.Core.Serialization.Mapping;
 using System;
 using System.Collections.Generic;
 
-namespace Etherna.MongODM.Core.Serialization.Serializers
+namespace Etherna.Scrinium.Core.Serialization.Serializers
 {
     public class DictionarySerializer<TKey, TValue> :
         DictionarySerializerBase<IDictionary<TKey, TValue>, TKey, TValue>,

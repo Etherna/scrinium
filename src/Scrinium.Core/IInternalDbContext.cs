@@ -13,11 +13,11 @@
 // If not, see <https://www.gnu.org/licenses/>.
 
 using Etherna.MongoDB.Bson;
-using Etherna.MongODM.Core.Domain.Models;
-using Etherna.MongODM.Core.ProxyModels;
-using Etherna.MongODM.Core.Repositories;
+using Etherna.Scrinium.Core.Domain.Models;
+using Etherna.Scrinium.Core.ProxyModels;
+using Etherna.Scrinium.Core.Repositories;
 
-namespace Etherna.MongODM.Core
+namespace Etherna.Scrinium.Core
 {
     /// <summary>
     /// The db context surface invoked only inside the library (serializers and repositories):

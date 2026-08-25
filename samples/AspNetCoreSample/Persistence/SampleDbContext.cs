@@ -14,19 +14,19 @@
 
 using Etherna.MongoDB.Bson;
 using Etherna.MongoDB.Driver;
-using Etherna.MongODM.AspNetCoreSample.Models;
-using Etherna.MongODM.AspNetCoreSample.Models.ModelMaps;
-using Etherna.MongODM.Core;
-using Etherna.MongODM.Core.Migration;
-using Etherna.MongODM.Core.Repositories;
-using Etherna.MongODM.Core.Serialization;
-using Etherna.MongODM.Core.Serialization.Mapping;
+using Etherna.Scrinium.AspNetCoreSample.Models;
+using Etherna.Scrinium.AspNetCoreSample.Models.ModelMaps;
+using Etherna.Scrinium.Core;
+using Etherna.Scrinium.Core.Migration;
+using Etherna.Scrinium.Core.Repositories;
+using Etherna.Scrinium.Core.Serialization;
+using Etherna.Scrinium.Core.Serialization.Mapping;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 
-namespace Etherna.MongODM.AspNetCoreSample.Persistence
+namespace Etherna.Scrinium.AspNetCoreSample.Persistence
 {
     public class SampleDbContext : DbContext, ISampleDbContext
     {

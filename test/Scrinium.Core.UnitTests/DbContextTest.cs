@@ -16,15 +16,15 @@ using Etherna.MongoDB.Bson;
 using Etherna.MongoDB.Bson.Serialization;
 using Etherna.MongoDB.Driver;
 using Etherna.MongoDB.Driver.Core.Clusters;
-using Etherna.MongODM.Core.Domain.Models;
-using Etherna.MongODM.Core.ExecContext.AsyncLocal;
-using Etherna.MongODM.Core.Models;
-using Etherna.MongODM.Core.Exceptions;
-using Etherna.MongODM.Core.Options;
-using Etherna.MongODM.Core.ProxyModels;
-using Etherna.MongODM.Core.Repositories;
-using Etherna.MongODM.Core.Serialization.Mapping;
-using Etherna.MongODM.Core.Utility;
+using Etherna.Scrinium.Core.Domain.Models;
+using Etherna.Scrinium.Core.ExecContext.AsyncLocal;
+using Etherna.Scrinium.Core.Models;
+using Etherna.Scrinium.Core.Exceptions;
+using Etherna.Scrinium.Core.Options;
+using Etherna.Scrinium.Core.ProxyModels;
+using Etherna.Scrinium.Core.Repositories;
+using Etherna.Scrinium.Core.Serialization.Mapping;
+using Etherna.Scrinium.Core.Utility;
 using Moq;
 using System;
 using System.Collections.Generic;
@@ -34,7 +34,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Xunit;
 
-namespace Etherna.MongODM.Core
+namespace Etherna.Scrinium.Core
 {
     public class DbContextTest : IDisposable
     {

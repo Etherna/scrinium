@@ -14,18 +14,18 @@
 
 using Etherna.MongoDB.Driver;
 using Etherna.MongoDB.Driver.Linq;
-using Etherna.MongODM.Core.Domain.Models;
-using Etherna.MongODM.Core.Domain.Models.DbMigrationOpAgg;
-using Etherna.MongODM.Core.Exceptions;
-using Etherna.MongODM.Core.Extensions;
-using Etherna.MongODM.Core.Tasks;
+using Etherna.Scrinium.Core.Domain.Models;
+using Etherna.Scrinium.Core.Domain.Models.DbMigrationOpAgg;
+using Etherna.Scrinium.Core.Exceptions;
+using Etherna.Scrinium.Core.Extensions;
+using Etherna.Scrinium.Core.Tasks;
 using Microsoft.Extensions.Logging;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 
-namespace Etherna.MongODM.Core.Utility
+namespace Etherna.Scrinium.Core.Utility
 {
     public class DbMigrationManager(ITaskRunner taskRunner) : IDbMigrationManager
     {

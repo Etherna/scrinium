@@ -12,10 +12,10 @@
 // You should have received a copy of the GNU Lesser General Public License along with MongODM.
 // If not, see <https://www.gnu.org/licenses/>.
 
-using Etherna.MongODM.Core.Domain.Models;
+using Etherna.Scrinium.Core.Domain.Models;
 using System;
 
-namespace Etherna.MongODM.Core.ProxyModels
+namespace Etherna.Scrinium.Core.ProxyModels
 {
     /// <summary>
     /// The db context surface invoked by the generated proxy models: change tracking

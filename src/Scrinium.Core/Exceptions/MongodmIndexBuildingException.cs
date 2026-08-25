@@ -14,7 +14,7 @@
 
 using System;
 
-namespace Etherna.MongODM.Core.Exceptions
+namespace Etherna.Scrinium.Core.Exceptions
 {
     public class MongodmIndexBuildingException : Exception
     {

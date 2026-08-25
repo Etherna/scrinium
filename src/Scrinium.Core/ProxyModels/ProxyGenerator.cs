@@ -12,9 +12,9 @@
 // You should have received a copy of the GNU Lesser General Public License along with MongODM.
 // If not, see <https://www.gnu.org/licenses/>.
 
-using Etherna.MongODM.Core.Domain.Models;
-using Etherna.MongODM.Core.ExecContext;
-using Etherna.MongODM.Core.Utility;
+using Etherna.Scrinium.Core.Domain.Models;
+using Etherna.Scrinium.Core.ExecContext;
+using Etherna.Scrinium.Core.Utility;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
@@ -22,7 +22,7 @@ using System.Linq;
 using System.Linq.Expressions;
 using System.Reflection;
 
-namespace Etherna.MongODM.Core.ProxyModels
+namespace Etherna.Scrinium.Core.ProxyModels
 {
     public class ProxyGenerator(IExecutionContext executionContext)
         : IProxyGenerator

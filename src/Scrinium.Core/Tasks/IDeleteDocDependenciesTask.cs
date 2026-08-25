@@ -16,7 +16,7 @@ using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 
-namespace Etherna.MongODM.Core.Tasks
+namespace Etherna.Scrinium.Core.Tasks
 {
     public interface IDeleteDocDependenciesTask
     {

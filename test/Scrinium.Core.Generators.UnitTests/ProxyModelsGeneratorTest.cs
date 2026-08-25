@@ -12,20 +12,20 @@
 // You should have received a copy of the GNU Lesser General Public License along with MongODM.
 // If not, see <https://www.gnu.org/licenses/>.
 
-using Etherna.MongODM.Core.Domain.Models;
+using Etherna.Scrinium.Core.Domain.Models;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using System;
 using System.Linq;
 using Xunit;
 
-namespace Etherna.MongODM.Core.Generators
+namespace Etherna.Scrinium.Core.Generators
 {
     public class ProxyModelsGeneratorTest
     {
         // Consts.
         private const string ModelSource = """
-            using Etherna.MongODM.Core.Domain.Models;
+            using Etherna.Scrinium.Core.Domain.Models;
             using System.Collections.Generic;
             using System.Linq;
 
@@ -140,7 +140,7 @@ namespace Etherna.MongODM.Core.Generators
             var registrationsSource = runResult.Results[0].GeneratedSources
                 .Single(s => s.HintName == "GeneratedProxyModelAttributes.g.cs").SourceText.ToString();
             Assert.Contains(
-                "[assembly: global::Etherna.MongODM.Core.ProxyModels.GeneratedProxyModel(typeof(global::TestDomain.Cat), typeof(global::TestDomain.CatProxy))]",
+                "[assembly: global::Etherna.Scrinium.Core.ProxyModels.GeneratedProxyModel(typeof(global::TestDomain.Cat), typeof(global::TestDomain.CatProxy))]",
                 registrationsSource,
                 StringComparison.Ordinal);
         }

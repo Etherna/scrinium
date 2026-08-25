@@ -2,7 +2,7 @@
 
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
-    <RootNamespace>Etherna.MongODM.AspNetCoreSample</RootNamespace>
+    <RootNamespace>Etherna.Scrinium.AspNetCoreSample</RootNamespace>
 
     <Authors>Etherna SA</Authors>
     <IsPackable>false</IsPackable>

@@ -13,14 +13,14 @@
 // If not, see <https://www.gnu.org/licenses/>.
 
 using Etherna.MongoDB.Driver;
-using Etherna.MongODM.Core.ExecContext.AsyncLocal;
+using Etherna.Scrinium.Core.ExecContext.AsyncLocal;
 using Moq;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Xunit;
 
-namespace Etherna.MongODM.Core.Utility
+namespace Etherna.Scrinium.Core.Utility
 {
     public class DbSessionHandlerTest
     {

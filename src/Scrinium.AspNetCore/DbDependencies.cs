@@ -13,18 +13,18 @@
 // If not, see <https://www.gnu.org/licenses/>.
 
 using Etherna.MongoDB.Bson.Serialization;
-using Etherna.MongODM.Core;
-using Etherna.MongODM.Core.ExecContext;
-using Etherna.MongODM.Core.Options;
-using Etherna.MongODM.Core.ProxyModels;
-using Etherna.MongODM.Core.Repositories;
-using Etherna.MongODM.Core.Serialization.Mapping;
-using Etherna.MongODM.Core.Serialization.Modifiers;
-using Etherna.MongODM.Core.Utility;
+using Etherna.Scrinium.Core;
+using Etherna.Scrinium.Core.ExecContext;
+using Etherna.Scrinium.Core.Options;
+using Etherna.Scrinium.Core.ProxyModels;
+using Etherna.Scrinium.Core.Repositories;
+using Etherna.Scrinium.Core.Serialization.Mapping;
+using Etherna.Scrinium.Core.Serialization.Modifiers;
+using Etherna.Scrinium.Core.Utility;
 using Microsoft.Extensions.Options;
 using System;
 
-namespace Etherna.MongODM.AspNetCore
+namespace Etherna.Scrinium.AspNetCore
 {
     public class DbDependencies : IDbDependencies
     {

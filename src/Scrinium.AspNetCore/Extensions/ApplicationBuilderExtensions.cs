@@ -12,9 +12,9 @@
 // You should have received a copy of the GNU Lesser General Public License along with MongODM.
 // If not, see <https://www.gnu.org/licenses/>.
 
-using Etherna.MongODM.Core;
-using Etherna.MongODM.Core.ExecContext.AsyncLocal;
-using Etherna.MongODM.Core.Options;
+using Etherna.Scrinium.Core;
+using Etherna.Scrinium.Core.ExecContext.AsyncLocal;
+using Etherna.Scrinium.Core.Options;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
@@ -22,7 +22,7 @@ using System;
 using System.Linq;
 using System.Threading.Tasks;
 
-namespace Etherna.MongODM.AspNetCore.Extensions
+namespace Etherna.Scrinium.AspNetCore.Extensions
 {
     public static class ApplicationBuilderExtensions
     {

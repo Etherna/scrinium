@@ -16,7 +16,7 @@ using Etherna.MongoDB.Bson;
 using Etherna.MongoDB.Bson.Serialization.Conventions;
 using System;
 
-namespace Etherna.MongODM.Core.Serialization.Mapping
+namespace Etherna.Scrinium.Core.Serialization.Mapping
 {
     public interface IDiscriminatorRegistry : IDbContextEngineInitializable
     {

@@ -15,7 +15,7 @@
 using System;
 using System.Collections.Generic;
 
-namespace Etherna.MongODM.Core.ExecContext
+namespace Etherna.Scrinium.Core.ExecContext
 {
     /// <summary>
     ///     A multi context selector that take different contexts, and select the first available.

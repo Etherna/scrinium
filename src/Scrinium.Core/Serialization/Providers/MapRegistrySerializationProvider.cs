@@ -14,11 +14,11 @@
 
 using Etherna.MongoDB.Bson;
 using Etherna.MongoDB.Bson.Serialization;
-using Etherna.MongODM.Core.Serialization.Serializers;
+using Etherna.Scrinium.Core.Serialization.Serializers;
 using System;
 using System.Reflection;
 
-namespace Etherna.MongODM.Core.Serialization.Providers
+namespace Etherna.Scrinium.Core.Serialization.Providers
 {
     /// <summary>
     /// Serialization provider backed by the map registry: serves every mappable type with a

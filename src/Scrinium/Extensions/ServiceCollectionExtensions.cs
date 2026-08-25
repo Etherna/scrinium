@@ -12,16 +12,16 @@
 // You should have received a copy of the GNU Lesser General Public License along with MongODM.
 // If not, see <https://www.gnu.org/licenses/>.
 
-using Etherna.MongODM.AspNetCore;
-using Etherna.MongODM.AspNetCore.Extensions;
-using Etherna.MongODM.Core.Options;
-using Etherna.MongODM.HF.Tasks;
+using Etherna.Scrinium.AspNetCore;
+using Etherna.Scrinium.AspNetCore.Extensions;
+using Etherna.Scrinium.Core.Options;
+using Etherna.Scrinium.HF.Tasks;
 using Hangfire;
 using Hangfire.Mongo;
 using Microsoft.Extensions.DependencyInjection;
 using System;
 
-namespace Etherna.MongODM.Extensions
+namespace Etherna.Scrinium.Extensions
 {
     public static class ServiceCollectionExtensions
     {

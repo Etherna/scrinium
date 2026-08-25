@@ -14,7 +14,7 @@
 
 using System;
 
-namespace Etherna.MongODM.Core.Exceptions
+namespace Etherna.Scrinium.Core.Exceptions
 {
     /// <summary>
     /// Thrown on an implicit lazy load when the db context denies them

@@ -14,7 +14,7 @@
 
 using System;
 
-namespace Etherna.MongODM.IntegrationTests.Models
+namespace Etherna.Scrinium.IntegrationTests.Models
 {
     /// <summary>
     /// A value type identifying contents by their fingerprint, serialized with a custom

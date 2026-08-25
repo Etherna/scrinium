@@ -14,7 +14,7 @@
 
 using System;
 
-namespace Etherna.MongODM.Core.Exceptions
+namespace Etherna.Scrinium.Core.Exceptions
 {
     /// <summary>
     /// Thrown at engine build when a reference id element path contains an unknown document

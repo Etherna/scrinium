@@ -19,9 +19,9 @@ using Etherna.MongoDB.Driver;
 using Etherna.MongoDB.Driver.Core.Clusters;
 using Etherna.MongoDB.Driver.Core.Connections;
 using Etherna.MongoDB.Driver.Core.Servers;
-using Etherna.MongODM.Core.ExecContext;
-using Etherna.MongODM.Core.ExecContext.AsyncLocal;
-using Etherna.MongODM.Core.ExecContext.Exceptions;
+using Etherna.Scrinium.Core.ExecContext;
+using Etherna.Scrinium.Core.ExecContext.AsyncLocal;
+using Etherna.Scrinium.Core.ExecContext.Exceptions;
 using Microsoft.Extensions.Logging;
 using Moq;
 using System;
@@ -35,7 +35,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Xunit;
 
-namespace Etherna.MongODM.Core.Utility
+namespace Etherna.Scrinium.Core.Utility
 {
     public class ResourceLockTest
     {

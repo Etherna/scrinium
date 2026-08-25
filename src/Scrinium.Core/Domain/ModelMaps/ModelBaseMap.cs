@@ -15,10 +15,10 @@
 using Etherna.MongoDB.Bson;
 using Etherna.MongoDB.Bson.Serialization.IdGenerators;
 using Etherna.MongoDB.Bson.Serialization.Serializers;
-using Etherna.MongODM.Core.Domain.Models;
-using Etherna.MongODM.Core.Serialization;
+using Etherna.Scrinium.Core.Domain.Models;
+using Etherna.Scrinium.Core.Serialization;
 
-namespace Etherna.MongODM.Core.Domain.ModelMaps
+namespace Etherna.Scrinium.Core.Domain.ModelMaps
 {
     internal sealed class ModelBaseMap : IModelMapsCollector
     {

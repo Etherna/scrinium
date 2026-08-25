@@ -15,18 +15,18 @@
 using Etherna.MongoDB.Bson;
 using Etherna.MongoDB.Bson.IO;
 using Etherna.MongoDB.Bson.Serialization;
-using Etherna.MongODM.Core.Comparers;
-using Etherna.MongODM.Core.Conventions;
-using Etherna.MongODM.Core.Domain.Models;
-using Etherna.MongODM.Core.ExecContext.AsyncLocal;
-using Etherna.MongODM.Core.Extensions;
-using Etherna.MongODM.Core.Models;
-using Etherna.MongODM.Core.Options;
-using Etherna.MongODM.Core.Repositories;
-using Etherna.MongODM.Core.Serialization.Mapping;
-using Etherna.MongODM.Core.Serialization.Modifiers;
-using Etherna.MongODM.Core.Serialization.Serializers;
-using Etherna.MongODM.Core.Utility;
+using Etherna.Scrinium.Core.Comparers;
+using Etherna.Scrinium.Core.Conventions;
+using Etherna.Scrinium.Core.Domain.Models;
+using Etherna.Scrinium.Core.ExecContext.AsyncLocal;
+using Etherna.Scrinium.Core.Extensions;
+using Etherna.Scrinium.Core.Models;
+using Etherna.Scrinium.Core.Options;
+using Etherna.Scrinium.Core.Repositories;
+using Etherna.Scrinium.Core.Serialization.Mapping;
+using Etherna.Scrinium.Core.Serialization.Modifiers;
+using Etherna.Scrinium.Core.Serialization.Serializers;
+using Etherna.Scrinium.Core.Utility;
 using Microsoft.Extensions.Logging;
 using Moq;
 using System;
@@ -35,7 +35,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using Xunit;
 
-namespace Etherna.MongODM.Core
+namespace Etherna.Scrinium.Core
 {
     public class ModelMapSerializerTest
     {

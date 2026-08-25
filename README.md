@@ -144,7 +144,7 @@ Entities have an identity and implement `IEntityModel<TKey>`; value objects have
 `IModel`. Defining two abstract bases and deriving the domain from them keeps things tidy:
 
 ```csharp
-using Etherna.MongODM.Core.Domain.Models;
+using Etherna.Scrinium.Core.Domain.Models;
 
 public abstract class ModelBase : IModel
 {
@@ -189,8 +189,8 @@ this is what lets several schema versions coexist in the same collection.
 using Etherna.MongoDB.Bson;
 using Etherna.MongoDB.Bson.Serialization.IdGenerators;
 using Etherna.MongoDB.Bson.Serialization.Serializers;
-using Etherna.MongODM.Core;
-using Etherna.MongODM.Core.Serialization;
+using Etherna.Scrinium.Core;
+using Etherna.Scrinium.Core.Serialization;
 
 class SampleModelMaps : IModelMapsCollector
 {
@@ -222,9 +222,9 @@ A db context is the **unit of work** exposing the repositories of one domain bou
 interface for it is recommended, for dependency injection and testing:
 
 ```csharp
-using Etherna.MongODM.Core;
-using Etherna.MongODM.Core.Repositories;
-using Etherna.MongODM.Core.Serialization;
+using Etherna.Scrinium.Core;
+using Etherna.Scrinium.Core.Repositories;
+using Etherna.Scrinium.Core.Serialization;
 
 public interface ISampleDbContext : IDbContext
 {
@@ -246,9 +246,9 @@ public class SampleDbContext : DbContext, ISampleDbContext
 ### 4. Register it
 
 ```csharp
-using Etherna.MongODM.AspNetCore.Extensions;
-using Etherna.MongODM.AspNetCore.UI;   // only with the admin dashboard
-using Etherna.MongODM.Extensions;
+using Etherna.Scrinium.AspNetCore.Extensions;
+using Etherna.Scrinium.AspNetCore.UI;   // only with the admin dashboard
+using Etherna.Scrinium.Extensions;
 using Hangfire;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -327,7 +327,7 @@ referencing document embeds a **summary** of it — its id plus the members you 
 Give each cat an owner — a `Person Owner` member on `Cat` — and serialize it as a reference:
 
 ```csharp
-using Etherna.MongODM.Core.Serialization.Serializers;
+using Etherna.Scrinium.Core.Serialization.Serializers;
 
 // The Person summary embedded into every document referencing one: id, plus the name.
 public static ReferenceSerializer<Person, string> PersonReference(IDbContextEngine engine) =>

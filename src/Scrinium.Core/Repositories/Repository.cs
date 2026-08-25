@@ -16,14 +16,14 @@ using Etherna.MongoDB.Bson;
 using Etherna.MongoDB.Bson.Serialization;
 using Etherna.MongoDB.Driver;
 using Etherna.MongoDB.Driver.Linq;
-using Etherna.MongODM.Core.Domain.Models;
-using Etherna.MongODM.Core.Exceptions;
-using Etherna.MongODM.Core.Extensions;
-using Etherna.MongODM.Core.FilterDefinition;
-using Etherna.MongODM.Core.Migration;
-using Etherna.MongODM.Core.ProxyModels;
-using Etherna.MongODM.Core.Serialization.Mapping;
-using Etherna.MongODM.Core.Utility;
+using Etherna.Scrinium.Core.Domain.Models;
+using Etherna.Scrinium.Core.Exceptions;
+using Etherna.Scrinium.Core.Extensions;
+using Etherna.Scrinium.Core.FilterDefinition;
+using Etherna.Scrinium.Core.Migration;
+using Etherna.Scrinium.Core.ProxyModels;
+using Etherna.Scrinium.Core.Serialization.Mapping;
+using Etherna.Scrinium.Core.Utility;
 using Microsoft.Extensions.Logging;
 using System;
 using System.Collections.Generic;
@@ -34,7 +34,7 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace Etherna.MongODM.Core.Repositories
+namespace Etherna.Scrinium.Core.Repositories
 {
     public class Repository<TModel, TKey>(RepositoryOptions<TModel> options) :
         IFullModelsLoader,

@@ -14,7 +14,7 @@
 
 using System;
 
-namespace Etherna.MongODM.Core.Exceptions
+namespace Etherna.Scrinium.Core.Exceptions
 {
     /// <summary>
     /// Thrown loading the full document of a summary model when the reference denies missing

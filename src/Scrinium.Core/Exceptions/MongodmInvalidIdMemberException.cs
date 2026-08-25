@@ -14,7 +14,7 @@
 
 using System;
 
-namespace Etherna.MongODM.Core.Exceptions
+namespace Etherna.Scrinium.Core.Exceptions
 {
     /// <summary>
     /// Thrown at engine build when a model map schema of an entity model type maps an

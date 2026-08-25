@@ -14,7 +14,7 @@
 
 using System;
 
-namespace Etherna.MongODM.Core.ExecContext.Exceptions
+namespace Etherna.Scrinium.Core.ExecContext.Exceptions
 {
     public class ExecutionContextNotFoundException : Exception
     {

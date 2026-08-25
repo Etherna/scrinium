@@ -15,9 +15,9 @@
 using Etherna.MongoDB.Bson.IO;
 using Etherna.MongoDB.Bson.Serialization;
 using Etherna.MongoDB.Bson.Serialization.Serializers;
-using Etherna.MongODM.IntegrationTests.Models;
+using Etherna.Scrinium.IntegrationTests.Models;
 
-namespace Etherna.MongODM.IntegrationTests.Serializers
+namespace Etherna.Scrinium.IntegrationTests.Serializers
 {
     public class DialCodeSerializer : SerializerBase<DialCode>
     {

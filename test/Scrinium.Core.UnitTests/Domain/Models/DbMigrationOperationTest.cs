@@ -12,12 +12,12 @@
 // You should have received a copy of the GNU Lesser General Public License along with MongODM.
 // If not, see <https://www.gnu.org/licenses/>.
 
-using Etherna.MongODM.Core.Domain.Models.DbMigrationOpAgg;
+using Etherna.Scrinium.Core.Domain.Models.DbMigrationOpAgg;
 using Moq;
 using System.Linq;
 using Xunit;
 
-namespace Etherna.MongODM.Core.Domain.Models
+namespace Etherna.Scrinium.Core.Domain.Models
 {
     public class DbMigrationOperationTest
     {

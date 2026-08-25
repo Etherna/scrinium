@@ -15,7 +15,7 @@
 using System;
 using System.Collections.Generic;
 
-namespace Etherna.MongODM.Core
+namespace Etherna.Scrinium.Core
 {
     /// <summary>
     /// Resolves the engines of the parent db contexts of a db context type: the db contexts

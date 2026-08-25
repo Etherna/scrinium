@@ -15,7 +15,7 @@
 using Etherna.MongoDB.Bson;
 using System;
 
-namespace Etherna.MongODM.Core.FilterDefinition
+namespace Etherna.Scrinium.Core.FilterDefinition
 {
     internal static class IdFilterValueHelper
     {

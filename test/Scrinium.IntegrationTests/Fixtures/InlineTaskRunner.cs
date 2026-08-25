@@ -12,15 +12,15 @@
 // You should have received a copy of the GNU Lesser General Public License along with MongODM.
 // If not, see <https://www.gnu.org/licenses/>.
 
-using Etherna.MongODM.Core.Options;
-using Etherna.MongODM.Core.Tasks;
+using Etherna.Scrinium.Core.Options;
+using Etherna.Scrinium.Core.Tasks;
 using Microsoft.Extensions.DependencyInjection;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 
-namespace Etherna.MongODM.IntegrationTests.Fixtures
+namespace Etherna.Scrinium.IntegrationTests.Fixtures
 {
     /// <summary>
     /// Collects the tasks enqueued by MongODM components, and executes them on demand inside

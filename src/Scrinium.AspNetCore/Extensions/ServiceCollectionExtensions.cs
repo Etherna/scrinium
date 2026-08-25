@@ -15,24 +15,24 @@
 using Etherna.MongoDB.Bson;
 using Etherna.MongoDB.Bson.Serialization;
 using Etherna.MongoDB.Bson.Serialization.Conventions;
-using Etherna.MongODM.AspNetCore.ExecContext;
-using Etherna.MongODM.Core;
-using Etherna.MongODM.Core.Conventions;
-using Etherna.MongODM.Core.ExecContext;
-using Etherna.MongODM.Core.ExecContext.AsyncLocal;
-using Etherna.MongODM.Core.Options;
-using Etherna.MongODM.Core.ProxyModels;
-using Etherna.MongODM.Core.Repositories;
-using Etherna.MongODM.Core.Serialization.Mapping;
-using Etherna.MongODM.Core.Serialization.Modifiers;
-using Etherna.MongODM.Core.Tasks;
-using Etherna.MongODM.Core.Utility;
+using Etherna.Scrinium.AspNetCore.ExecContext;
+using Etherna.Scrinium.Core;
+using Etherna.Scrinium.Core.Conventions;
+using Etherna.Scrinium.Core.ExecContext;
+using Etherna.Scrinium.Core.ExecContext.AsyncLocal;
+using Etherna.Scrinium.Core.Options;
+using Etherna.Scrinium.Core.ProxyModels;
+using Etherna.Scrinium.Core.Repositories;
+using Etherna.Scrinium.Core.Serialization.Mapping;
+using Etherna.Scrinium.Core.Serialization.Modifiers;
+using Etherna.Scrinium.Core.Tasks;
+using Etherna.Scrinium.Core.Utility;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using System;
 
-namespace Etherna.MongODM.AspNetCore.Extensions
+namespace Etherna.Scrinium.AspNetCore.Extensions
 {
     public static class ServiceCollectionExtensions
     {

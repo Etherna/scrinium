@@ -12,7 +12,7 @@
 // You should have received a copy of the GNU Lesser General Public License along with MongODM.
 // If not, see <https://www.gnu.org/licenses/>.
 
-namespace Etherna.MongODM.Core.ExecContext.AsyncLocal
+namespace Etherna.Scrinium.Core.ExecContext.AsyncLocal
 {
     /// <summary>
     ///     Interface used by <see cref="AsyncLocalContextHandler"/> for comunicate with its

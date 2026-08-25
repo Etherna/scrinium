@@ -15,9 +15,9 @@
 using Etherna.MongoDB.Bson;
 using Etherna.MongoDB.Driver;
 using Etherna.MongoDB.Driver.Linq;
-using Etherna.MongODM.Core.ExecContext.AsyncLocal;
-using Etherna.MongODM.Core.Utility;
-using Etherna.MongODM.IntegrationTests.Fixtures;
+using Etherna.Scrinium.Core.ExecContext.AsyncLocal;
+using Etherna.Scrinium.Core.Utility;
+using Etherna.Scrinium.IntegrationTests.Fixtures;
 using Microsoft.Extensions.DependencyInjection;
 using System;
 using System.Collections.Generic;
@@ -26,7 +26,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Xunit;
 
-namespace Etherna.MongODM.IntegrationTests
+namespace Etherna.Scrinium.IntegrationTests
 {
     /* Application resource locks persist one lease document per resource, identified by
      * their namespaced string id in the same collection of the db context lock: these tests

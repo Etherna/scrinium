@@ -12,15 +12,15 @@
 // You should have received a copy of the GNU Lesser General Public License along with MongODM.
 // If not, see <https://www.gnu.org/licenses/>.
 
-using Etherna.MongODM.AspNetCore.UI.Auth.Handlers;
-using Etherna.MongODM.AspNetCore.UI.Auth.Requirements;
+using Etherna.Scrinium.AspNetCore.UI.Auth.Handlers;
+using Etherna.Scrinium.AspNetCore.UI.Auth.Requirements;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.Extensions.DependencyInjection;
 using System;
 using System.Linq;
 
-namespace Etherna.MongODM.AspNetCore.UI
+namespace Etherna.Scrinium.AspNetCore.UI
 {
     public static class ServiceCollectionExtensions
     {

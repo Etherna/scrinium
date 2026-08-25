@@ -15,7 +15,7 @@
 using Etherna.MongoDB.Driver;
 using System.Diagnostics.CodeAnalysis;
 
-namespace Etherna.MongODM.Core.Utility
+namespace Etherna.Scrinium.Core.Utility
 {
     /* A filtered view handed out by a guarded collection (e.g. by OfType): every
      * operation keeps the guards of the originating collection, with the same engine

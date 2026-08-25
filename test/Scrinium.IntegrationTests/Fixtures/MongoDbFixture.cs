@@ -22,7 +22,7 @@ using System.Net;
 using System.Net.Sockets;
 using System.Threading;
 
-namespace Etherna.MongODM.IntegrationTests.Fixtures
+namespace Etherna.Scrinium.IntegrationTests.Fixtures
 {
     /// <summary>
     /// Provides a MongoDB instance for integration tests: uses the url from the

@@ -14,10 +14,10 @@
 
 using Etherna.MongoDB.Bson;
 using Etherna.MongoDB.Driver;
-using Etherna.MongODM.Core.Domain.Models;
+using Etherna.Scrinium.Core.Domain.Models;
 using System;
 
-namespace Etherna.MongODM.Core.FilterDefinition
+namespace Etherna.Scrinium.Core.FilterDefinition
 {
     /// <summary>
     /// The id equality filter of the repository operations addressing a single document by its

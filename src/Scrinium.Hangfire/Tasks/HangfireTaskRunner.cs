@@ -12,14 +12,14 @@
 // You should have received a copy of the GNU Lesser General Public License along with MongODM.
 // If not, see <https://www.gnu.org/licenses/>.
 
-using Etherna.MongODM.Core.Options;
-using Etherna.MongODM.Core.Tasks;
+using Etherna.Scrinium.Core.Options;
+using Etherna.Scrinium.Core.Tasks;
 using Hangfire;
 using Hangfire.States;
 using System;
 using System.Collections.Generic;
 
-namespace Etherna.MongODM.HF.Tasks
+namespace Etherna.Scrinium.HF.Tasks
 {
     public sealed class HangfireTaskRunner(IBackgroundJobClient backgroundJobClient)
         : ITaskRunner, ITaskRunnerBuilder

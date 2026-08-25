@@ -15,7 +15,7 @@
 using Etherna.MongoDB.Bson.Serialization;
 using System.Collections.Generic;
 
-namespace Etherna.MongODM.Core.Serialization.Mapping
+namespace Etherna.Scrinium.Core.Serialization.Mapping
 {
     public interface IModelMap : IMap
     {

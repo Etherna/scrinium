@@ -15,10 +15,10 @@
 using Etherna.MongoDB.Bson;
 using Etherna.MongoDB.Driver;
 using Etherna.MongoDB.Driver.Linq;
-using Etherna.MongODM.Core.Domain.Models;
-using Etherna.MongODM.Core.ExecContext.AsyncLocal;
-using Etherna.MongODM.Core.Utility;
-using Etherna.MongODM.IntegrationTests.Fixtures;
+using Etherna.Scrinium.Core.Domain.Models;
+using Etherna.Scrinium.Core.ExecContext.AsyncLocal;
+using Etherna.Scrinium.Core.Utility;
+using Etherna.Scrinium.IntegrationTests.Fixtures;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using System;
@@ -28,7 +28,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Xunit;
 
-namespace Etherna.MongODM.IntegrationTests
+namespace Etherna.Scrinium.IntegrationTests
 {
     /* The db context lock persists one lease document per db context in the lock collection:
      * these tests manipulate it raw, simulating dead owners and other application instances

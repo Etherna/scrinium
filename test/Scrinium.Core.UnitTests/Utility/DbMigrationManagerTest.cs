@@ -13,14 +13,14 @@
 // If not, see <https://www.gnu.org/licenses/>.
 
 using Etherna.MongoDB.Driver;
-using Etherna.MongODM.Core.Domain.Models;
-using Etherna.MongODM.Core.Domain.Models.DbMigrationOpAgg;
-using Etherna.MongODM.Core.Exceptions;
-using Etherna.MongODM.Core.ExecContext;
-using Etherna.MongODM.Core.Migration;
-using Etherna.MongODM.Core.Options;
-using Etherna.MongODM.Core.Repositories;
-using Etherna.MongODM.Core.Tasks;
+using Etherna.Scrinium.Core.Domain.Models;
+using Etherna.Scrinium.Core.Domain.Models.DbMigrationOpAgg;
+using Etherna.Scrinium.Core.Exceptions;
+using Etherna.Scrinium.Core.ExecContext;
+using Etherna.Scrinium.Core.Migration;
+using Etherna.Scrinium.Core.Options;
+using Etherna.Scrinium.Core.Repositories;
+using Etherna.Scrinium.Core.Tasks;
 using Microsoft.Extensions.Logging;
 using Moq;
 using System;
@@ -30,7 +30,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Xunit;
 
-namespace Etherna.MongODM.Core.Utility
+namespace Etherna.Scrinium.Core.Utility
 {
     public class DbMigrationManagerTest
     {

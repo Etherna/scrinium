@@ -15,16 +15,16 @@
 using Etherna.MongoDB.Bson;
 using Etherna.MongoDB.Driver;
 using Etherna.MongoDB.Driver.Linq;
-using Etherna.MongODM.Core.Domain.Models;
-using Etherna.MongODM.Core.Exceptions;
-using Etherna.MongODM.Core.Extensions;
-using Etherna.MongODM.Core.Migration;
-using Etherna.MongODM.Core.Options;
-using Etherna.MongODM.Core.ProxyModels;
-using Etherna.MongODM.Core.Repositories;
-using Etherna.MongODM.Core.Serialization;
-using Etherna.MongODM.Core.Serialization.Mapping;
-using Etherna.MongODM.Core.Utility;
+using Etherna.Scrinium.Core.Domain.Models;
+using Etherna.Scrinium.Core.Exceptions;
+using Etherna.Scrinium.Core.Extensions;
+using Etherna.Scrinium.Core.Migration;
+using Etherna.Scrinium.Core.Options;
+using Etherna.Scrinium.Core.ProxyModels;
+using Etherna.Scrinium.Core.Repositories;
+using Etherna.Scrinium.Core.Serialization;
+using Etherna.Scrinium.Core.Serialization.Mapping;
+using Etherna.Scrinium.Core.Utility;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using System;
@@ -37,7 +37,7 @@ using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace Etherna.MongODM.Core
+namespace Etherna.Scrinium.Core
 {
     [SuppressMessage("Design", "CA1033:Interface methods should be callable by child types",
         Justification = "The explicitly implemented members are infrastructure invoked by the generated proxy models, deliberately out of the surface of derived db contexts")]

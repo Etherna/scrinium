@@ -14,9 +14,9 @@
 
 using Etherna.MongoDB.Bson;
 using Etherna.MongoDB.Driver;
-using Etherna.MongODM.Core.ExecContext;
-using Etherna.MongODM.Core.ExecContext.AsyncLocal;
-using Etherna.MongODM.Core.Extensions;
+using Etherna.Scrinium.Core.ExecContext;
+using Etherna.Scrinium.Core.ExecContext.AsyncLocal;
+using Etherna.Scrinium.Core.Extensions;
 using Microsoft.Extensions.Logging;
 using System;
 using System.Collections;
@@ -25,7 +25,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace Etherna.MongODM.Core.Utility
+namespace Etherna.Scrinium.Core.Utility
 {
     /* The lock is a single lease document per resource, keyed by the lock identifier: the
      * db context engine binds one lock to its own identifier, coordinating its exclusive

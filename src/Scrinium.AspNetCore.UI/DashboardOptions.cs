@@ -12,10 +12,10 @@
 // You should have received a copy of the GNU Lesser General Public License along with MongODM.
 // If not, see <https://www.gnu.org/licenses/>.
 
-using Etherna.MongODM.AspNetCore.UI.Auth.Filters;
+using Etherna.Scrinium.AspNetCore.UI.Auth.Filters;
 using System.Collections.Generic;
 
-namespace Etherna.MongODM.AspNetCore.UI
+namespace Etherna.Scrinium.AspNetCore.UI
 {
     public class DashboardOptions
     {

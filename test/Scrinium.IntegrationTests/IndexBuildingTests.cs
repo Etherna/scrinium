@@ -13,15 +13,15 @@
 // If not, see <https://www.gnu.org/licenses/>.
 
 using Etherna.MongoDB.Driver;
-using Etherna.MongODM.Core.ExecContext.AsyncLocal;
-using Etherna.MongODM.IntegrationTests.Fixtures;
+using Etherna.Scrinium.Core.ExecContext.AsyncLocal;
+using Etherna.Scrinium.IntegrationTests.Fixtures;
 using Microsoft.Extensions.DependencyInjection;
 using System;
 using System.Linq;
 using System.Threading.Tasks;
 using Xunit;
 
-namespace Etherna.MongODM.IntegrationTests
+namespace Etherna.Scrinium.IntegrationTests
 {
     /* MODM-98: the blogs repository declares a custom index on the id path of its last
      * post reference. The server denies two indexes with the same key pattern, so the

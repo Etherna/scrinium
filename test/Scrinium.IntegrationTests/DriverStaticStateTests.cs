@@ -14,11 +14,11 @@
 
 using Etherna.MongoDB.Bson;
 using Etherna.MongoDB.Bson.Serialization;
-using Etherna.MongODM.Core.Domain.Models;
-using Etherna.MongODM.IntegrationTests.Fixtures;
+using Etherna.Scrinium.Core.Domain.Models;
+using Etherna.Scrinium.IntegrationTests.Fixtures;
 using Xunit;
 
-namespace Etherna.MongODM.IntegrationTests
+namespace Etherna.Scrinium.IntegrationTests
 {
     /* MongODM configures the driver with process wide state: a discriminator convention on
      * typeof(object), a serialization context accessor, and a convention pack on the global

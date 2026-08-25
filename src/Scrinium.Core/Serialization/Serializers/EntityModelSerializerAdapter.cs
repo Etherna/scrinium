@@ -14,12 +14,12 @@
 
 using Etherna.MongoDB.Bson.Serialization;
 using Etherna.MongoDB.Bson.Serialization.Serializers;
-using Etherna.MongODM.Core.Domain.Models;
-using Etherna.MongODM.Core.Serialization.Mapping;
+using Etherna.Scrinium.Core.Domain.Models;
+using Etherna.Scrinium.Core.Serialization.Mapping;
 using System;
 using System.Collections.Generic;
 
-namespace Etherna.MongODM.Core.Serialization.Serializers
+namespace Etherna.Scrinium.Core.Serialization.Serializers
 {
     public class EntityModelSerializerAdapter<TExternalModel, TInternalModel, TKey>(
         IBsonSerializer<TInternalModel> serializerBase) :

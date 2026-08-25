@@ -14,7 +14,7 @@
 
 using Etherna.MongoDB.Bson.Serialization;
 
-namespace Etherna.MongODM.Core.Serialization.Serializers
+namespace Etherna.Scrinium.Core.Serialization.Serializers
 {
     /// <summary>
     /// Non generic access to the serializer wrapped by an

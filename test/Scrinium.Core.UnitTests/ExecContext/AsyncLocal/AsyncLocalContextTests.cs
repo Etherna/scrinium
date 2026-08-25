@@ -15,7 +15,7 @@
 using System.Threading.Tasks;
 using Xunit;
 
-namespace Etherna.MongODM.Core.ExecContext.AsyncLocal
+namespace Etherna.Scrinium.Core.ExecContext.AsyncLocal
 {
     public class AsyncLocalContextTests
     {

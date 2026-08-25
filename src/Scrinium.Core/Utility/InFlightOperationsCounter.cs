@@ -14,7 +14,7 @@
 
 using System.Threading;
 
-namespace Etherna.MongODM.Core.Utility
+namespace Etherna.Scrinium.Core.Utility
 {
     /* Counts the operations in flight on the guarded collections of an engine, reads and
      * writes apart, letting the exclusive access window drain the operations admitted

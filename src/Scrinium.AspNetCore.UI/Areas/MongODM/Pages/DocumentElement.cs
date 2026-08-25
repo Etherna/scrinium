@@ -14,7 +14,7 @@
 
 using System.Collections.Generic;
 
-namespace Etherna.MongODM.AspNetCore.UI.Areas.MongODM.Pages
+namespace Etherna.Scrinium.AspNetCore.UI.Areas.MongODM.Pages
 {
     /// <summary>
     /// An element written into a document by a model map schema.

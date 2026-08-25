@@ -15,7 +15,7 @@
 using System;
 using System.Collections.Generic;
 
-namespace Etherna.MongODM.Core.Tasks
+namespace Etherna.Scrinium.Core.Tasks
 {
     public interface ITaskRunner
     {

@@ -14,11 +14,11 @@
 
 using Etherna.MongoDB.Bson;
 using Etherna.MongoDB.Bson.Serialization.Serializers;
-using Etherna.MongODM.Core;
-using Etherna.MongODM.Core.Serialization;
-using Etherna.MongODM.Core.Serialization.Serializers;
+using Etherna.Scrinium.Core;
+using Etherna.Scrinium.Core.Serialization;
+using Etherna.Scrinium.Core.Serialization.Serializers;
 
-namespace Etherna.MongODM.AspNetCoreSample.Models.ModelMaps
+namespace Etherna.Scrinium.AspNetCoreSample.Models.ModelMaps
 {
     class PersonMap : IModelMapsCollector
     {
@@ -50,7 +50,7 @@ namespace Etherna.MongODM.AspNetCoreSample.Models.ModelMaps
                  * null. Uncomment to cascade instead: the delete then deletes the referring
                  * cats themselves, with a domain delete propagating their own reference
                  * policies in turn. */
-                // config.OriginDelete = Etherna.MongODM.Core.Options.OriginDeleteMode.DeleteReferencingDocument;
+                // config.OriginDelete = Etherna.Scrinium.Core.Options.OriginDeleteMode.DeleteReferencingDocument;
 
                 config.AddModelMap<ModelBase>(SummaryBaseSchemaId, _ => { }); //no summary members at this level
                 config.AddModelMap<EntityModelBase<string>>(SummaryEntityBaseSchemaId, schema =>

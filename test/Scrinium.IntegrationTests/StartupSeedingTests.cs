@@ -12,16 +12,16 @@
 // You should have received a copy of the GNU Lesser General Public License along with MongODM.
 // If not, see <https://www.gnu.org/licenses/>.
 
-using Etherna.MongODM.AspNetCore.Extensions;
-using Etherna.MongODM.Core.Options;
-using Etherna.MongODM.IntegrationTests.Fixtures;
+using Etherna.Scrinium.AspNetCore.Extensions;
+using Etherna.Scrinium.Core.Options;
+using Etherna.Scrinium.IntegrationTests.Fixtures;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using System;
 using Xunit;
 
-namespace Etherna.MongODM.IntegrationTests
+namespace Etherna.Scrinium.IntegrationTests
 {
     [Collection("Integration")]
     public class StartupSeedingTests(IntegrationFixture fixture)

@@ -14,7 +14,7 @@
 
 using System.Collections.Generic;
 
-namespace Etherna.MongODM.Core.ExecContext
+namespace Etherna.Scrinium.Core.ExecContext
 {
     /// <summary>
     /// Represents an execution context, where information can be put and retrieve alongside

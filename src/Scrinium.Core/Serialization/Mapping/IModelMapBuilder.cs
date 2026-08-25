@@ -16,7 +16,7 @@ using Etherna.MongoDB.Bson.Serialization;
 using System;
 using System.Threading.Tasks;
 
-namespace Etherna.MongODM.Core.Serialization.Mapping
+namespace Etherna.Scrinium.Core.Serialization.Mapping
 {
     public interface IModelMapBuilder<TModel>
     {

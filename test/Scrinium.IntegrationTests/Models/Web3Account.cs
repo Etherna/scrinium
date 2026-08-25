@@ -14,7 +14,7 @@
 
 using System;
 
-namespace Etherna.MongODM.IntegrationTests.Models
+namespace Etherna.Scrinium.IntegrationTests.Models
 {
     public class Web3Account : AccountBase
     {

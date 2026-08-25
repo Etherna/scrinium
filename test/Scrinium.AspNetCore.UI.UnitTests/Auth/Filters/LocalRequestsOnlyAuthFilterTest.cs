@@ -17,7 +17,7 @@ using System.Net;
 using System.Threading.Tasks;
 using Xunit;
 
-namespace Etherna.MongODM.AspNetCore.UI.Auth.Filters
+namespace Etherna.Scrinium.AspNetCore.UI.Auth.Filters
 {
     public class LocalRequestsOnlyAuthFilterTest
     {

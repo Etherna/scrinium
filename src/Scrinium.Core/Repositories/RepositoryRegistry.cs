@@ -12,16 +12,16 @@
 // You should have received a copy of the GNU Lesser General Public License along with MongODM.
 // If not, see <https://www.gnu.org/licenses/>.
 
-using Etherna.MongODM.Core.Domain.Models;
-using Etherna.MongODM.Core.Exceptions;
-using Etherna.MongODM.Core.Extensions;
+using Etherna.Scrinium.Core.Domain.Models;
+using Etherna.Scrinium.Core.Exceptions;
+using Etherna.Scrinium.Core.Extensions;
 using Microsoft.Extensions.Logging;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 
-namespace Etherna.MongODM.Core.Repositories
+namespace Etherna.Scrinium.Core.Repositories
 {
     public class RepositoryRegistry : IRepositoryRegistry
     {

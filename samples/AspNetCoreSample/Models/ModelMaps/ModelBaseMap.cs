@@ -15,10 +15,10 @@
 using Etherna.MongoDB.Bson;
 using Etherna.MongoDB.Bson.Serialization.IdGenerators;
 using Etherna.MongoDB.Bson.Serialization.Serializers;
-using Etherna.MongODM.Core;
-using Etherna.MongODM.Core.Serialization;
+using Etherna.Scrinium.Core;
+using Etherna.Scrinium.Core.Serialization;
 
-namespace Etherna.MongODM.AspNetCoreSample.Models.ModelMaps
+namespace Etherna.Scrinium.AspNetCoreSample.Models.ModelMaps
 {
     class ModelBaseMap : IModelMapsCollector
     {

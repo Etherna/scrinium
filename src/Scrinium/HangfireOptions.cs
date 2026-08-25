@@ -16,7 +16,7 @@ using Hangfire.Mongo;
 using Hangfire.Mongo.Migration.Strategies;
 using Hangfire.Mongo.Migration.Strategies.Backup;
 
-namespace Etherna.MongODM
+namespace Etherna.Scrinium
 {
     public class HangfireOptions
     {
