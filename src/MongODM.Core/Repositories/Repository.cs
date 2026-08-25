@@ -1013,6 +1013,56 @@ namespace Etherna.MongODM.Core.Repositories
                 [setField],
                 cancellationToken);
 
+        // Protected virtual methods.
+        protected virtual Task CreateOnDBAsync(IEnumerable<TModel> models, CancellationToken cancellationToken) =>
+            AccessToCollectionAsync(collection =>
+            {
+                foreach (var model in models)
+                    ThrowIfIdIsNotAddressable(model);
+
+                return collection.InsertManyAsync(models, null, cancellationToken);
+            });
+
+        protected virtual Task CreateOnDBAsync(TModel model, CancellationToken cancellationToken) =>
+            AccessToCollectionAsync(collection =>
+            {
+                ThrowIfIdIsNotAddressable(model);
+
+                return collection.InsertOneAsync(model, null, cancellationToken);
+            });
+
+        protected virtual Task DeleteOnDBAsync(
+            TModel model,
+            FilterDefinition<TModel>[] additionalFilters,
+            CancellationToken cancellationToken) =>
+            AccessToCollectionAsync(collection =>
+            {
+                ArgumentNullException.ThrowIfNull(model);
+
+                var idFilter = new EntityIdEqFilterDefinition<TModel, TKey>(model.Id);
+
+                return collection.DeleteOneAsync(
+                    additionalFilters.Length == 0 ?
+                        idFilter :
+                        Builders<TModel>.Filter.And(additionalFilters.Prepend(idFilter)),
+                    cancellationToken);
+            });
+
+        protected virtual async Task<TModel> FindOneOnDBAsync(TKey id, CancellationToken cancellationToken = default)
+        {
+            if (id == null)
+                throw new ArgumentNullException(nameof(id));
+
+            try
+            {
+                return await FindOneOnDBAsync(new EntityIdEqFilterDefinition<TModel, TKey>(id), cancellationToken).ConfigureAwait(false);
+            }
+            catch (MongodmEntityNotFoundException)
+            {
+                throw new MongodmEntityNotFoundException($"Can't find key {id}");
+            }
+        }
+
         // Internals.
         async Task INewReferredModelsCreator.CreateNewReferredModelAsync(IEntityModel model, CancellationToken cancellationToken)
         {
@@ -1349,6 +1399,24 @@ namespace Etherna.MongODM.Core.Repositories
             return newModelsCollector.Models;
         }
 
+        private Task<TModel> FindOneOnDBAsync(
+            FilterDefinition<TModel> filter,
+            CancellationToken cancellationToken = default) =>
+            AccessToCollectionAsync(async collection =>
+            {
+                ArgumentNullException.ThrowIfNull(filter);
+
+                using var cursor = await collection.FindAsync(filter, cancellationToken: cancellationToken).ConfigureAwait(false);
+                var model = await cursor.FirstOrDefaultAsync(cancellationToken).ConfigureAwait(false);
+
+                if (model == null)
+                    throw new MongodmEntityNotFoundException("Can't find element");
+
+                logger.RepositoryFoundDocument(Name, DbContext.Engine.Options.DbName, model.Id!.ToString()!);
+
+                return model;
+            });
+
         private static void RefreshModel(IProxyModelsDbContext dbContext, TModel model, TModel updatedModel)
         {
             /* Suppress change tracking on the refresh: the copied members are the just persisted
@@ -1361,6 +1429,68 @@ namespace Etherna.MongODM.Core.Repositories
                     ReflectionHelper.SetValue(model, member, value);
                 }
             }
+        }
+
+        private async Task ReplaceHelperAsync(
+            TModel model,
+            IClientSessionHandle? session,
+            bool updateDependentDocuments,
+            CancellationToken cancellationToken)
+        {
+            ArgumentNullException.ThrowIfNull(model);
+
+            // Auto create the new referred models, before the replace serializes the references.
+            await CreateNewReferredModelsAsync(DiscoverNewReferredModels(model), [model], cancellationToken).ConfigureAwait(false);
+
+            await AccessToCollectionAsync(async collection =>
+            {
+                // Replace on db.
+                var idFilter = new EntityIdEqFilterDefinition<TModel, TKey>(model.Id);
+                ReplaceOneResult result;
+                if (session == null)
+                {
+                    result = await collection.ReplaceOneAsync(
+                        idFilter,
+                        model,
+                        cancellationToken: cancellationToken).ConfigureAwait(false);
+                }
+                else
+                {
+                    result = await collection.ReplaceOneAsync(
+                        session,
+                        idFilter,
+                        model,
+                        cancellationToken: cancellationToken).ConfigureAwait(false);
+                }
+
+                // Update dependent documents.
+                /* Skip when the replace matched no document: the model has been deleted
+                 * concurrently, like by a bulk delete with filter, and a dependencies
+                 * update task would fail reloading it. A whole document replace can change any
+                 * member, so all the reference members propagate to their dependent summaries. */
+                if (updateDependentDocuments)
+                {
+                    if (result.MatchedCount > 0)
+                    {
+                        var activeSchema = DbContext.Engine.MapRegistry.GetModelMap(
+                            DbContext.Engine.ProxyGenerator.PurgeProxyType(model.GetType())).ActiveSchema;
+                        DbContext.Engine.DbMaintainer.OnUpdatedModel<TKey>(
+                            model, activeSchema.AllMemberMaps.Select(mm => mm.MemberInfo), this);
+                    }
+                    else
+                        logger.RepositorySkippedDependenciesUpdate(Name, DbContext.Engine.Options.DbName, model.Id!.ToString()!);
+                }
+
+                // Refresh the change tracking: the replaced document is now the model state.
+                if (TrySerializeModelBsonDocument(model) is { } newModelDocument)
+                {
+                    InternalDbContext.SetModelBsonDocument(model, newModelDocument);
+                    InternalDbContext.SetModelSourceRepository(model, this);
+                }
+                InternalDbContext.ClearChangeCandidate(model);
+
+                logger.RepositoryReplacedDocument(Name, DbContext.Engine.Options.DbName, model.Id!.ToString()!);
+            }).ConfigureAwait(false);
         }
 
         private static async Task ScanMissingOriginIdsAsync(
@@ -1470,137 +1600,6 @@ namespace Etherna.MongODM.Core.Repositories
             //reading the model members to serialize must not flag it a change candidate.
             using (InternalDbContext.SuppressChangeTracking())
                 return serializer.SerializeToBsonValue(model).AsBsonDocument;
-        }
-
-        // Protected virtual methods.
-        protected virtual Task CreateOnDBAsync(IEnumerable<TModel> models, CancellationToken cancellationToken) =>
-            AccessToCollectionAsync(collection =>
-            {
-                foreach (var model in models)
-                    ThrowIfIdIsNotAddressable(model);
-
-                return collection.InsertManyAsync(models, null, cancellationToken);
-            });
-
-        protected virtual Task CreateOnDBAsync(TModel model, CancellationToken cancellationToken) =>
-            AccessToCollectionAsync(collection =>
-            {
-                ThrowIfIdIsNotAddressable(model);
-
-                return collection.InsertOneAsync(model, null, cancellationToken);
-            });
-
-        protected virtual Task DeleteOnDBAsync(
-            TModel model,
-            FilterDefinition<TModel>[] additionalFilters,
-            CancellationToken cancellationToken) =>
-            AccessToCollectionAsync(collection =>
-            {
-                ArgumentNullException.ThrowIfNull(model);
-
-                var idFilter = new EntityIdEqFilterDefinition<TModel, TKey>(model.Id);
-
-                return collection.DeleteOneAsync(
-                    additionalFilters.Length == 0 ?
-                        idFilter :
-                        Builders<TModel>.Filter.And(additionalFilters.Prepend(idFilter)),
-                    cancellationToken);
-            });
-
-        protected virtual async Task<TModel> FindOneOnDBAsync(TKey id, CancellationToken cancellationToken = default)
-        {
-            if (id == null)
-                throw new ArgumentNullException(nameof(id));
-
-            try
-            {
-                return await FindOneOnDBAsync(new EntityIdEqFilterDefinition<TModel, TKey>(id), cancellationToken).ConfigureAwait(false);
-            }
-            catch (MongodmEntityNotFoundException)
-            {
-                throw new MongodmEntityNotFoundException($"Can't find key {id}");
-            }
-        }
-
-        // Helpers.
-        private Task<TModel> FindOneOnDBAsync(
-            FilterDefinition<TModel> filter,
-            CancellationToken cancellationToken = default) =>
-            AccessToCollectionAsync(async collection =>
-            {
-                ArgumentNullException.ThrowIfNull(filter);
-
-                using var cursor = await collection.FindAsync(filter, cancellationToken: cancellationToken).ConfigureAwait(false);
-                var model = await cursor.FirstOrDefaultAsync(cancellationToken).ConfigureAwait(false);
-
-                if (model == null)
-                    throw new MongodmEntityNotFoundException("Can't find element");
-
-                logger.RepositoryFoundDocument(Name, DbContext.Engine.Options.DbName, model.Id!.ToString()!);
-
-                return model;
-            });
-
-        private async Task ReplaceHelperAsync(
-            TModel model,
-            IClientSessionHandle? session,
-            bool updateDependentDocuments,
-            CancellationToken cancellationToken)
-        {
-            ArgumentNullException.ThrowIfNull(model);
-
-            // Auto create the new referred models, before the replace serializes the references.
-            await CreateNewReferredModelsAsync(DiscoverNewReferredModels(model), [model], cancellationToken).ConfigureAwait(false);
-
-            await AccessToCollectionAsync(async collection =>
-            {
-                // Replace on db.
-                var idFilter = new EntityIdEqFilterDefinition<TModel, TKey>(model.Id);
-                ReplaceOneResult result;
-                if (session == null)
-                {
-                    result = await collection.ReplaceOneAsync(
-                        idFilter,
-                        model,
-                        cancellationToken: cancellationToken).ConfigureAwait(false);
-                }
-                else
-                {
-                    result = await collection.ReplaceOneAsync(
-                        session,
-                        idFilter,
-                        model,
-                        cancellationToken: cancellationToken).ConfigureAwait(false);
-                }
-
-                // Update dependent documents.
-                /* Skip when the replace matched no document: the model has been deleted
-                 * concurrently, like by a bulk delete with filter, and a dependencies
-                 * update task would fail reloading it. A whole document replace can change any
-                 * member, so all the reference members propagate to their dependent summaries. */
-                if (updateDependentDocuments)
-                {
-                    if (result.MatchedCount > 0)
-                    {
-                        var activeSchema = DbContext.Engine.MapRegistry.GetModelMap(
-                            DbContext.Engine.ProxyGenerator.PurgeProxyType(model.GetType())).ActiveSchema;
-                        DbContext.Engine.DbMaintainer.OnUpdatedModel<TKey>(
-                            model, activeSchema.AllMemberMaps.Select(mm => mm.MemberInfo), this);
-                    }
-                    else
-                        logger.RepositorySkippedDependenciesUpdate(Name, DbContext.Engine.Options.DbName, model.Id!.ToString()!);
-                }
-
-                // Refresh the change tracking: the replaced document is now the model state.
-                if (TrySerializeModelBsonDocument(model) is { } newModelDocument)
-                {
-                    InternalDbContext.SetModelBsonDocument(model, newModelDocument);
-                    InternalDbContext.SetModelSourceRepository(model, this);
-                }
-                InternalDbContext.ClearChangeCandidate(model);
-
-                logger.RepositoryReplacedDocument(Name, DbContext.Engine.Options.DbName, model.Id!.ToString()!);
-            }).ConfigureAwait(false);
         }
 
         // Nested types.

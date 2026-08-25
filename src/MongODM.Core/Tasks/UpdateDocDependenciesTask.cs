@@ -149,29 +149,14 @@ namespace Etherna.MongODM.Core.Tasks
                          * unwrapping array and dictionary serializers on collection members: the
                          * same serializer writing the summary at document save, so the refreshed
                          * sub-document keeps the reference schema shape, its schema id, and the
-                         * discriminator of the current referenced model type. Dictionaries
-                         * unwrap first, to their value serializer: their array unwrap stops on
-                         * the key value pair serializer, which hosts no sub-document. */
+                         * discriminator of the current referenced model type. Serializers
+                         * reporting themselves as their own item serializer close the walk,
+                         * instead of unwrapping containers without end. */
                         var documentSerializer = idmm.ParentMemberMap!.Serializer;
-                        while (true)
-                        {
-                            if (documentSerializer is IBsonDictionarySerializer dictionarySerializer)
-                            {
-                                try
-                                {
-                                    documentSerializer = dictionarySerializer.ValueSerializer;
-                                    continue;
-                                }
-                                catch { }
-                            }
-                            if (documentSerializer is IBsonArraySerializer arraySerializer &&
-                                arraySerializer.TryGetItemSerializationInfo(out var itemSerializationInfo))
-                            {
-                                documentSerializer = itemSerializationInfo.Serializer;
-                                continue;
-                            }
-                            break;
-                        }
+                        HashSet<IBsonSerializer> exploredSerializers = [];
+                        while (exploredSerializers.Add(documentSerializer) &&
+                               documentSerializer.TryGetContainerChildSerializer(out var childSerializer))
+                            documentSerializer = childSerializer;
 
                         //use cache
                         if (!serializedDocumentsCache.TryGetValue(documentSerializer, out BsonDocument? doc))

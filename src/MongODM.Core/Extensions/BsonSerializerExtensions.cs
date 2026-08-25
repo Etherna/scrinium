@@ -16,6 +16,7 @@ using Etherna.MongoDB.Bson;
 using Etherna.MongoDB.Bson.IO;
 using Etherna.MongoDB.Bson.Serialization;
 using System;
+using System.Diagnostics.CodeAnalysis;
 
 namespace Etherna.MongODM.Core.Extensions
 {
@@ -49,6 +50,45 @@ namespace Etherna.MongODM.Core.Extensions
                 bsonWriter.WriteEndDocument();
             }
             return wrapper[WrapperElementName];
+        }
+
+        /// <summary>
+        /// Unwrap a container serializer to the serializer of the values it wraps: the value
+        /// serializer of a dictionary, or the item serializer of an array.
+        /// </summary>
+        /// <remarks>
+        /// Several serializers implement the container interfaces also when they can't provide
+        /// the required information, so the dictionary is tried first: the array unwrap of a
+        /// dictionary would stop on its key value pair serializer, which wraps no value.
+        /// </remarks>
+        /// <param name="serializer">The serializer to unwrap</param>
+        /// <param name="childSerializer">The serializer of the wrapped values</param>
+        /// <returns>True if the serializer wraps values into a container</returns>
+        public static bool TryGetContainerChildSerializer(
+            this IBsonSerializer serializer,
+            [MaybeNullWhen(false)] out IBsonSerializer childSerializer)
+        {
+            ArgumentNullException.ThrowIfNull(serializer);
+
+            if (serializer is IBsonDictionarySerializer dictionarySerializer)
+            {
+                try
+                {
+                    childSerializer = dictionarySerializer.ValueSerializer;
+                    return true;
+                }
+                catch { }
+            }
+
+            if (serializer is IBsonArraySerializer arraySerializer &&
+                arraySerializer.TryGetItemSerializationInfo(out var itemSerializationInfo))
+            {
+                childSerializer = itemSerializationInfo.Serializer;
+                return true;
+            }
+
+            childSerializer = null;
+            return false;
         }
     }
 }

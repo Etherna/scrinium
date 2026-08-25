@@ -780,11 +780,9 @@ namespace Etherna.MongODM.Core
                 if (modelSourceRepositories.TryGetValue(model, out var trackedRepository))
                     return trackedRepository;
 
-            return TryGetRepositoryForModelType(engine.ProxyGenerator.PurgeProxyType(model.GetType()));
+            return scopedRepositoryRegistry?.TryGetRepositoryByHandledModelType(
+                engine.ProxyGenerator.PurgeProxyType(model.GetType()));
         }
-
-        private IRepository? TryGetRepositoryForModelType(Type modelType) =>
-            scopedRepositoryRegistry?.TryGetRepositoryByHandledModelType(modelType);
 
         private MemberInfo? TryGetIdMemberInfo(Type modelType)
         {
