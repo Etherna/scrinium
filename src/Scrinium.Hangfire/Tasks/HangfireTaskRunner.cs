@@ -25,7 +25,7 @@ namespace Etherna.Scrinium.HF.Tasks
         : ITaskRunner, ITaskRunnerBuilder
     {
         // Fields.
-        private ScriniumOptions mongODMOptions = null!;
+        private ScriniumOptions scriniumOptions = null!;
 
         // Methods.
         public void RunDeleteDocDependenciesTask(
@@ -41,12 +41,12 @@ namespace Etherna.Scrinium.HF.Tasks
                     deletedRepositoryName,
                     modelId,
                     idMemberMapIdentifiers),
-                new EnqueuedState(mongODMOptions.DbMaintenanceQueueName));
+                new EnqueuedState(scriniumOptions.DbMaintenanceQueueName));
 
         public void RunMigrateDbTask(Type dbContextType, string dbMigrationOpId) =>
             backgroundJobClient.Create<MigrateDbContextTaskFacade>(
                 task => task.RunAsync(dbContextType, dbMigrationOpId, null!),
-                new EnqueuedState(mongODMOptions.DbMaintenanceQueueName));
+                new EnqueuedState(scriniumOptions.DbMaintenanceQueueName));
 
         public void RunUpdateDocDependenciesTask(
             Type dbContextType,
@@ -61,10 +61,10 @@ namespace Etherna.Scrinium.HF.Tasks
                     referenceRepositoryName,
                     modelId,
                     idMemberMapIdentifiers),
-                new EnqueuedState(mongODMOptions.DbMaintenanceQueueName));
+                new EnqueuedState(scriniumOptions.DbMaintenanceQueueName));
 
         // Explicit methods.
         void ITaskRunnerBuilder.SetScriniumOptions(ScriniumOptions options) =>
-            mongODMOptions = options;
+            scriniumOptions = options;
     }
 }

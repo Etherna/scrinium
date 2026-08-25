@@ -46,6 +46,6 @@ namespace Etherna.Scrinium.AspNetCore
         /// <summary>
         /// Freeze configuration.
         /// </summary>
-        void Freeze(IScriniumOptionsBuilder mongODMOptionsBuilder);
+        void Freeze(IScriniumOptionsBuilder scriniumOptionsBuilder);
     }
 }

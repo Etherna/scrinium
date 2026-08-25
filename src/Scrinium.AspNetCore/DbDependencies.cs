@@ -35,19 +35,19 @@ namespace Etherna.Scrinium.AspNetCore
             IDiscriminatorRegistry discriminatorRegistry,
             IExecutionContext executionContext,
             IMapRegistry mapRegistry,
-            IOptions<ScriniumOptions> mongODMOptions,
+            IOptions<ScriniumOptions> scriniumOptions,
             IProxyGenerator proxyGenerator,
             IRepositoryRegistry repositoryRegistry,
             ISerializerModifierAccessor serializerModifierAccessor)
         {
-            ArgumentNullException.ThrowIfNull(mongODMOptions);
+            ArgumentNullException.ThrowIfNull(scriniumOptions);
             BsonSerializerRegistry = bsonSerializerRegistry;
             DbMaintainer = dbMaintainer;
             DbMigrationManager = dbContextMigrationManager;
             DiscriminatorRegistry = discriminatorRegistry;
             ExecutionContext = executionContext;
             MapRegistry = mapRegistry;
-            ScriniumOptions = mongODMOptions.Value;
+            ScriniumOptions = scriniumOptions.Value;
             ProxyGenerator = proxyGenerator;
             RepositoryRegistry = repositoryRegistry;
             SerializerModifierAccessor = serializerModifierAccessor;

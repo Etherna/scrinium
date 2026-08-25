@@ -49,11 +49,11 @@ namespace Etherna.Scrinium.AspNetCore.Extensions
             ArgumentNullException.ThrowIfNull(builder);
 
             var serviceProvider = builder.ApplicationServices;
-            var mongODMOptions = serviceProvider.GetRequiredService<IOptions<ScriniumOptions>>();
+            var scriniumOptions = serviceProvider.GetRequiredService<IOptions<ScriniumOptions>>();
 
             // Get dbcontext instances from a dedicated scope.
             using var serviceScope = serviceProvider.CreateScope();
-            var dbContextTypes = mongODMOptions.Value.DbContextTypes;
+            var dbContextTypes = scriniumOptions.Value.DbContextTypes;
             var dbContexts = dbContextTypes.Select(type => (IDbContext)serviceScope.ServiceProvider.GetRequiredService(type));
 
             // Seed all dbcontexts in parallel, each inside its own execution context.

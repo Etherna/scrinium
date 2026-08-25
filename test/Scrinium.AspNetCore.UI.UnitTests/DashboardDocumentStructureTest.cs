@@ -366,8 +366,8 @@ namespace Etherna.Scrinium.AspNetCore.UI
                     .UseTestServer()
                     .ConfigureServices(services =>
                     {
-                        var mongODMOptions = new ScriniumOptions();
-                        ((IScriniumOptionsBuilder)mongODMOptions).SetDbContextTypes([typeof(IDbContext)]);
+                        var scriniumOptions = new ScriniumOptions();
+                        ((IScriniumOptionsBuilder)scriniumOptions).SetDbContextTypes([typeof(IDbContext)]);
 
                         services.AddRazorPages()
                             .AddApplicationPart(typeof(IndexModel).Assembly);
@@ -376,7 +376,7 @@ namespace Etherna.Scrinium.AspNetCore.UI
                         {
                             AuthFilters = [new AllowAllAuthFilter()]
                         });
-                        services.AddSingleton(Microsoft.Extensions.Options.Options.Create(mongODMOptions));
+                        services.AddSingleton(Microsoft.Extensions.Options.Options.Create(scriniumOptions));
                         services.AddSingleton(dbContext);
                     })
                     .Configure(app =>

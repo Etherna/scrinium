@@ -68,9 +68,9 @@ namespace Etherna.Scrinium.IntegrationTests
             {
                 if (serviceType == typeof(IOptions<ScriniumOptions>))
                 {
-                    var mongODMOptions = new ScriniumOptions();
-                    ((IScriniumOptionsBuilder)mongODMOptions).SetDbContextTypes(dbContextTypes);
-                    return Options.Create(mongODMOptions);
+                    var scriniumOptions = new ScriniumOptions();
+                    ((IScriniumOptionsBuilder)scriniumOptions).SetDbContextTypes(dbContextTypes);
+                    return Options.Create(scriniumOptions);
                 }
 
                 return innerServiceProvider.GetService(serviceType);

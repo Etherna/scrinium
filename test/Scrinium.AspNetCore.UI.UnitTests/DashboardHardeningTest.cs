@@ -314,14 +314,14 @@ namespace Etherna.Scrinium.AspNetCore.UI
                     .UseTestServer()
                     .ConfigureServices(services =>
                     {
-                        var mongODMOptions = new ScriniumOptions();
-                        ((IScriniumOptionsBuilder)mongODMOptions).SetDbContextTypes([typeof(IDbContext)]);
+                        var scriniumOptions = new ScriniumOptions();
+                        ((IScriniumOptionsBuilder)scriniumOptions).SetDbContextTypes([typeof(IDbContext)]);
 
                         services.AddRazorPages()
                             .AddApplicationPart(typeof(IndexModel).Assembly);
                         services.AddHttpContextAccessor();
                         services.AddScriniumAdminDashboard(dashboardOptions);
-                        services.AddSingleton(Options.Create(mongODMOptions));
+                        services.AddSingleton(Options.Create(scriniumOptions));
                         services.AddSingleton(dbContextMock.Object);
                     })
                     .Configure(app =>

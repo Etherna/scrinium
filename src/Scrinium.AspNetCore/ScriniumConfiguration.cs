@@ -123,9 +123,9 @@ namespace Etherna.Scrinium.AspNetCore
             }
         }
 
-        public void Freeze(IScriniumOptionsBuilder mongODMOptionsBuilder)
+        public void Freeze(IScriniumOptionsBuilder scriniumOptionsBuilder)
         {
-            ArgumentNullException.ThrowIfNull(mongODMOptionsBuilder);
+            ArgumentNullException.ThrowIfNull(scriniumOptionsBuilder);
 
             lock (configLock)
             {
@@ -135,7 +135,7 @@ namespace Etherna.Scrinium.AspNetCore
                 IsFrozen = true;
 
                 // Report configuration to options.
-                mongODMOptionsBuilder.SetDbContextTypes(dbContextTypes);
+                scriniumOptionsBuilder.SetDbContextTypes(dbContextTypes);
             }
         }
     }
