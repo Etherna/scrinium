@@ -24,17 +24,7 @@ namespace Etherna.MongODM.HF.Filters
         // Fields.
         private readonly Dictionary<string, IAsyncLocalContextHandler> contextHandlers = new();
 
-        // Properties.
-        public void OnPerforming(PerformingContext context)
-        {
-            ArgumentNullException.ThrowIfNull(context);
-
-            lock (contextHandlers)
-            {
-                contextHandlers.Add(context.BackgroundJob.Id, asyncLocalContext.InitAsyncLocalContext());
-            }
-        }
-
+        // Methods.
         public void OnPerformed(PerformedContext context)
         {
             ArgumentNullException.ThrowIfNull(context);
@@ -45,6 +35,16 @@ namespace Etherna.MongODM.HF.Filters
                 var contextHandler = contextHandlers[jobId];
                 contextHandlers.Remove(jobId);
                 contextHandler.Dispose();
+            }
+        }
+
+        public void OnPerforming(PerformingContext context)
+        {
+            ArgumentNullException.ThrowIfNull(context);
+
+            lock (contextHandlers)
+            {
+                contextHandlers.Add(context.BackgroundJob.Id, asyncLocalContext.InitAsyncLocalContext());
             }
         }
     }

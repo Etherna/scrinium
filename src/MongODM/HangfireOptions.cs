@@ -20,20 +20,14 @@ namespace Etherna.MongODM
 {
     public class HangfireOptions
     {
-        public HangfireOptions()
+        public string ConnectionString { get; set; } = "mongodb://localhost/hangfire";
+        public MongoStorageOptions StorageOptions { get; set; } = new()
         {
-            ConnectionString = "mongodb://localhost/hangfire";
-            StorageOptions = new MongoStorageOptions
+            MigrationOptions = new MongoMigrationOptions
             {
-                MigrationOptions = new MongoMigrationOptions
-                {
-                    MigrationStrategy = new MigrateMongoMigrationStrategy(),
-                    BackupStrategy = new CollectionMongoBackupStrategy()
-                }
-            };
-        }
-
-        public string ConnectionString { get; set; }
-        public MongoStorageOptions StorageOptions { get; set; }
+                MigrationStrategy = new MigrateMongoMigrationStrategy(),
+                BackupStrategy = new CollectionMongoBackupStrategy()
+            }
+        };
     }
 }

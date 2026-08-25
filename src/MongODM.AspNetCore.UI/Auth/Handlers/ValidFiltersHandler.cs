@@ -33,21 +33,16 @@ namespace Etherna.MongODM.AspNetCore.UI.Auth.Handlers
              * one denying it. A dashboard configured without filters is unrestricted: an
              * application with no authorization of its own declares it emptying the list,
              * instead of configuring a filter allowing everyone. */
-            var isAuthorized = true;
-
             foreach (var filter in requirement.Filters)
             {
                 if (!await filter.AuthorizeAsync(httpContext).ConfigureAwait(false))
                 {
-                    isAuthorized = false;
-                    break;
+                    context.Fail();
+                    return;
                 }
             }
 
-            if (isAuthorized)
-                context.Succeed(requirement);
-            else
-                context.Fail();
+            context.Succeed(requirement);
         }
     }
 }

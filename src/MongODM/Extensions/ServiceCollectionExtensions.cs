@@ -36,26 +36,16 @@ namespace Etherna.MongODM.Extensions
             var conf = services.AddMongODM<HangfireTaskRunner>(configureMongODMOptions);
 
             // Configure Hangfire.
-            AddHangfire(services, configureHangfireOptions);
-
-            return conf;
-        }
-
-        // Helpers.
-        private static void AddHangfire(
-            IServiceCollection services,
-            Action<HangfireOptions>? configureHangfireOptions)
-        {
-            // Configure options.
             var hangfireOptions = new HangfireOptions();
             configureHangfireOptions?.Invoke(hangfireOptions);
 
-            // Add hangfire.
             services.AddHangfire(options =>
             {
                 options.UseMongODM();
                 options.UseMongoStorage(hangfireOptions.ConnectionString, hangfireOptions.StorageOptions);
             });
+
+            return conf;
         }
     }
 }
