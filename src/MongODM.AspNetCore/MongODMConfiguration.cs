@@ -24,35 +24,15 @@ using Microsoft.Extensions.Logging;
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Threading;
 
 namespace Etherna.MongODM.AspNetCore
 {
     public class MongODMConfiguration(IServiceCollection services)
-        : IMongODMConfiguration, IDisposable
+        : IMongODMConfiguration
     {
         // Fields.
-        private readonly ReaderWriterLockSlim configLock = new(LockRecursionPolicy.SupportsRecursion);
+        private readonly object configLock = new();
         private readonly List<Type> dbContextTypes = new();
-        private bool disposed;
-
-        // Dispose.
-        public void Dispose()
-        {
-            Dispose(true);
-            GC.SuppressFinalize(this);
-        }
-
-        protected virtual void Dispose(bool disposing)
-        {
-            if (disposed) return;
-
-            // Dispose managed resources.
-            if (disposing)
-                configLock.Dispose();
-
-            disposed = true;
-        }
 
         // Properties.
         public bool IsFrozen { get; private set; }
@@ -83,8 +63,7 @@ namespace Etherna.MongODM.AspNetCore
             where TDbContext : class, IDbContext
             where TDbContextImpl : DbContext, TDbContext
         {
-            configLock.EnterWriteLock();
-            try
+            lock (configLock)
             {
                 if (IsFrozen)
                     throw new InvalidOperationException("Configuration is frozen");
@@ -142,38 +121,21 @@ namespace Etherna.MongODM.AspNetCore
 
                 return this;
             }
-            finally
-            {
-                configLock.ExitWriteLock();
-            }
         }
 
         public void Freeze(IMongODMOptionsBuilder mongODMOptionsBuilder)
         {
             ArgumentNullException.ThrowIfNull(mongODMOptionsBuilder);
 
-            configLock.EnterReadLock();
-            try
+            lock (configLock)
             {
                 if (IsFrozen) return;
-            }
-            finally
-            {
-                configLock.ExitReadLock();
-            }
 
-            configLock.EnterWriteLock();
-            try
-            {
                 // Freeze.
                 IsFrozen = true;
 
                 // Report configuration to options.
                 mongODMOptionsBuilder.SetDbContextTypes(dbContextTypes);
-            }
-            finally
-            {
-                configLock.ExitWriteLock();
             }
         }
     }
