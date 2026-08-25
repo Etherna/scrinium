@@ -684,26 +684,9 @@ namespace Etherna.MongODM.Core.Serialization.Mapping
                             }
 
                             //descend containers to their serialized items
-                            /* Some serializers implement the container interfaces also when they
-                             * are not able to provide the required information: try with the
-                             * dictionary value first, then with the array item. */
-                            if (serializer is IBsonDictionarySerializer dictionarySerializer)
-                            {
-                                try
-                                {
-                                    serializer = dictionarySerializer.ValueSerializer;
-                                    continue;
-                                }
-                                catch { }
-                            }
-                            if (serializer is IBsonArraySerializer arraySerializer &&
-                                arraySerializer.TryGetItemSerializationInfo(out var itemSerializationInfo))
-                            {
-                                serializer = itemSerializationInfo.Serializer;
-                                continue;
-                            }
-
-                            break;
+                            if (!serializer.TryGetContainerChildSerializer(out var childSerializer))
+                                break;
+                            serializer = childSerializer;
                         }
                     }
                 }

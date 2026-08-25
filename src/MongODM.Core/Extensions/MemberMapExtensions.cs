@@ -41,24 +41,9 @@ namespace Etherna.MongODM.Core.Extensions
                 if (serializer is IReferenceSerializer referenceSerializer)
                     return referenceSerializer;
 
-                if (serializer is IBsonDictionarySerializer dictionarySerializer)
-                {
-                    try
-                    {
-                        serializer = dictionarySerializer.ValueSerializer;
-                        continue;
-                    }
-                    catch { }
-                }
-
-                if (serializer is IBsonArraySerializer arraySerializer &&
-                    arraySerializer.TryGetItemSerializationInfo(out var itemSerializationInfo))
-                {
-                    serializer = itemSerializationInfo.Serializer;
-                    continue;
-                }
-
-                break;
+                if (!serializer.TryGetContainerChildSerializer(out var childSerializer))
+                    break;
+                serializer = childSerializer;
             }
 
             return null;
