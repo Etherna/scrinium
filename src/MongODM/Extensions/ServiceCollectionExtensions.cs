@@ -15,7 +15,6 @@
 using Etherna.MongODM.AspNetCore;
 using Etherna.MongODM.AspNetCore.Extensions;
 using Etherna.MongODM.Core.Options;
-using Etherna.MongODM.Core.ProxyModels;
 using Etherna.MongODM.HF.Tasks;
 using Hangfire;
 using Hangfire.Mongo;
