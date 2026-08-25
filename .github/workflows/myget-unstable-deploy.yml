@@ -12,7 +12,7 @@ jobs:
     runs-on: ubuntu-latest
 
     env:
-      MONGODM_TEST_DB_URL: mongodb://localhost:27017
+      SCRINIUM_TEST_DB_URL: mongodb://localhost:27017
 
     steps:
       - name: Checkout

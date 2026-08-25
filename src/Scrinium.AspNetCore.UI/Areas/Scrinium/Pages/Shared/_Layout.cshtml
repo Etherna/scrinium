@@ -1,0 +1,34 @@
+﻿@inject Etherna.Scrinium.AspNetCore.UI.DashboardOptions dashboardOptions
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>@ViewData["Title"] - Scrinium Dashboard</title>
+    <link rel="stylesheet" href="~/_content/Etherna.Scrinium.AspNetCore.UI/css/scriniumDash.css" asp-append-version="true" />
+</head>
+<body>
+    <header class="site-header">
+        <div class="container header-row">
+            <a class="brand" asp-area="Scrinium" asp-page="/Index">Scrinium <span>Dashboard</span></a>
+            @if (!string.IsNullOrEmpty(dashboardOptions.AppPath))
+            {
+                <a class="back-link" href="@dashboardOptions.AppPath">Back to site</a>
+            }
+        </div>
+    </header>
+    <main role="main" class="container">
+        @RenderBody()
+    </main>
+
+    <footer class="site-footer">
+        <div class="container">
+            &copy; Etherna SA
+        </div>
+    </footer>
+
+    <script src="~/_content/Etherna.Scrinium.AspNetCore.UI/js/scriniumDash.js" asp-append-version="true"></script>
+
+    @RenderSection("Scripts", required: false)
+</body>
+</html>

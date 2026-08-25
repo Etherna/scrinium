@@ -1,21 +1,21 @@
 // Copyright 2020-present Etherna SA
-// This file is part of MongODM.
+// This file is part of Scrinium.
 // 
-// MongODM is free software: you can redistribute it and/or modify it under the terms of the
+// Scrinium is free software: you can redistribute it and/or modify it under the terms of the
 // GNU Lesser General Public License as published by the Free Software Foundation,
 // either version 3 of the License, or (at your option) any later version.
 // 
-// MongODM is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
+// Scrinium is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
 // without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 // See the GNU Lesser General Public License for more details.
 // 
-// You should have received a copy of the GNU Lesser General Public License along with MongODM.
+// You should have received a copy of the GNU Lesser General Public License along with Scrinium.
 // If not, see <https://www.gnu.org/licenses/>.
 
-using Etherna.MongODM.AspNetCore.Extensions;
-using Etherna.MongODM.AspNetCore.UI;
-using Etherna.MongODM.AspNetCoreSample.Persistence;
-using Etherna.MongODM.Extensions;
+using Etherna.Scrinium.AspNetCore.Extensions;
+using Etherna.Scrinium.AspNetCore.UI;
+using Etherna.Scrinium.AspNetCoreSample.Persistence;
+using Etherna.Scrinium.Extensions;
 using Hangfire;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
@@ -24,7 +24,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using System;
 
-namespace Etherna.MongODM.AspNetCoreSample
+namespace Etherna.Scrinium.AspNetCoreSample
 {
     public class Program
     {
@@ -48,7 +48,7 @@ namespace Etherna.MongODM.AspNetCoreSample
             var sampleDbConnectionString = builder.Configuration.GetConnectionString("SampleDb")
                 ?? throw new InvalidOperationException("Missing ConnectionStrings:SampleDb configuration");
 
-            builder.Services.AddMongODMWithHangfire(hangfireOptions =>
+            builder.Services.AddScriniumWithHangfire(hangfireOptions =>
                 {
                     hangfireOptions.ConnectionString = hangfireDbConnectionString;
                 })
@@ -63,7 +63,7 @@ namespace Etherna.MongODM.AspNetCoreSample
                     options.IsReadOnly = true;
                 });
 
-            builder.Services.AddMongODMAdminDashboard();
+            builder.Services.AddScriniumAdminDashboard();
 
             var app = builder.Build();
 

@@ -1,24 +1,24 @@
 // Copyright 2020-present Etherna SA
-// This file is part of MongODM.
+// This file is part of Scrinium.
 //
-// MongODM is free software: you can redistribute it and/or modify it under the terms of the
+// Scrinium is free software: you can redistribute it and/or modify it under the terms of the
 // GNU Lesser General Public License as published by the Free Software Foundation,
 // either version 3 of the License, or (at your option) any later version.
 //
-// MongODM is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
+// Scrinium is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
 // without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 // See the GNU Lesser General Public License for more details.
 //
-// You should have received a copy of the GNU Lesser General Public License along with MongODM.
+// You should have received a copy of the GNU Lesser General Public License along with Scrinium.
 // If not, see <https://www.gnu.org/licenses/>.
 
 using Etherna.MongoDB.Bson;
 using Etherna.MongoDB.Bson.Serialization.Serializers;
-using Etherna.MongODM.Core;
-using Etherna.MongODM.Core.Serialization;
-using Etherna.MongODM.Core.Serialization.Serializers;
+using Etherna.Scrinium.Core;
+using Etherna.Scrinium.Core.Serialization;
+using Etherna.Scrinium.Core.Serialization.Serializers;
 
-namespace Etherna.MongODM.AspNetCoreSample.Models.ModelMaps
+namespace Etherna.Scrinium.AspNetCoreSample.Models.ModelMaps
 {
     class PersonMap : IModelMapsCollector
     {
@@ -50,7 +50,7 @@ namespace Etherna.MongODM.AspNetCoreSample.Models.ModelMaps
                  * null. Uncomment to cascade instead: the delete then deletes the referring
                  * cats themselves, with a domain delete propagating their own reference
                  * policies in turn. */
-                // config.OriginDelete = Etherna.MongODM.Core.Options.OriginDeleteMode.DeleteReferencingDocument;
+                // config.OriginDelete = Etherna.Scrinium.Core.Options.OriginDeleteMode.DeleteReferencingDocument;
 
                 config.AddModelMap<ModelBase>(SummaryBaseSchemaId, _ => { }); //no summary members at this level
                 config.AddModelMap<EntityModelBase<string>>(SummaryEntityBaseSchemaId, schema =>
