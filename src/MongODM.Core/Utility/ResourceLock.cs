@@ -222,19 +222,29 @@ namespace Etherna.MongODM.Core.Utility
             if (leaseDuration is null)
                 return null;
 
+            return await CreateLeaseReleasingOnFailureAsync(
+                ownerId, leaseId, leaseDuration.Value, ResourceLockMode.Exclusive).ConfigureAwait(false);
+        }
+
+        // Helpers.
+        private async Task<IResourceLockLease> CreateLeaseReleasingOnFailureAsync(
+            string ownerId,
+            string leaseId,
+            TimeSpan leaseDuration,
+            ResourceLockMode mode)
+        {
             try
             {
-                return new ResourceLockLease(this, ownerId, leaseId, leaseDuration.Value, ResourceLockMode.Exclusive);
+                return new ResourceLockLease(this, ownerId, leaseId, leaseDuration, mode);
             }
             catch
             {
-                //the stamp already extended the lease: without an owning lease nobody would release it
-                await ReleaseExclusiveLockAsync(OwnedLeaseFilter(ownerId, leaseId)).ConfigureAwait(false);
+                //the claim already holds the lock: without an owning lease nobody would release it
+                await ReleaseLeaseAsync(ownerId, leaseId, mode).ConfigureAwait(false);
                 throw;
             }
         }
 
-        // Helpers.
         private async Task<bool> HasLiveExclusiveLeaseAsync() =>
             await lockCollection.CountDocumentsAsync(
                 Builders<BsonDocument>.Filter.And(
@@ -255,6 +265,11 @@ namespace Etherna.MongODM.Core.Utility
                 Builders<BsonDocument>.Filter.And(
                     Builders<BsonDocument>.Filter.Eq("_id", lockId),
                     ownershipFilter));
+
+        private Task ReleaseLeaseAsync(string ownerId, string leaseId, ResourceLockMode mode) =>
+            mode is ResourceLockMode.Shared ?
+                ReleaseSharedLeaseAsync(leaseId) :
+                ReleaseExclusiveLockAsync(OwnedLeaseFilter(ownerId, leaseId));
 
         private async Task ReleaseSharedLeaseAsync(string leaseId)
         {
@@ -324,16 +339,8 @@ namespace Etherna.MongODM.Core.Utility
             if (!await TryClaimExclusiveAsync(ownerId, acquiredLeaseDuration, leaseId).ConfigureAwait(false))
                 return null;
 
-            try
-            {
-                return new ResourceLockLease(this, ownerId, leaseId, acquiredLeaseDuration, ResourceLockMode.Exclusive);
-            }
-            catch
-            {
-                //the claim already holds the lock: without an owning lease nobody would release it
-                await ReleaseExclusiveLockAsync(OwnedLeaseFilter(ownerId, leaseId)).ConfigureAwait(false);
-                throw;
-            }
+            return await CreateLeaseReleasingOnFailureAsync(
+                ownerId, leaseId, acquiredLeaseDuration, ResourceLockMode.Exclusive).ConfigureAwait(false);
         }
 
         private async Task<IResourceLockLease?> TryAcquireSharedAsync(TimeSpan? leaseDuration)
@@ -358,16 +365,8 @@ namespace Etherna.MongODM.Core.Utility
                     return null;
             }
 
-            try
-            {
-                return new ResourceLockLease(this, ownerId, leaseId, acquiredLeaseDuration, ResourceLockMode.Shared);
-            }
-            catch
-            {
-                //the claim already holds the lock: without an owning lease nobody would release it
-                await ReleaseSharedLeaseAsync(leaseId).ConfigureAwait(false);
-                throw;
-            }
+            return await CreateLeaseReleasingOnFailureAsync(
+                ownerId, leaseId, acquiredLeaseDuration, ResourceLockMode.Shared).ConfigureAwait(false);
         }
 
         private async Task<bool> TryClaimExclusiveAsync(string ownerId, TimeSpan leaseDuration, string? leaseId)
@@ -661,9 +660,7 @@ namespace Etherna.MongODM.Core.Utility
                 }
             }
 
-            private Task ReleaseAsync() => mode is ResourceLockMode.Shared
-                ? resourceLock.ReleaseSharedLeaseAsync(leaseId)
-                : resourceLock.ReleaseExclusiveLockAsync(OwnedLeaseFilter(OwnerId, leaseId));
+            private Task ReleaseAsync() => resourceLock.ReleaseLeaseAsync(OwnerId, leaseId, mode);
 
             private Task<bool> TryRenewAsync() => mode is ResourceLockMode.Shared
                 ? resourceLock.TryRenewSharedLeaseAsync(leaseId, leaseDuration)
