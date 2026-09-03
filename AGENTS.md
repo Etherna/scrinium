@@ -67,11 +67,11 @@ Key cross-cutting points:
 
 Bugs and features are tracked in Jira project **SCR** (https://etherna.atlassian.net/projects/SCR). Branch names follow `feature/SCR-<id>-<slug>` / `improve/SCR-<id>-<slug>` / `fix/SCR-<id>-<slug>` — match this when creating branches.
 
-## Release 0.25.0 work line
+## Release process and current line
 
-The 0.25.0 release removes DbCache and rebuilds the db context lifecycle (scoped contexts over singleton engines, per-instance changed models and identity map, member level saves, source repositories). Landed on `dev`: SCR-179, SCR-82, SCR-195, SCR-197; in flight: SCR-49 (origin/source repositories). Every remaining 0.25.0 issue follows the same workflow: branch from `dev` (`improve/SCR-xxx-*` or `feature/SCR-xxx-*`), tests and AGENTS aligned in the same change, commits only after human review, one PR per issue to `dev`.
+Releases follow git flow: `dev` is merged into `main` with a merge commit, the merge commit is tagged `vX.Y.Z` and the tag push triggers the stable NuGet deploy (GitVersion derives the package version from the tag). The release is completed by a GitHub release carrying the notes of the Jira fixVersion, by the wiki flipped to *released* and tagged with the same tag, and by the public announcement. **0.25.0** (2026-09-03) is the first supported release and the first one under the Scrinium name: it removed DbCache and rebuilt the db context lifecycle (scoped contexts over singleton engines, per-instance changed models and identity map, member level saves, source repositories). `dev` continues that line; every issue follows the same workflow: branch from `dev` (`improve/SCR-xxx-*`, `feature/SCR-xxx-*` or `fix/SCR-xxx-*`), tests and AGENTS aligned in the same change, commits only after human review, one PR per issue to `dev`.
 
-After the library work, the Etherna services must be migrated: see [SERVICES-MIGRATION.md](SERVICES-MIGRATION.md) for the breaking changes summary, the per-service critical points (captive singleton consumers, root provider resolutions, identity map growth spots, test helper rewrites) and the live integration test checklist gating the release.
+After the library release, the Etherna services must be migrated to 0.25.0: see [SERVICES-MIGRATION.md](SERVICES-MIGRATION.md) for the breaking changes summary, the per-service critical points (captive singleton consumers, root provider resolutions, identity map growth spots, test helper rewrites) and the live integration test checklist gating the services' bumps.
 
 # Coding Style
 
