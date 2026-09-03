@@ -1,8 +1,8 @@
 <Project Sdk="Microsoft.NET.Sdk.Web">
 
   <PropertyGroup>
-    <TargetFramework>net8.0</TargetFramework>
-    <RootNamespace>Etherna.MongODM.AspNetCoreSample</RootNamespace>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>Etherna.Scrinium.AspNetCoreSample</RootNamespace>
 
     <Authors>Etherna SA</Authors>
     <IsPackable>false</IsPackable>
@@ -10,8 +10,9 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\src\MongODM.AspNetCore.UI\MongODM.AspNetCore.UI.csproj" />
-    <ProjectReference Include="..\..\src\MongODM\MongODM.csproj" />
+    <ProjectReference Include="..\..\src\Scrinium.Core.Generators\Scrinium.Core.Generators.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
+    <ProjectReference Include="..\..\src\Scrinium.AspNetCore.UI\Scrinium.AspNetCore.UI.csproj" />
+    <ProjectReference Include="..\..\src\Scrinium\Scrinium.csproj" />
   </ItemGroup>
 
 </Project>

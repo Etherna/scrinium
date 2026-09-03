@@ -1,0 +1,385 @@
+﻿// Copyright 2020-present Etherna SA
+// This file is part of Scrinium.
+//
+// Scrinium is free software: you can redistribute it and/or modify it under the terms of the
+// GNU Lesser General Public License as published by the Free Software Foundation,
+// either version 3 of the License, or (at your option) any later version.
+//
+// Scrinium is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
+// without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+// See the GNU Lesser General Public License for more details.
+//
+// You should have received a copy of the GNU Lesser General Public License along with Scrinium.
+// If not, see <https://www.gnu.org/licenses/>.
+
+using Etherna.MongoDB.Bson;
+using Etherna.MongoDB.Bson.Serialization;
+using Etherna.MongoDB.Driver;
+using Etherna.MongoDB.Driver.Core.Clusters;
+using Etherna.Scrinium.Core.Domain.ModelMaps;
+using Etherna.Scrinium.Core.ExecContext;
+using Etherna.Scrinium.Core.Extensions;
+using Etherna.Scrinium.Core.Options;
+using Etherna.Scrinium.Core.ProxyModels;
+using Etherna.Scrinium.Core.Serialization;
+using Etherna.Scrinium.Core.Serialization.Mapping;
+using Etherna.Scrinium.Core.Serialization.Modifiers;
+using Etherna.Scrinium.Core.Serialization.Providers;
+using Etherna.Scrinium.Core.Utility;
+using Microsoft.Extensions.Logging;
+using System;
+using System.Collections.Generic;
+using System.Diagnostics;
+using System.Threading;
+using System.Threading.Tasks;
+
+namespace Etherna.Scrinium.Core
+{
+    /// <summary>
+    /// The scope independent engine of a <see cref="DbContext"/>: database connections,
+    /// schema registries, and infrastructure components built once at context initialization.
+    /// </summary>
+    public sealed class DbContextEngine(ILogger logger)
+        : IDbContextEngine, IInternalDbContextEngine, IDisposable
+    {
+        // Consts.
+        //pause between two in flight counts of the exclusive access drain
+        private static readonly TimeSpan ExclusiveAccessDrainPollDelay = TimeSpan.FromMilliseconds(20);
+        //separates the namespace from the resource id in the application lock identifiers
+        private const string ResourceLockNamespaceSeparator = "/";
+
+        // Fields.
+        private IResourceLock? _dbContextLock;
+        private volatile bool _isExclusiveReadEnabled;
+        private volatile bool _isExclusiveWriteEnabled;
+        private bool? _isSeededCache;
+        private BsonSerializerRegistry _serializerRegistry = null!;
+        private bool disposed;
+        private readonly SemaphoreSlim exclusiveAccessSemaphore = new(1, 1); //support async/await
+        /* One counter per engine: the guarded collections enter it around every forwarded
+         * operation, whatever the wrapper instance addressing them. */
+        private readonly InFlightOperationsCounter inFlightOperations = new();
+        private bool isInitialized;
+        private readonly ReaderWriterLockSlim isSeededCacheLock = new(); //support read/write locks
+        private Task? lockCollectionPreparation;
+        private readonly object lockCollectionPreparationSync = new();
+
+        // Initializer.
+        public void Initialize(
+            IDbDependencies dependencies,
+            IMongoClient mongoClient,
+            IDbContextOptions options,
+            Type dbContextType,
+            IEnumerable<IModelMapsCollector> modelMapsCollectors)
+        {
+            if (isInitialized)
+                throw new InvalidOperationException("DbContext engine already initialized");
+            ArgumentNullException.ThrowIfNull(dependencies);
+            ArgumentNullException.ThrowIfNull(options);
+            ArgumentNullException.ThrowIfNull(dbContextType);
+            ArgumentNullException.ThrowIfNull(modelMapsCollectors);
+
+            // Set dependencies.
+            DbContextType = dbContextType;
+            DbMaintainer = dependencies.DbMaintainer;
+            DbMigrationManager = dependencies.DbMigrationManager;
+            DiscriminatorRegistry = dependencies.DiscriminatorRegistry;
+            ExecutionContext = dependencies.ExecutionContext;
+            MapRegistry = dependencies.MapRegistry;
+            Options = options;
+            ProxyGenerator = dependencies.ProxyGenerator;
+            SerializerModifierAccessor = dependencies.SerializerModifierAccessor;
+            _serializerRegistry = (BsonSerializerRegistry)dependencies.BsonSerializerRegistry;
+
+            // Execute initialization into execution context.
+            /* Engine level work like schema registration carries the engine on the execution
+             * context, with no db context scope. */
+            using var dbExecutionContext = new DbExecutionContextHandler(this);
+
+            // Initialize internal dependencies.
+            DbMaintainer.Initialize(this, logger);
+            DbMigrationManager.Initialize(this, logger);
+            DiscriminatorRegistry.Initialize(this, logger);
+            MapRegistry.Initialize(this, logger);
+            InitializeSerializerRegistry();
+
+            // Register model maps.
+            /* Maps registration builds the class maps of the db context: the conventions that
+             * Scrinium registers on the driver global convention registry apply only inside this
+             * scope, leaving every other type automapped in the process to the driver defaults. */
+            using (new MapsRegistrationHandler(ExecutionContext))
+            {
+                //internal maps
+                new DbMigrationOperationMap().Register(this);
+                new ModelBaseMap().Register(this);
+                new OperationBaseMap().Register(this);
+                new SeedOperationMap().Register(this);
+
+                //application maps
+                foreach (var maps in modelMapsCollectors)
+                    maps.Register(this);
+
+                // Build and freeze map registry.
+                MapRegistry.Freeze();
+            }
+
+            // Initialize MongoDB database.
+            Client = mongoClient;
+            Database = Client.GetDatabase(options.DbName, new MongoDatabaseSettings
+            {
+                SerializerRegistry = _serializerRegistry
+            });
+
+            // Set as initialized.
+            isInitialized = true;
+
+            logger.DbContextInitialized(options.DbName);
+        }
+
+        // Dispose.
+        public void Dispose()
+        {
+            if (disposed) return;
+
+            // Dispose managed resources.
+            exclusiveAccessSemaphore.Dispose();
+            isSeededCacheLock.Dispose();
+
+            disposed = true;
+        }
+
+        // Properties.
+        public IMongoClient Client { get; private set; } = null!;
+        public IMongoDatabase Database { get; private set; } = null!;
+        /* Built lazily at first use: the lock collection is accessed raw, out of the engine
+         * access limitations, being the coordination infrastructure of the exclusive works. */
+        public IResourceLock DbContextLock
+        {
+            get
+            {
+                /* The lock collection is written raw, out of the read-only enforcement of the
+                 * guarded collections: deny the whole lock on a read-only db context, or
+                 * claiming it would write on a database this db context can only read. */
+                if (Options.IsReadOnly)
+                    throw new InvalidOperationException(
+                        $"Can't access the db context lock of the read-only db context {Identifier}: " +
+                        $"claiming it would write the {Options.DbLockCollectionName} collection of database {Options.DbName}. " +
+                        "Seeding and migrations of that database belong to the application owning it");
+
+                return LazyInitializer.EnsureInitialized(ref _dbContextLock, () => BuildResourceLock(Identifier));
+            }
+        }
+        public Type DbContextType { get; private set; } = null!;
+        public IDbMaintainer DbMaintainer { get; private set; } = null!;
+        public IDbMigrationManager DbMigrationManager { get; private set; } = null!;
+        public IDiscriminatorRegistry DiscriminatorRegistry { get; private set; } = null!;
+        public IExecutionContext ExecutionContext { get; private set; } = null!;
+        public string Identifier => Options.Identifier ?? DbContextType.Name;
+        public bool IsExclusiveReadEnabled
+        {
+            get => _isExclusiveReadEnabled;
+            private set => _isExclusiveReadEnabled = value;
+        }
+        public bool IsExclusiveWriteEnabled
+        {
+            get => _isExclusiveWriteEnabled;
+            private set => _isExclusiveWriteEnabled = value;
+        }
+        public bool? IsSeededCache
+        {
+            get
+            {
+                isSeededCacheLock.EnterReadLock();
+                try
+                {
+                    return _isSeededCache;
+                }
+                finally
+                {
+                    isSeededCacheLock.ExitReadLock();
+                }
+            }
+            set
+            {
+                isSeededCacheLock.EnterWriteLock();
+                try
+                {
+                    _isSeededCache = value;
+                }
+                finally
+                {
+                    isSeededCacheLock.ExitWriteLock();
+                }
+            }
+        }
+        public ILogger Logger => logger;
+        public IMapRegistry MapRegistry { get; private set; } = null!;
+        public IDbContextOptions Options { get; private set; } = null!;
+        public IProxyGenerator ProxyGenerator { get; private set; } = null!;
+        public IBsonSerializerRegistry SerializerRegistry => _serializerRegistry;
+        public ISerializerModifierAccessor SerializerModifierAccessor { get; private set; } = null!;
+        public bool SupportsTransactions =>
+            Client.Cluster.Description.Type is ClusterType.ReplicaSet or ClusterType.Sharded or ClusterType.LoadBalanced;
+
+        // Methods.
+        public IMongoCollection<TDocument> GetMongoCollection<TDocument>(
+            string name,
+            MongoCollectionSettings? settings = null,
+            bool isReadOnly = false)
+        {
+            var mongoCollection = Database.GetCollection<TDocument>(name, settings);
+            return new LimitedAccessMongoCollection<TDocument>(this, mongoCollection, isReadOnly || Options.IsReadOnly);
+        }
+
+        public IResourceLock GetResourceLock(string resourceNamespace, string resourceId)
+        {
+            ArgumentException.ThrowIfNullOrEmpty(resourceNamespace);
+            ArgumentException.ThrowIfNullOrEmpty(resourceId);
+
+            /* The lock identifier is a plain string, like every Scrinium id: the namespace and
+             * the resource id serialize into one value, joined by the separator. A namespace
+             * carrying the separator would make different resources alias one lock document
+             * (namespace "a" with id "b/c", and namespace "a/b" with id "c"), so it is
+             * denied, while the resource id, being the last segment, stays free. */
+            if (resourceNamespace.Contains(ResourceLockNamespaceSeparator, StringComparison.Ordinal))
+                throw new ArgumentException(
+                    $"Invalid resource lock namespace \"{resourceNamespace}\": " +
+                    $"it can't contain \"{ResourceLockNamespaceSeparator}\", separating the namespace " +
+                    "from the resource id in the lock identifier",
+                    nameof(resourceNamespace));
+
+            /* The lock collection is written raw, out of the read-only enforcement of the
+             * guarded collections: deny the application locks on a read-only db context, or
+             * claiming one would write on a database this db context can only read. */
+            if (Options.IsReadOnly)
+                throw new InvalidOperationException(
+                    $"Can't access the resource locks of the read-only db context {Identifier}: " +
+                    $"claiming one would write the {Options.DbLockCollectionName} collection of database {Options.DbName}. " +
+                    "Coordinate through the locks of a db context this application can write");
+
+            return BuildResourceLock(resourceNamespace + ResourceLockNamespaceSeparator + resourceId);
+        }
+
+        public Task RunWithExclusiveAccessAsync(
+            Func<Task> action,
+            bool lockOnRead = true) =>
+            RunWithExclusiveAccessAsync(async () =>
+            {
+                await action().ConfigureAwait(false);
+                return 0;
+            }, lockOnRead);
+
+        public async Task<TResult> RunWithExclusiveAccessAsync<TResult>(
+            Func<Task<TResult>> func,
+            bool lockOnRead = true)
+        {
+            ArgumentNullException.ThrowIfNull(func);
+
+            await exclusiveAccessSemaphore.WaitAsync().ConfigureAwait(false);
+            try
+            {
+                IsExclusiveReadEnabled = lockOnRead;
+                IsExclusiveWriteEnabled = true;
+
+                /* The flags deny the operations starting after the window opens: drain the
+                 * ones admitted a moment before, still running against the collections, so
+                 * the exclusive work never runs beside them. Reads drain only when the
+                 * window locks them: left open, they keep flowing during the whole window,
+                 * and their count has no zero to wait for. */
+                await DrainInFlightOperationsAsync(drainReads: lockOnRead).ConfigureAwait(false);
+
+                using var _ = new ExclusiveAccessHandler(this);
+                return await func().ConfigureAwait(false);
+            }
+            finally
+            {
+                IsExclusiveWriteEnabled = false;
+                IsExclusiveReadEnabled = false;
+
+                exclusiveAccessSemaphore.Release();
+            }
+        }
+
+        public Task<IClientSessionHandle> StartSessionAsync(CancellationToken cancellationToken = default) =>
+            Client.StartSessionAsync(cancellationToken: cancellationToken);
+
+        // Internals.
+        InFlightOperationsCounter IInternalDbContextEngine.InFlightOperations => inFlightOperations;
+
+        // Helpers.
+        private ResourceLock BuildResourceLock(string lockId) => new(
+            Database.GetCollection<BsonDocument>(Options.DbLockCollectionName),
+            lockId,
+            ExecutionContext,
+            logger,
+            PrepareLockCollectionAsync);
+
+        /* An operation stays in flight for the span of its forwarded call, until its task
+         * completes: the cursors already handed out iterate past the drain, like the
+         * traffic of the other processes proceeds during the window. A drain unable to
+         * complete within the timeout denies the exclusive work: running it beside an
+         * operation still in flight would break the exclusivity the window declares. */
+        private async Task DrainInFlightOperationsAsync(bool drainReads)
+        {
+            var drainTimeout = Options.ExclusiveAccessDrainTimeout;
+            var drainStopwatch = Stopwatch.StartNew();
+            var isDrainLogged = false;
+            while (true)
+            {
+                var readsCount = drainReads ? inFlightOperations.ReadsCount : 0;
+                var writesCount = inFlightOperations.WritesCount;
+                if (readsCount == 0 && writesCount == 0)
+                    return;
+
+                if (!isDrainLogged)
+                {
+                    logger.DbContextExclusiveAccessDrainingInFlightOperations(Options.DbName, readsCount, writesCount);
+                    isDrainLogged = true;
+                }
+
+                if (drainStopwatch.Elapsed >= drainTimeout)
+                    throw new TimeoutException(
+                        $"Can't run with exclusive access on db context {Identifier}: " +
+                        $"{writesCount} writes and {readsCount} reads admitted before the exclusive window opened " +
+                        $"are still running after the {drainTimeout} drain timeout, " +
+                        $"configured by {nameof(IDbContextOptions)}.{nameof(IDbContextOptions.ExclusiveAccessDrainTimeout)}");
+
+                await Task.Delay(ExclusiveAccessDrainPollDelay).ConfigureAwait(false);
+            }
+        }
+
+        private void InitializeSerializerRegistry()
+        {
+            //order matters. It's in reverse order of how they'll get consumed
+            _serializerRegistry.RegisterSerializationProvider(new MapRegistrySerializationProvider(this));
+            _serializerRegistry.RegisterSerializationProvider(new DiscriminatedInterfaceSerializationProvider());
+            _serializerRegistry.RegisterSerializationProvider(new CollectionsSerializationProvider());
+            _serializerRegistry.RegisterSerializationProvider(new PrimitiveSerializationProvider());
+            _serializerRegistry.RegisterSerializationProvider(new AttributedSerializationProvider());
+            _serializerRegistry.RegisterSerializationProvider(new TypeMappingSerializationProvider());
+            _serializerRegistry.RegisterSerializationProvider(new BsonObjectModelSerializationProvider());
+        }
+
+        //one preparation per engine, shared by every lock built over the collection
+        private Task PrepareLockCollectionAsync()
+        {
+            lock (lockCollectionPreparationSync)
+                return lockCollectionPreparation ??= PrepareLockCollectionCoreAsync();
+        }
+
+        /* The TTL index is garbage collection, not correctness: a creation failure must not
+         * deny the claims, so it reports as a warning, tried once per process. */
+        private async Task PrepareLockCollectionCoreAsync()
+        {
+            try
+            {
+                await ResourceLock.CreateAbandonedDocumentsTtlIndexAsync(
+                    Database.GetCollection<BsonDocument>(Options.DbLockCollectionName)).ConfigureAwait(false);
+            }
+            catch (Exception e)
+            {
+                logger.LockCollectionTtlIndexCreationFailed(Options.DbName, e);
+            }
+        }
+    }
+}

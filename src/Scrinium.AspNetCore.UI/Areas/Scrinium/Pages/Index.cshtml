@@ -1,0 +1,325 @@
+@page
+@using Etherna.Scrinium.AspNetCore.UI.Areas.Scrinium.Pages
+@using Etherna.Scrinium.Core.Serialization.Mapping
+@using Etherna.Scrinium.Core.Utility
+@using Microsoft.AspNetCore.Mvc.Razor
+@model IndexModel
+@{
+    ViewData["Title"] = "Db contexts";
+}
+
+@* Antiforgery token, sent by scriniumDash.js as request header on every POST. *@
+@Html.AntiForgeryToken()
+
+@{
+    /* The explanations of what a section reports stay behind an info icon, revealed by
+       hovering or focusing it, instead of weighting the page with a paragraph each. */
+    void RenderInfoTip(Func<object, HelperResult> text)
+    {
+        <span class="info-tip" tabindex="0">
+            <span class="info-icon" aria-hidden="true">i</span>
+            <span class="info-text">@text(null!)</span>
+        </span>
+    }
+
+    // Render a document shape, expanding the sub-documents of its elements.
+    void RenderDocumentShape(DocumentShape shape, string schemaIdElementName)
+    {
+        <ul class="shape-tree">
+            <li>
+                <span class="shape-key">@schemaIdElementName</span>:
+                <span class="schema-id">@shape.SchemaId</span>
+                <span class="shape-type">@shape.ModelTypeName</span>
+                <span class="schema-tag @(shape.IsActiveSchema ? "current" : "deprecated")">
+                    @(shape.IsActiveSchema ? "current" : "deprecated")
+                </span>
+                @if (shape.IsCycle)
+                {
+                    <span class="shape-tag cycle" title="This shape repeats the one already expanded above: the documents nest it as deep as their data goes">cycle</span>
+                }
+            </li>
+            @foreach (var element in shape.Elements)
+            {
+                <li>
+                    <span class="shape-key">@element.ElementName</span><span class="shape-container">@element.ContainerSuffix</span>:
+                    <span class="shape-type">@element.TypeName</span>
+                    @if (element.IsReference)
+                    {
+                        <span class="shape-tag reference" title="This element carries the summary of a referenced document: the members below it are denormalized copies, rewritten when the referenced document changes them">reference</span>
+                        if (!element.HasReferencedModelRepository)
+                        {
+                            <span class="shape-tag external" title="No repository of this db context handles the referenced model: its documents are saved on the db context owning them, and their changes refresh this summary only when applied by an application hosting both db contexts">external</span>
+                        }
+                        if (!element.IsUpdatePropagated)
+                        {
+                            <span class="shape-tag not-propagated" title="The dependencies update task can't address this element with a filter, an unknown document key being in its path: an update of the referenced document skips it">not propagated</span>
+                        }
+                    }
+                    @foreach (var nestedShape in element.Shapes)
+                    {
+                        RenderDocumentShape(nestedShape, schemaIdElementName);
+                    }
+                </li>
+            }
+        </ul>
+    }
+}
+
+<div id="connection-banner" class="connection-banner" hidden>
+    Connection to the server lost. Retrying&hellip;
+</div>
+
+<div class="dbcontexts">
+    @foreach (var context in Model.DbContexts)
+    {
+        var isReadOnly = context.Engine.Options.IsReadOnly;
+        <section class="dbcontext-card" data-identifier="@context.Engine.Identifier" data-read-only="@(isReadOnly ? "true" : "false")">
+            <header class="dbcontext-card-header">
+                <h2>@context.Engine.Identifier</h2>
+                @if (isReadOnly)
+                {
+                    <span class="status-badge read-only">Read-only</span>
+                }
+                else
+                {
+                    <span class="status-badge" data-role="status">&hellip;</span>
+                    <label class="migration-option">
+                        <input type="checkbox" data-role="stop-at-first-error" disabled />
+                        Stop at first error
+                    </label>
+                    <button type="button" class="btn" data-role="start" disabled>Start migration</button>
+                    <button type="button" class="btn secondary" data-role="start-dry-run" disabled>Dry run</button>
+                }
+            </header>
+
+            @if (isReadOnly)
+            {
+                <p class="muted">This db context denies any write: migrations are managed by the database owner.</p>
+            }
+            else
+            {
+                <details class="migration-advanced">
+                    <summary>Advanced</summary>
+
+                    <label class="migration-option">
+                        Lock lease duration
+                        @{
+                            RenderInfoTip(@<text>
+                                How long this db context stays locked if this application instance dies before the
+                                migration finishes: until the lease expires, no instance can start a migration or a
+                                seeding of it. It also has to cover the delay before the background worker picks the
+                                job up, the only window nothing renews the lease. It does <strong>not</strong> have to
+                                cover the migration duration, however long it takes: the lease is renewed while the
+                                migration runs. Accepted up to @IndexModel.MaxLockLeaseDurationMinutes minutes.
+                            </text>);
+                        }
+                        <input type="number" data-role="lock-lease-duration" disabled
+                               min="1" max="@IndexModel.MaxLockLeaseDurationMinutes" step="1"
+                               value="@((int)ResourceLock.DefaultLeaseDuration.TotalMinutes)" />
+                        minutes
+                    </label>
+                </details>
+
+                <p class="action-feedback" data-role="feedback" hidden></p>
+
+                <div class="migration-live" data-role="live" hidden>
+                    <h3><span class="spinner"></span> Migration in progress</h3>
+                    <p class="migration-live-meta" data-role="live-meta"></p>
+                    <ol class="log-list" data-role="logs"></ol>
+                </div>
+
+                <div class="migration-history">
+                    <h3>Latest migrations</h3>
+                    <div data-role="history"><p class="muted">Loading&hellip;</p></div>
+                </div>
+            }
+
+            <details class="model-schemas" data-role="schemas">
+                <summary>Model schemas</summary>
+
+                <p class="muted">
+                    The model map schemas the documents of each collection can carry, and how many carry them.
+                    @{
+                        RenderInfoTip(@<text>
+                            Every document carries the id of the model map schema shaping it, in the
+                            <code>@ModelMapSchema.IdElementName</code> element. Counting the
+                            documents of each schema id scans the whole collection, so it runs only on request, one
+                            collection at a time: documents counted on a deprecated, unrecognized or missing schema
+                            id are the ones a migration has to rewrite.
+                        </text>);
+                    }
+                </p>
+
+                @foreach (var repository in context.RepositoryRegistry.Repositories.OrderBy(r => r.Name))
+                {
+                    var schemas = IndexModel.GetDocumentSchemas(repository).ToArray();
+                    <div class="schema-collection" data-repository="@repository.Name">
+                        <div class="schema-collection-header">
+                            <h4>@repository.Name</h4>
+                            <span class="muted" data-role="collection-size">&hellip;</span>
+                            <button type="button" class="btn secondary" data-role="count-schemas" disabled>Count documents</button>
+                        </div>
+
+                        <table class="schemas-table">
+                            <thead>
+                                <tr>
+                                    <th>Model type</th>
+                                    <th>Schema id</th>
+                                    <th class="numeric">Documents</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @if (schemas.Length == 0)
+                                {
+                                    <tr>
+                                        <td class="muted" colspan="3">No storable model map registered</td>
+                                    </tr>
+                                }
+                                @foreach (var (modelTypeName, schemaId, isActiveSchema) in schemas)
+                                {
+                                    var schemaTag = isActiveSchema ? "current" : "deprecated";
+                                    <tr data-schema-id="@schemaId" data-active="@(isActiveSchema ? "true" : "false")">
+                                        <td>@modelTypeName</td>
+                                        <td>
+                                            <span class="schema-id">@schemaId</span>
+                                            <span class="schema-tag @schemaTag">@schemaTag</span>
+                                        </td>
+                                        <td class="numeric muted" data-role="count">&mdash;</td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                }
+            </details>
+
+            <details class="deprecated-schema-ids">
+                <summary>Deprecated schema id elements</summary>
+
+                <p class="muted">
+                    The documents of each collection still carrying their schema id under a previous
+                    element name, and their migration.
+                    @{
+                        RenderInfoTip(@<text>
+                            Documents written before the schema id element took the
+                            <code>@ModelMapSchema.IdElementName</code> name carry it in the
+                            <code>@ModelMapSchema.DeprecatedIdElementName</code> element,
+                            still recognized while reading them: they keep loading, but that name is
+                            <strong>deprecated</strong>, and a future version of Scrinium will stop reading it.
+                            Counting them scans the whole collection, so it runs
+                            only on request, one collection at a time. The migration rewrites each of those
+                            documents whole with its current active schema, so the current name carries the
+                            schema id at every level: a document written under the current name has every
+                            sub-document written under it too, and stays out. Failing documents are skipped and
+                            reported, keeping the content they have.
+                        </text>);
+                    }
+                </p>
+
+                @foreach (var repository in context.RepositoryRegistry.Repositories.OrderBy(r => r.Name))
+                {
+                    <div class="deprecated-schema-id-collection" data-repository="@repository.Name">
+                        <div class="deprecated-schema-id-collection-header">
+                            <h4>@repository.Name</h4>
+                            <span class="muted" data-role="deprecated-schema-id-count">&mdash;</span>
+                            <button type="button" class="btn secondary" data-role="count-deprecated-schema-ids">Count documents</button>
+                            @if (!repository.IsReadOnly)
+                            {
+                                <button type="button" class="btn" data-role="migrate-deprecated-schema-ids" hidden>Migrate documents</button>
+                            }
+                        </div>
+
+                        <p class="action-feedback" data-role="migration-outcome" hidden></p>
+                        <ul class="deprecated-schema-id-errors" data-role="migration-errors" hidden></ul>
+                    </div>
+                }
+            </details>
+
+            <details class="document-structures">
+                <summary>Document structures</summary>
+
+                <p class="muted">
+                    How the documents of each collection are shaped, one structure per registered model map schema.
+                    @{
+                        RenderInfoTip(@<text>
+                            The active schema writes the new documents, the deprecated ones shape those written by a
+                            previous version of the application, until a migration rewrites them. Elements carrying
+                            the summary of a referenced document are tagged, and expanded with the members
+                            denormalized into them: updating one of those members on the referenced document
+                            rewrites the summary, in every document carrying it. A sub-document is written by the
+                            concrete type its element receives, so an element declaring a type with derived ones
+                            renders a structure for each of them, and one repeating a structure already expanded
+                            above reports it as a cycle, nested as deep as the data goes. Documents also carry their
+                            type discriminator, when their concrete type differs from the declared one.
+                        </text>);
+                    }
+                </p>
+
+                @foreach (var repository in context.RepositoryRegistry.Repositories.OrderBy(r => r.Name))
+                {
+                    var shapes = IndexModel.GetDocumentShapes(repository).ToArray();
+                    <div class="structure-collection" data-repository="@repository.Name">
+                        <h4>@repository.Name</h4>
+
+                        @if (shapes.Length == 0)
+                        {
+                            <p class="muted">No storable model map registered</p>
+                        }
+
+                        @foreach (var shape in shapes)
+                        {
+                            <details class="document-shape" data-schema-id="@shape.SchemaId">
+                                <summary>
+                                    <span class="shape-type">@shape.ModelTypeName</span>
+                                    <span class="schema-id">@shape.SchemaId</span>
+                                    <span class="schema-tag @(shape.IsActiveSchema ? "current" : "deprecated")">
+                                        @(shape.IsActiveSchema ? "current" : "deprecated")
+                                    </span>
+                                </summary>
+
+                                @{ RenderDocumentShape(shape, ModelMapSchema.IdElementName); }
+                            </details>
+                        }
+                    </div>
+                }
+            </details>
+
+            <details class="missing-origin-references">
+                <summary>Missing origin references</summary>
+
+                <p class="muted">
+                    The references of each collection whose origin document doesn't exist anymore, and their removal.
+                    @{
+                        RenderInfoTip(@<text>
+                            A reference carries the id of its origin document: when that document doesn't
+                            exist anymore on its collection, loading the reference finds nothing. The scan
+                            reads every referenced id of the collection and verifies it against the origin
+                            collection, so it runs only on request, one collection at a time. The removal
+                            scans again and repairs what it verifies: a reference hosted as an array item is
+                            pulled out of its array, any other one is set to null, reading as a null
+                            reference from then on. Reference paths the scan can't verify are listed apart,
+                            and stay untouched.
+                        </text>);
+                    }
+                </p>
+
+                @foreach (var repository in context.RepositoryRegistry.Repositories.OrderBy(r => r.Name))
+                {
+                    <div class="missing-origin-collection" data-repository="@repository.Name">
+                        <div class="missing-origin-collection-header">
+                            <h4>@repository.Name</h4>
+                            <button type="button" class="btn secondary" data-role="scan-references">Scan references</button>
+                            @if (!repository.IsReadOnly)
+                            {
+                                <button type="button" class="btn" data-role="remove-references" hidden>Remove references</button>
+                            }
+                        </div>
+
+                        <p class="muted" data-role="removal-outcome" hidden></p>
+                        <div data-role="scan-results"></div>
+                    </div>
+                }
+            </details>
+        </section>
+    }
+</div>

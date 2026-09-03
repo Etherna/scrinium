@@ -1,0 +1,28 @@
+<Project>
+  <PropertyGroup>
+    <!-- The license of every package of the solution, declared once. The COPYING (GNU GPL) and
+         COPYING.LESSER (GNU LGPL) texts are packed as content, but a license file carries no
+         machine readable identifier: the SPDX expression is what the package registries publish and
+         what the license scanners of the consumers read. It says `-or-later` like the "or (at your
+         option) any later version" of the source headers, and it excludes PackageLicenseFile, which
+         NuGet accepts only as its alternative, and only for a single file. -->
+    <PackageLicenseExpression>LGPL-3.0-or-later</PackageLicenseExpression>
+
+    <!-- Audit direct and transitive dependencies: the packages of this graph prone to receive
+         advisories (the official driver stack pulled by Hangfire.Mongo, the Microsoft.Extensions
+         floor of Hangfire.NetCore) are all transitive. Explicit, to not depend on the SDK default.
+         The audit codes stay warnings under the projects TreatWarningsAsErrors: an advisory is
+         published on a schedule nobody controls, and breaking every build over it would also block
+         the update fixing it. They are reported by the restore of any build, and by the vulnerable
+         packages report of `dotnet list package`. -->
+    <NuGetAuditMode>all</NuGetAuditMode>
+    <WarningsNotAsErrors>$(WarningsNotAsErrors);NU1901;NU1902;NU1903;NU1904</WarningsNotAsErrors>
+
+    <!-- GitVersion.MsBuild writes and reads its version file at a per project path shared by every
+         build instance of a multi targeting project: parallel target framework inner builds race on
+         it, and a reader can find the file truncated by a concurrent writer. One file per instance.
+         The override must stay in props (the package props freeze the tool arguments with this value)
+         and can't use $(BaseIntermediateOutputPath), still undefined when this file imports. -->
+    <GitVersionOutputFile>$(MSBuildProjectDirectory)/obj/gitversion.$(TargetFramework).json</GitVersionOutputFile>
+  </PropertyGroup>
+</Project>
