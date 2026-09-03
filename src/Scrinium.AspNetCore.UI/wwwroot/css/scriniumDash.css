@@ -68,10 +68,19 @@ main.container {
 }
 
 .brand {
+  align-items: center;
   color: #f9fafb;
+  display: inline-flex;
   font-size: 1.15rem;
   font-weight: 600;
+  gap: 0.5rem;
   text-decoration: none;
+}
+
+.brand-mark {
+  flex: none;
+  height: 1.5em;
+  width: auto;
 }
 
 .brand span {
