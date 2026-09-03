@@ -5,12 +5,23 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>@ViewData["Title"] - Scrinium Dashboard</title>
+    @* The SVG icon follows the browser color scheme, and the ICO is its fallback: declared with
+       a fixed size, the browsers supporting SVG icons prefer the SVG. *@
+    <link rel="icon" href="~/_content/Etherna.Scrinium.AspNetCore.UI/favicon.ico" sizes="32x32" asp-append-version="true" />
+    <link rel="icon" href="~/_content/Etherna.Scrinium.AspNetCore.UI/favicon.svg" type="image/svg+xml" asp-append-version="true" />
     <link rel="stylesheet" href="~/_content/Etherna.Scrinium.AspNetCore.UI/css/scriniumDash.css" asp-append-version="true" />
 </head>
 <body>
     <header class="site-header">
         <div class="container header-row">
-            <a class="brand" asp-area="Scrinium" asp-page="/Index">Scrinium <span>Dashboard</span></a>
+            <a class="brand" asp-area="Scrinium" asp-page="/Index">
+                @* The brand symbol, inline to take the color of the brand text. *@
+                <svg class="brand-mark" viewBox="20 20 120 140" fill="currentColor" aria-hidden="true">
+                    <path d="M 79.318359 20.023438 A 10 10 0 0 0 70 30 L 70 67.46875 A 47.639 7.639 0 0 0 90 67.46875 L 90 30 A 10 10 0 0 0 79.318359 20.023438 z M 46.957031 30.023438 A 10 10 0 0 0 37.638672 40 L 37.638672 63.494141 A 47.639 7.639 0 0 0 57.638672 66.746094 L 57.638672 40 A 10 10 0 0 0 46.957031 30.023438 z M 111.67773 30.023438 A 10 10 0 0 0 102.36133 40 L 102.36133 66.746094 A 47.639 7.639 0 0 0 122.36133 63.494141 L 122.36133 40 A 10 10 0 0 0 111.67773 30.023438 z M 38.757812 67.585938 A 52.361 12.361 0 0 0 40.615234 68.115234 A 52.361 12.361 0 0 1 38.757812 67.585938 z M 121.24219 67.585938 A 52.361 12.361 0 0 1 119.38477 68.115234 A 52.361 12.361 0 0 0 121.24219 67.585938 z M 43.417969 68.814453 A 52.361 12.361 0 0 0 45.498047 69.275391 A 52.361 12.361 0 0 1 43.417969 68.814453 z M 116.58203 68.814453 A 52.361 12.361 0 0 1 114.50195 69.275391 A 52.361 12.361 0 0 0 116.58203 68.814453 z M 48.689453 69.878906 A 52.361 12.361 0 0 0 51.017578 70.279297 A 52.361 12.361 0 0 1 48.689453 69.878906 z M 111.31055 69.878906 A 52.361 12.361 0 0 1 108.98242 70.279297 A 52.361 12.361 0 0 0 111.31055 69.878906 z M 54.556641 70.775391 A 52.361 12.361 0 0 0 56.992188 71.09375 A 52.361 12.361 0 0 1 54.556641 70.775391 z M 105.44336 70.775391 A 52.361 12.361 0 0 1 103.00781 71.09375 A 52.361 12.361 0 0 0 105.44336 70.775391 z" />
+                    <path fill-rule="evenodd" d="M 75.90625 40.046875 A 60 20 0 0 0 20 60 L 20 140 A 60 20 0 0 0 140 140 L 140 60 A 60 20 0 0 0 75.90625 40.046875 z M 76.427734 47.667969 A 52.361 12.361 0 0 1 132.36133 60 A 52.361329 12.361077 0 0 1 80 72.361328 A 52.361329 12.361077 0 0 1 79.992188 72.361328 A 9.338 9.338 0 0 0 80 91.035156 A 29.482 29.482 0 1 1 53.279297 132.97852 L 65.984375 136.38867 L 71.537109 124.46484 A 9.338 9.338 0 1 0 80 111.17969 A 29.482 29.482 0 0 1 52.707031 70.548828 A 52.361329 12.361077 0 0 1 27.638672 60 A 52.361 12.361 0 0 1 76.427734 47.667969 z" />
+                </svg>
+                Scrinium <span>Dashboard</span>
+            </a>
             @if (!string.IsNullOrEmpty(dashboardOptions.AppPath))
             {
                 <a class="back-link" href="@dashboardOptions.AppPath">Back to site</a>
