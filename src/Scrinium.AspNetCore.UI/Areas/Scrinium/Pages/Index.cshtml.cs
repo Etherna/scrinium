@@ -56,6 +56,10 @@ namespace Etherna.Scrinium.AspNetCore.UI.Areas.Scrinium.Pages
             "script-src 'self'; " +
             "style-src 'self'";
         private const int HistoryLength = 5;
+        /* The operations a page of the expanded history reads. The polled status keeps
+         * carrying HistoryLength operations whatever the history size: walking it whole
+         * belongs to the explicit request, one page at a time. */
+        private const int HistoryPageLength = 20;
 
         // Fields.
         private readonly ScriniumOptions options;
@@ -188,6 +192,43 @@ namespace Etherna.Scrinium.AspNetCore.UI.Areas.Scrinium.Pages
                 repository = repository.Name,
                 isUnavailable = documentsCount is null,
                 documentsCount
+            });
+        }
+
+        /// <summary>
+        /// Read a page of the migration operations history of a db context, the most recent
+        /// first. The polled status carries the latest operations alone: reaching the older
+        /// ones is an explicit request, one page at a time.
+        /// </summary>
+        /* The page number can't be named `page`: Razor Pages reserves that route value for
+         * the page path itself, and a handler parameter of that name binds to it. */
+        public async Task<IActionResult> OnGetMigrationsAsync(string identifier, int historyPage = 0)
+        {
+            InitializePage();
+
+            var dbContext = DbContexts.FirstOrDefault(dbc => dbc.Engine.Identifier == identifier);
+            if (dbContext is null)
+                return NotFound();
+
+            /* The page arrives from the browser: the control walks the history one page at a
+             * time, but the request doesn't have to come from it. The paged query refuses a
+             * negative page, and one whose skipped operations amount doesn't fit an int, with
+             * an argument exception: refuse them here, as the bad requests they are. */
+            if (historyPage < 0 || (long)historyPage * HistoryPageLength > int.MaxValue)
+                return BadRequest(new
+                {
+                    error = "The history page must be a non negative number, inside the paging range."
+                });
+
+            var operations = await dbContext.GetLastMigrationsAsync(historyPage, HistoryPageLength).ConfigureAwait(false);
+
+            return new JsonResult(new
+            {
+                identifier = dbContext.Engine.Identifier,
+                historyPage,
+                //only a full page can be followed by another one
+                hasMore = operations.Count == HistoryPageLength,
+                operations = operations.Select(ProjectOperation)
             });
         }
 
