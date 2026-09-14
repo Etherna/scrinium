@@ -371,55 +371,6 @@ namespace Etherna.Scrinium.AspNetCore.UI.Areas.Scrinium.Pages
         }
 
         /// <summary>
-        /// Migrate the documents of a single collection carrying their schema id under a
-        /// deprecated element name: each of them is rewritten whole with its current active
-        /// schema. The collection is scanned again server side: the migration never trusts a
-        /// list of documents sent by the browser.
-        /// </summary>
-        public async Task<IActionResult> OnPostMigrateDeprecatedSchemaIdDocumentsAsync(string identifier, string repositoryName)
-        {
-            InitializePage();
-
-            var dbContext = DbContexts.FirstOrDefault(dbc => dbc.Engine.Identifier == identifier);
-            var repository = dbContext?.RepositoryRegistry.Repositories
-                .FirstOrDefault(repo => repo.Name == repositoryName);
-            if (repository is null)
-                return NotFound();
-
-            /* The page doesn't render the migration control on a read-only repository, but the
-             * request doesn't have to come from it. */
-            if (repository.IsReadOnly)
-                return BadRequest(new
-                {
-                    migrated = false,
-                    error = $"The repository \"{repository.Name}\" is read-only."
-                });
-
-            var migrationResult = await repository.MigrateDeprecatedSchemaIdDocumentsAsync().ConfigureAwait(false);
-
-            /* A migration reports what failed instead of throwing: an exclusive access denying
-             * the collection surfaces as the exception failing the whole scan. */
-            return new JsonResult(new
-            {
-                migrated = migrationResult.Succeded,
-                migratedDocumentsCount = migrationResult.MigratedDocuments,
-                documentErrorsCount = migrationResult.TotDocumentErrors,
-                //a capped listing: the errors count always reports the full amount
-                documentErrors = migrationResult.DocumentErrors.Select(documentError => new
-                {
-                    documentId = documentError.DocumentId,
-                    message = documentError.Message
-                }),
-                error = migrationResult.Exception switch
-                {
-                    UnauthorizedAccessException => "The collection is unavailable: an exclusive access is running.",
-                    { } exception => $"{exception.GetType().Name}: {exception.Message}",
-                    _ => null
-                }
-            });
-        }
-
-        /// <summary>
         /// Remove from a single collection the references pointing to missing origin
         /// documents. The collection is scanned again server side: the removal never
         /// trusts a list of ids sent by the browser.
@@ -475,6 +426,7 @@ namespace Etherna.Scrinium.AspNetCore.UI.Areas.Scrinium.Pages
             string identifier,
             bool dryRun = false,
             bool stopAtFirstError = false,
+            bool rewriteDeprecatedSchemas = false,
             int? lockLeaseDurationMinutes = null)
         {
             InitializePage();
@@ -503,7 +455,8 @@ namespace Etherna.Scrinium.AspNetCore.UI.Areas.Scrinium.Pages
             var migrationOperation = await dbContext.TryStartMigrationAsync(
                 dryRun,
                 stopAtFirstError,
-                TimeSpan.FromMinutes(lockLeaseDurationMinutes.Value)).ConfigureAwait(false);
+                TimeSpan.FromMinutes(lockLeaseDurationMinutes.Value),
+                rewriteDeprecatedSchemas).ConfigureAwait(false);
 
             return new JsonResult(new
             {
@@ -525,6 +478,7 @@ namespace Etherna.Scrinium.AspNetCore.UI.Areas.Scrinium.Pages
             id = operation.Id,
             isDryRun = operation.IsDryRun,
             stopAtFirstError = operation.IsStopAtFirstErrorEnabled,
+            rewriteDeprecatedSchemas = operation.IsDeprecatedSchemaRewriteEnabled,
             status = operation.CurrentStatus.ToString(),
             //the ObjectId id embeds the creation instant
             creationDateTime = ObjectId.TryParse(operation.Id, out var objectId) ? new DateTimeOffset(objectId.CreationTime) : (DateTimeOffset?)null,

@@ -33,17 +33,12 @@
         });
 
         /* Deprecated schema id elements are available on every db context too: the count is
-         * a read, and the migration control renders only on the writable repositories. */
+         * a read, and what it counts is repaired by the deprecated schemas rewrite of a
+         * migration start. */
         Array.prototype.forEach.call(card.querySelectorAll('.deprecated-schema-id-collection'), function (collection) {
             collection.querySelector('[data-role="count-deprecated-schema-ids"]').addEventListener('click', function () {
                 countDeprecatedSchemaIdDocuments(card, collection);
             });
-
-            var migrateButton = collection.querySelector('[data-role="migrate-deprecated-schema-ids"]');
-            if (migrateButton)
-                migrateButton.addEventListener('click', function () {
-                    migrateDeprecatedSchemaIdDocuments(card, collection);
-                });
         });
 
         /* Missing origin references are available on every db context too: the scan is a
@@ -79,10 +74,14 @@
     function startMigration(card, dryRun) {
         var identifier = card.dataset.identifier;
         var stopAtFirstError = card.querySelector('[data-role="stop-at-first-error"]').checked;
+        var rewriteDeprecatedSchemas = card.querySelector('[data-role="rewrite-deprecated-schemas"]').checked;
         //the lease duration is validated server side too: the control only bounds the ordinary case
         var lockLeaseDurationMinutes = card.querySelector('[data-role="lock-lease-duration"]').value;
         //a start migrates what the application declares, and nothing else: say it before it runs
-        var scope = 'It runs the document migrations the application declares, and nothing else.';
+        var scope = rewriteDeprecatedSchemas
+            ? 'It runs the document migrations the application declares, and rewrites every document ' +
+              'left on a deprecated schema, on every writable collection.'
+            : 'It runs the document migrations the application declares, and nothing else.';
         var message = dryRun
             ? 'Start migration dry run on "' + identifier + '"?\n\n' + scope +
               '\n\nThe dry run simulates them without persisting anything, reporting the failing ' +
@@ -108,6 +107,7 @@
                 identifier: identifier,
                 dryRun: dryRun,
                 stopAtFirstError: stopAtFirstError,
+                rewriteDeprecatedSchemas: rewriteDeprecatedSchemas,
                 lockLeaseDurationMinutes: lockLeaseDurationMinutes
             })
         }).then(function (response) {
@@ -311,7 +311,6 @@
 
     function renderDeprecatedSchemaIdCount(collection, result) {
         var count = collection.querySelector('[data-role="deprecated-schema-id-count"]');
-        var migrateButton = collection.querySelector('[data-role="migrate-deprecated-schema-ids"]');
 
         if (result.isUnavailable) {
             count.textContent = 'Unavailable: an exclusive access is running';
@@ -323,80 +322,6 @@
             count.textContent = result.documentsCount.toLocaleString() + ' documents to migrate';
             count.className = 'deprecated-schema-id-documents';
         }
-
-        if (migrateButton)
-            migrateButton.hidden = result.isUnavailable || result.documentsCount === 0;
-    }
-
-    function migrateDeprecatedSchemaIdDocuments(card, collection) {
-        var repository = collection.dataset.repository;
-        if (!window.confirm('Migrate the documents of "' + repository + '" carrying a deprecated schema id element?\n\n' +
-            'The collection is scanned again, and every document carrying the schema id under a deprecated ' +
-            'element name is rewritten whole with its current active schema. Failing documents are skipped ' +
-            'and reported, keeping the content they have.'))
-            return;
-
-        var migrateButton = collection.querySelector('[data-role="migrate-deprecated-schema-ids"]');
-        var outcome = collection.querySelector('[data-role="migration-outcome"]');
-        var errors = collection.querySelector('[data-role="migration-errors"]');
-        migrateButton.disabled = true;
-        outcome.hidden = true;
-        errors.hidden = true;
-
-        fetch(baseUrl + '?handler=MigrateDeprecatedSchemaIdDocuments', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/x-www-form-urlencoded',
-                'RequestVerificationToken': antiforgeryToken
-            },
-            body: new URLSearchParams({
-                identifier: card.dataset.identifier,
-                repositoryName: repository
-            })
-        }).then(function (response) {
-            //a migration rejected by the server reports its reason in the body, with an error status
-            return response.json().then(function (result) {
-                if (!response.ok && !result.error)
-                    throw new Error('HTTP ' + response.status);
-                return result;
-            });
-        }).then(function (result) {
-            renderDeprecatedSchemaIdMigration(collection, result);
-
-            //recount to render the migrated state
-            countDeprecatedSchemaIdDocuments(card, collection);
-        }).catch(function () {
-            outcome.textContent = 'Migration request failed.';
-            outcome.hidden = false;
-        }).then(function () {
-            migrateButton.disabled = false;
-        });
-    }
-
-    function renderDeprecatedSchemaIdMigration(collection, result) {
-        var outcome = collection.querySelector('[data-role="migration-outcome"]');
-        var errors = collection.querySelector('[data-role="migration-errors"]');
-        errors.innerHTML = '';
-
-        var message = '';
-        if (result.migratedDocumentsCount !== undefined)
-            message = 'Migrated ' + result.migratedDocumentsCount.toLocaleString() + ' documents.';
-        if (result.documentErrorsCount)
-            message += ' ' + result.documentErrorsCount.toLocaleString() + ' documents failed and were skipped.';
-        if (result.error)
-            message = (message + ' ' + result.error).trim();
-        outcome.textContent = message;
-        outcome.hidden = false;
-
-        //the failing documents reported by the migration, listing capped by the server
-        (result.documentErrors || []).forEach(function (documentError) {
-            var errorItem = document.createElement('li');
-            /* The error message quotes the exception that failed the document, so it can carry
-             * document content: it must keep landing on textContent, never on innerHTML. */
-            errorItem.textContent = documentError.documentId + ' — ' + documentError.message;
-            errors.appendChild(errorItem);
-        });
-        errors.hidden = errors.childElementCount === 0;
     }
 
     function scanMissingOriginReferences(card, collection) {
@@ -655,6 +580,7 @@
         card.querySelector('[data-role="start"]').disabled = status.isLocked;
         card.querySelector('[data-role="start-dry-run"]').disabled = status.isLocked;
         card.querySelector('[data-role="stop-at-first-error"]').disabled = status.isLocked;
+        card.querySelector('[data-role="rewrite-deprecated-schemas"]').disabled = status.isLocked;
         card.querySelector('[data-role="lock-lease-duration"]').disabled = status.isLocked;
 
         var live = card.querySelector('[data-role="live"]');
@@ -666,6 +592,7 @@
                 status.runningOperation.id +
                 ' — ' + status.runningOperation.status +
                 ' since ' + formatDateTime(status.runningOperation.creationDateTime) +
+                (status.runningOperation.rewriteDeprecatedSchemas ? ' — rewrites the deprecated schemas' : '') +
                 (status.runningOperation.stopAtFirstError ? ' — stops at the first failing document' : '');
             renderLogs(logList, status.runningOperation.logs, true);
         } else {
@@ -834,6 +761,13 @@
             dryRunBadge.className = 'status-badge dry-run';
             dryRunBadge.textContent = 'Dry run';
             summary.appendChild(dryRunBadge);
+        }
+
+        if (operation.rewriteDeprecatedSchemas) {
+            var rewriteBadge = document.createElement('span');
+            rewriteBadge.className = 'status-badge';
+            rewriteBadge.textContent = 'Rewrite deprecated schemas';
+            summary.appendChild(rewriteBadge);
         }
 
         if (operation.stopAtFirstError) {

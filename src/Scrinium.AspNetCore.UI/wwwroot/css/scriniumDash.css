@@ -399,25 +399,13 @@ code {
 
 .deprecated-schema-id-collection-header .btn {
   font-size: 0.8rem;
-  padding: 0.25rem 0.7rem;
-}
-
-.deprecated-schema-id-collection-header .btn:first-of-type {
   margin-left: auto;
+  padding: 0.25rem 0.7rem;
 }
 
 .deprecated-schema-id-documents {
   color: var(--warning);
   font-weight: 600;
-}
-
-.deprecated-schema-id-errors {
-  color: var(--danger);
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 0.8rem;
-  list-style: none;
-  margin: 0.25rem 0 0;
-  padding: 0;
 }
 
 /* Document structures

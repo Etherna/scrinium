@@ -39,6 +39,22 @@ namespace Etherna.Scrinium.Core.Repositories
         Type ModelType { get; }
         string Name { get; }
 
+        /// <summary>
+        /// Build the migration rewriting the collection documents left on a deprecated schema:
+        /// the ones whose stored model map schema id isn't the active one of their concrete
+        /// type, the ones carrying it under the deprecated element name
+        /// (<see cref="CountDeprecatedSchemaIdDocumentsAsync"/>) included, since a document
+        /// written under the current name carries an active schema id there. Each of them is
+        /// deserialized and written back whole with its current active schema; failing
+        /// documents are skipped and reported, and the documents referencing the migrated ones
+        /// are not updated, like in any document migration.
+        /// This is the migration a db context migration operation runs on every writable
+        /// collection when asked to rewrite the deprecated schemas, sharing its dry run, its
+        /// stop at first error and the index steps around it.
+        /// </summary>
+        /// <returns>The document migration, not executed yet</returns>
+        DocumentMigration BuildDeprecatedSchemaDocumentsMigration();
+
         Task BuildNewIndexesAsync(
             CancellationToken cancellationToken = default);
 

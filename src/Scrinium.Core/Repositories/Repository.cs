@@ -92,6 +92,19 @@ namespace Etherna.Scrinium.Core.Repositories
         private static FilterDefinition<TModel> DeprecatedSchemaIdDocumentsFilter =>
             new BsonDocument(ModelMapSchema.DeprecatedIdElementName, new BsonDocument("$exists", true));
 
+        /* The documents left on a deprecated schema: the ones whose stored schema id isn't the
+         * active id of a concrete model type the collection can store. A $nin also matches a
+         * missing element, so the documents carrying their schema id under the deprecated
+         * element name match too, and rightly: what a rewrite lands under the current name at
+         * every level is the active schema. */
+        private FilterDefinition<TModel> DeprecatedSchemaDocumentsFilter =>
+            new BsonDocument(ModelMapSchema.IdElementName, new BsonDocument(
+                "$nin",
+                new BsonArray(DbContext.Engine.MapRegistry.MapsByModelType.Values
+                    .OfType<IModelMap>()
+                    .Where(map => !map.ModelType.IsAbstract && typeof(TModel).IsAssignableFrom(map.ModelType))
+                    .Select(map => map.ActiveSchema.Id))));
+
         private IInternalDbContext InternalDbContext => (IInternalDbContext)DbContext;
 
         // Public methods.
@@ -127,6 +140,12 @@ namespace Etherna.Scrinium.Core.Repositories
 
             return result;
         }
+
+        public virtual DocumentMigration BuildDeprecatedSchemaDocumentsMigration() =>
+            new DocumentMigration<TModel, TKey>(this)
+            {
+                DocumentsFilter = DeprecatedSchemaDocumentsFilter
+            };
 
         public virtual async Task BuildNewIndexesAsync(CancellationToken cancellationToken = default)
         {
