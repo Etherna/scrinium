@@ -68,6 +68,9 @@
         card.querySelector('[data-role="start-dry-run"]').addEventListener('click', function () {
             startMigration(card, true);
         });
+        card.querySelector('[data-role="expand-history"]').addEventListener('click', function () {
+            toggleHistoryExpansion(card);
+        });
     });
 
     if (cards.length !== 0)
@@ -670,7 +673,90 @@
             logList.innerHTML = '';
         }
 
-        renderHistory(card.querySelector('[data-role="history"]'), status.lastOperations);
+        /* The expanded history is loaded on demand, page by page: rebuilding it from the
+         * polled status would drop every older page the operator walked to. */
+        if (card.dataset.historyExpanded !== 'true')
+            renderHistory(card.querySelector('[data-role="history"]'), status.lastOperations);
+    }
+
+    function toggleHistoryExpansion(card) {
+        if (card.dataset.historyExpanded === 'true') {
+            collapseHistory(card);
+            return;
+        }
+
+        card.dataset.historyExpanded = 'true';
+        card.querySelector('[data-role="history-title"]').textContent = 'All migrations';
+        card.querySelector('[data-role="expand-history"]').textContent = 'Show latest';
+        card.querySelector('[data-role="history"]').innerHTML = '';
+        loadHistoryPage(card, 0);
+    }
+
+    function collapseHistory(card) {
+        card.dataset.historyExpanded = 'false';
+        card.querySelector('[data-role="history-title"]').textContent = 'Latest migrations';
+        card.querySelector('[data-role="expand-history"]').textContent = 'Show all';
+
+        /* Back to the polled view: the payload of the last refresh already carries the latest
+         * operations, so the block renders without waiting for the next poll. */
+        var lastPayload = card.dataset.lastPayload;
+        renderHistory(
+            card.querySelector('[data-role="history"]'),
+            lastPayload ? JSON.parse(lastPayload).lastOperations : []);
+    }
+
+    function loadHistoryPage(card, page) {
+        var container = card.querySelector('[data-role="history"]');
+        var loading = document.createElement('p');
+        loading.className = 'muted';
+        loading.textContent = 'Loading…';
+        container.appendChild(loading);
+
+        fetch(baseUrl + '?handler=Migrations' +
+            '&identifier=' + encodeURIComponent(card.dataset.identifier) +
+            '&historyPage=' + page, {
+            headers: { 'Accept': 'application/json' }
+        }).then(function (response) {
+            if (!response.ok)
+                throw new Error('HTTP ' + response.status);
+            return response.json();
+        }).then(function (result) {
+            container.removeChild(loading);
+            appendHistoryPage(card, container, result);
+        }).catch(function () {
+            loading.textContent = 'History page request failed.';
+        });
+    }
+
+    function appendHistoryPage(card, container, result) {
+        if (result.operations.length === 0) {
+            //an empty first page is an empty history, an empty older one closes the walk
+            if (container.childElementCount === 0) {
+                var empty = document.createElement('p');
+                empty.className = 'muted';
+                empty.textContent = 'No migrations executed yet.';
+                container.appendChild(empty);
+            }
+            return;
+        }
+
+        result.operations.forEach(function (operation) {
+            container.appendChild(buildHistoryEntry(operation));
+        });
+
+        //only a full page can be followed by another one
+        if (!result.hasMore)
+            return;
+
+        var older = document.createElement('button');
+        older.type = 'button';
+        older.className = 'btn secondary history-older';
+        older.textContent = 'Load older';
+        older.addEventListener('click', function () {
+            container.removeChild(older);
+            loadHistoryPage(card, result.historyPage + 1);
+        });
+        container.appendChild(older);
     }
 
     function renderLogs(list, logs, scrollToBottom) {
@@ -728,48 +814,52 @@
         }
 
         operations.forEach(function (operation) {
-            var entry = document.createElement('details');
-            entry.className = 'history-entry';
-
-            var summary = document.createElement('summary');
-
-            var badge = document.createElement('span');
-            badge.className = 'status-badge ' + historyBadgeClass(operation.status);
-            badge.textContent = operation.status;
-            summary.appendChild(badge);
-
-            if (operation.isDryRun) {
-                var dryRunBadge = document.createElement('span');
-                dryRunBadge.className = 'status-badge dry-run';
-                dryRunBadge.textContent = 'Dry run';
-                summary.appendChild(dryRunBadge);
-            }
-
-            if (operation.stopAtFirstError) {
-                var stopBadge = document.createElement('span');
-                stopBadge.className = 'status-badge';
-                stopBadge.textContent = 'Stop at first error';
-                summary.appendChild(stopBadge);
-            }
-
-            var dates = document.createElement('span');
-            dates.className = 'history-dates';
-            //a cancelled operation never executed: it has no completion instant to render
-            dates.textContent = 'started ' + formatDateTime(operation.creationDateTime) +
-                (operation.completedDateTime
-                    ? ' — completed ' + formatDateTime(operation.completedDateTime)
-                    : (operation.status === 'Cancelled' ? ' — cancelled before executing' : ''));
-            summary.appendChild(dates);
-
-            entry.appendChild(summary);
-
-            var logList = document.createElement('ol');
-            logList.className = 'log-list';
-            renderLogs(logList, operation.logs, false);
-            entry.appendChild(logList);
-
-            container.appendChild(entry);
+            container.appendChild(buildHistoryEntry(operation));
         });
+    }
+
+    function buildHistoryEntry(operation) {
+        var entry = document.createElement('details');
+        entry.className = 'history-entry';
+
+        var summary = document.createElement('summary');
+
+        var badge = document.createElement('span');
+        badge.className = 'status-badge ' + historyBadgeClass(operation.status);
+        badge.textContent = operation.status;
+        summary.appendChild(badge);
+
+        if (operation.isDryRun) {
+            var dryRunBadge = document.createElement('span');
+            dryRunBadge.className = 'status-badge dry-run';
+            dryRunBadge.textContent = 'Dry run';
+            summary.appendChild(dryRunBadge);
+        }
+
+        if (operation.stopAtFirstError) {
+            var stopBadge = document.createElement('span');
+            stopBadge.className = 'status-badge';
+            stopBadge.textContent = 'Stop at first error';
+            summary.appendChild(stopBadge);
+        }
+
+        var dates = document.createElement('span');
+        dates.className = 'history-dates';
+        //a cancelled operation never executed: it has no completion instant to render
+        dates.textContent = 'started ' + formatDateTime(operation.creationDateTime) +
+            (operation.completedDateTime
+                ? ' — completed ' + formatDateTime(operation.completedDateTime)
+                : (operation.status === 'Cancelled' ? ' — cancelled before executing' : ''));
+        summary.appendChild(dates);
+
+        entry.appendChild(summary);
+
+        var logList = document.createElement('ol');
+        logList.className = 'log-list';
+        renderLogs(logList, operation.logs, false);
+        entry.appendChild(logList);
+
+        return entry;
     }
 
     function historyBadgeClass(status) {
