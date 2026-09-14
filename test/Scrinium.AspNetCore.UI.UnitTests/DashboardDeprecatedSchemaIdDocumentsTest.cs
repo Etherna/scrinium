@@ -15,8 +15,6 @@
 using Etherna.Scrinium.AspNetCore.UI.Areas.Scrinium.Pages;
 using Etherna.Scrinium.AspNetCore.UI.Auth.Filters;
 using Etherna.Scrinium.Core;
-using Etherna.Scrinium.Core.Domain.Models.DbMigrationOpAgg;
-using Etherna.Scrinium.Core.Migration;
 using Etherna.Scrinium.Core.Options;
 using Etherna.Scrinium.Core.Repositories;
 using Etherna.Scrinium.Core.Serialization.Mapping;
@@ -30,8 +28,6 @@ using Moq;
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Net;
-using System.Net.Http;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
@@ -58,7 +54,6 @@ namespace Etherna.Scrinium.AspNetCore.UI
 
         // Fields.
         private readonly Mock<IDbContext> dbContextMock;
-        private readonly Mock<IRepository> readOnlyRepositoryMock;
         private readonly Mock<IRepository> repositoryMock;
 
         // Constructor.
@@ -73,11 +68,9 @@ namespace Etherna.Scrinium.AspNetCore.UI
             dbContextMock.Setup(dbContext => dbContext.Engine).Returns(engineMock.Object);
 
             repositoryMock = BuildRepositoryMock(RepositoryName, isReadOnly: false);
-            readOnlyRepositoryMock = BuildRepositoryMock(ReadOnlyRepositoryName, isReadOnly: true);
-
             var repositoryRegistryMock = new Mock<IRepositoryRegistry>();
             repositoryRegistryMock.Setup(registry => registry.Repositories)
-                .Returns([repositoryMock.Object, readOnlyRepositoryMock.Object]);
+                .Returns([repositoryMock.Object, BuildRepositoryMock(ReadOnlyRepositoryName, isReadOnly: true).Object]);
             dbContextMock.Setup(dbContext => dbContext.RepositoryRegistry).Returns(repositoryRegistryMock.Object);
         }
 
@@ -127,99 +120,6 @@ namespace Etherna.Scrinium.AspNetCore.UI
         }
 
         [Fact]
-        public async Task MigrationIsRejectedOnAReadOnlyRepository()
-        {
-            /* The page doesn't render the migration control on a read-only repository, but the
-             * request doesn't have to come from it. */
-
-            // Setup.
-            using var host = await StartDashboardHostAsync();
-
-            // Action.
-            var response = await PostMigrateDocumentsAsync(host, ReadOnlyRepositoryName);
-
-            // Assert.
-            Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
-            var responseJson = await response.Content.ReadAsStringAsync();
-            Assert.Contains("\"migrated\":false", responseJson, StringComparison.Ordinal);
-            Assert.Contains("read-only", responseJson, StringComparison.Ordinal);
-            readOnlyRepositoryMock.Verify(
-                repo => repo.MigrateDeprecatedSchemaIdDocumentsAsync(It.IsAny<CancellationToken>()),
-                Times.Never());
-        }
-
-        [Fact]
-        public async Task MigrationReportsTheFailingDocumentsThroughThePostHandler()
-        {
-            /* A migration reports what failed instead of throwing: the failing documents reach
-             * the page with the errors that skipped them. */
-
-            // Setup.
-            repositoryMock.Setup(repo => repo.MigrateDeprecatedSchemaIdDocumentsAsync(It.IsAny<CancellationToken>()))
-                .ReturnsAsync(MigrationResult.Failed(
-                    4,
-                    documentErrors: [new DocumentMigrationError("brokenId", "FormatException: invalid content")],
-                    totDocumentErrors: 1));
-            using var host = await StartDashboardHostAsync();
-
-            // Action.
-            var response = await PostMigrateDocumentsAsync(host, RepositoryName);
-
-            // Assert.
-            response.EnsureSuccessStatusCode();
-            var responseJson = await response.Content.ReadAsStringAsync();
-            Assert.Contains("\"migrated\":false", responseJson, StringComparison.Ordinal);
-            Assert.Contains("\"migratedDocumentsCount\":4", responseJson, StringComparison.Ordinal);
-            Assert.Contains("\"documentErrorsCount\":1", responseJson, StringComparison.Ordinal);
-            Assert.Contains("\"documentId\":\"brokenId\"", responseJson, StringComparison.Ordinal);
-            Assert.Contains("invalid content", responseJson, StringComparison.Ordinal);
-        }
-
-        [Fact]
-        public async Task MigrationReportsUnavailableDuringExclusiveAccess()
-        {
-            /* An exclusive access denying the collection fails the whole scan: the migration
-             * result carries its exception, and the handler reports it as unavailable. */
-
-            // Setup.
-            repositoryMock.Setup(repo => repo.MigrateDeprecatedSchemaIdDocumentsAsync(It.IsAny<CancellationToken>()))
-                .ReturnsAsync(MigrationResult.Failed(0, new UnauthorizedAccessException()));
-            using var host = await StartDashboardHostAsync();
-
-            // Action.
-            var response = await PostMigrateDocumentsAsync(host, RepositoryName);
-
-            // Assert.
-            response.EnsureSuccessStatusCode();
-            Assert.Contains(
-                "an exclusive access is running",
-                await response.Content.ReadAsStringAsync(),
-                StringComparison.Ordinal);
-        }
-
-        [Fact]
-        public async Task MigrationRunsThroughThePostHandler()
-        {
-            // Setup.
-            repositoryMock.Setup(repo => repo.MigrateDeprecatedSchemaIdDocumentsAsync(It.IsAny<CancellationToken>()))
-                .ReturnsAsync(MigrationResult.Succeeded(5));
-            using var host = await StartDashboardHostAsync();
-
-            // Action.
-            var response = await PostMigrateDocumentsAsync(host, RepositoryName);
-
-            // Assert.
-            response.EnsureSuccessStatusCode();
-            var responseJson = await response.Content.ReadAsStringAsync();
-            Assert.Contains("\"migrated\":true", responseJson, StringComparison.Ordinal);
-            Assert.Contains("\"migratedDocumentsCount\":5", responseJson, StringComparison.Ordinal);
-            Assert.Contains("\"documentErrorsCount\":0", responseJson, StringComparison.Ordinal);
-            repositoryMock.Verify(
-                repo => repo.MigrateDeprecatedSchemaIdDocumentsAsync(It.IsAny<CancellationToken>()),
-                Times.Once());
-        }
-
-        [Fact]
         public async Task PageRendersTheDeprecatedSchemaIdElementsSection()
         {
             // Setup.
@@ -233,16 +133,12 @@ namespace Etherna.Scrinium.AspNetCore.UI
             var pageHtml = await response.Content.ReadAsStringAsync();
             Assert.Contains("Deprecated schema id elements", pageHtml, StringComparison.Ordinal);
 
-            //every repository gets its count control, only the writable one gets the migration
+            //the count is a read: every repository gets its control, the read-only ones too
             Assert.Equal(2, Regex.Matches(pageHtml, "data-role=\"count-deprecated-schema-ids\"").Count);
-            Assert.Single(Regex.Matches(pageHtml, "data-role=\"migrate-deprecated-schema-ids\""));
 
-            //the migration control belongs to the writable repository block of the section
-            var sectionHtml = pageHtml[pageHtml.IndexOf("deprecated-schema-ids", StringComparison.Ordinal)..];
-            var writableBlockStart = sectionHtml.IndexOf($"data-repository=\"{RepositoryName}\"", StringComparison.Ordinal);
-            var readOnlyBlockStart = sectionHtml.IndexOf($"data-repository=\"{ReadOnlyRepositoryName}\"", StringComparison.Ordinal);
-            var migrationIndex = Regex.Match(sectionHtml, "data-role=\"migrate-deprecated-schema-ids\"").Index;
-            Assert.InRange(migrationIndex, writableBlockStart, readOnlyBlockStart);
+            /* What the count counts is repaired by the deprecated schemas rewrite of a
+             * migration start, not by a control of its own. */
+            Assert.DoesNotContain("data-role=\"migrate-deprecated-schema-ids\"", pageHtml, StringComparison.Ordinal);
         }
 
         // Helpers.
@@ -254,42 +150,6 @@ namespace Etherna.Scrinium.AspNetCore.UI
             repositoryMock.Setup(repo => repo.ModelType).Returns(typeof(object));
             repositoryMock.Setup(repo => repo.Name).Returns(name);
             return repositoryMock;
-        }
-
-        private static async Task<(string Token, string Cookie)> ExtractAntiforgeryAsync(HttpResponseMessage pageResponse)
-        {
-            var pageHtml = await pageResponse.Content.ReadAsStringAsync();
-            var tokenMatch = Regex.Match(pageHtml, "name=\"__RequestVerificationToken\"[^>]*value=\"([^\"]+)\"");
-            Assert.True(tokenMatch.Success, "The page doesn't render the antiforgery token");
-
-            var cookie = pageResponse.Headers.GetValues("Set-Cookie")
-                .Single(value => value.StartsWith(".AspNetCore.Antiforgery.", StringComparison.Ordinal))
-                .Split(';')[0];
-
-            return (tokenMatch.Groups[1].Value, cookie);
-        }
-
-        private static async Task<HttpResponseMessage> PostMigrateDocumentsAsync(IHost host, string repositoryName)
-        {
-            var client = host.GetTestClient();
-
-            var pageResponse = await client.GetAsync(new Uri(PagePath, UriKind.Relative));
-            pageResponse.EnsureSuccessStatusCode();
-            var (token, cookie) = await ExtractAntiforgeryAsync(pageResponse);
-
-            using var request = new HttpRequestMessage(HttpMethod.Post, PagePath + "?handler=MigrateDeprecatedSchemaIdDocuments")
-            {
-                Content = new FormUrlEncodedContent(new Dictionary<string, string>
-                {
-                    ["identifier"] = DbContextIdentifier,
-                    ["repositoryName"] = repositoryName
-                })
-            };
-            request.Headers.Add("Cookie", cookie);
-            //same header sent by scriniumDash.js
-            request.Headers.Add("RequestVerificationToken", token);
-
-            return await client.SendAsync(request);
         }
 
         private async Task<IHost> StartDashboardHostAsync() =>

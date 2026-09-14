@@ -37,10 +37,12 @@ namespace Etherna.Scrinium.Core.Domain.Models
         public DbMigrationOperation(
             IDbContextEngine dbContextEngine,
             bool isDryRun = false,
-            bool isStopAtFirstErrorEnabled = false)
+            bool isStopAtFirstErrorEnabled = false,
+            bool isDeprecatedSchemaRewriteEnabled = false)
             : base(dbContextEngine)
         {
             CurrentStatus = Status.New;
+            IsDeprecatedSchemaRewriteEnabled = isDeprecatedSchemaRewriteEnabled;
             IsDryRun = isDryRun;
             IsStopAtFirstErrorEnabled = isStopAtFirstErrorEnabled;
         }
@@ -49,6 +51,14 @@ namespace Etherna.Scrinium.Core.Domain.Models
         // Properties.
         public virtual DateTimeOffset? CompletedDateTime { get; protected set; }
         public virtual Status CurrentStatus { get; protected set; }
+        /// <summary>
+        /// If true, this operation also rewrites the documents left on a deprecated schema:
+        /// the ones whose stored schema id isn't the active one of their concrete type, the
+        /// ones carrying it under the deprecated element name included. It runs after the
+        /// document migrations the application declares, inside the same operation, so both
+        /// share the db context lock and the index steps around them.
+        /// </summary>
+        public virtual bool IsDeprecatedSchemaRewriteEnabled { get; protected set; }
         public virtual bool IsDryRun { get; protected set; }
         /// <summary>
         /// If true, a documents migration of this operation aborts at its first failing document,

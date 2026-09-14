@@ -136,7 +136,20 @@ namespace Etherna.Scrinium.Core.Utility
                     }
 
                     // Migrate documents.
-                    foreach (var docMigration in dbContext.DocumentMigrationList)
+                    /* The document migrations the application declares, and then, when the
+                     * operation asks for it, the rewrite of the documents left on a deprecated
+                     * schema on every writable collection: one loop, so both report through the
+                     * same logs and honor the same dry run and stop at first error. Read-only
+                     * repositories stay out of the rewrite, like they stay out of the index
+                     * steps: their documents belong to the collection owner. */
+                    var documentMigrations = dbContext.DocumentMigrationList;
+                    if (dbMigrationOp.IsDeprecatedSchemaRewriteEnabled)
+                        documentMigrations = documentMigrations.Concat(
+                            dbContext.RepositoryRegistry.Repositories
+                                .Where(repository => !repository.IsReadOnly)
+                                .Select(repository => repository.BuildDeprecatedSchemaDocumentsMigration()));
+
+                    foreach (var docMigration in documentMigrations)
                     {
                         //running document migration, reporting progress on a single rolling log
                         var result = await docMigration.MigrateAsync(
@@ -296,7 +309,8 @@ namespace Etherna.Scrinium.Core.Utility
             IDbContext dbContext,
             bool dryRun = false,
             bool stopAtFirstError = false,
-            TimeSpan? lockLeaseDuration = null)
+            TimeSpan? lockLeaseDuration = null,
+            bool rewriteDeprecatedSchemas = false)
         {
             ArgumentNullException.ThrowIfNull(dbContext);
 
@@ -312,7 +326,7 @@ namespace Etherna.Scrinium.Core.Utility
              * renewing its lease, whose expiration unblocks new claims without manual repair.
              * The claimed lease also covers the window between here and the task execution
              * resuming it: until then nothing renews it. */
-            var migrateOp = new DbMigrationOperation(dbContext.Engine, dryRun, stopAtFirstError);
+            var migrateOp = new DbMigrationOperation(dbContext.Engine, dryRun, stopAtFirstError, rewriteDeprecatedSchemas);
             await dbContext.DbOperations.CreateAsync(migrateOp).ConfigureAwait(false);
 
             if (!await dbContext.Engine.DbContextLock.TryClaimAsync(migrateOp.Id, lockLeaseDuration).ConfigureAwait(false))

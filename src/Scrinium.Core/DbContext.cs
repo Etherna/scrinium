@@ -552,8 +552,10 @@ namespace Etherna.Scrinium.Core
         public Task<DbMigrationOperation?> TryStartMigrationAsync(
             bool dryRun = false,
             bool stopAtFirstError = false,
-            TimeSpan? lockLeaseDuration = null) =>
-            engine.DbMigrationManager.TryStartDbContextMigrationAsync(this, dryRun, stopAtFirstError, lockLeaseDuration);
+            TimeSpan? lockLeaseDuration = null,
+            bool rewriteDeprecatedSchemas = false) =>
+            engine.DbMigrationManager.TryStartDbContextMigrationAsync(
+                this, dryRun, stopAtFirstError, lockLeaseDuration, rewriteDeprecatedSchemas);
 
         public IDisposable StartTransientModelsScope()
         {
