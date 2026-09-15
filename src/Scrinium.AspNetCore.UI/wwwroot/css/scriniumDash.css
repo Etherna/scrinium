@@ -366,46 +366,8 @@ code {
   color: var(--danger);
 }
 
-/* Deprecated schema id elements
--------------------------------------------------- */
-.deprecated-schema-ids {
-  margin-top: 1.25rem;
-}
-
-.deprecated-schema-ids > summary {
-  cursor: pointer;
-  font-size: 0.95rem;
-  font-weight: 600;
-}
-
-.deprecated-schema-id-collection {
-  border-top: 1px solid var(--border);
-  padding-top: 0.75rem;
-  margin-top: 0.75rem;
-}
-
-.deprecated-schema-id-collection-header {
-  align-items: baseline;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.75rem;
-}
-
-.deprecated-schema-id-collection-header h4 {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 0.95rem;
-  margin: 0;
-}
-
-.deprecated-schema-id-collection-header .btn {
-  font-size: 0.8rem;
-  margin-left: auto;
-  padding: 0.25rem 0.7rem;
-}
-
-.deprecated-schema-id-documents {
+.schema-tag.deprecated-element {
   color: var(--warning);
-  font-weight: 600;
 }
 
 /* Document structures

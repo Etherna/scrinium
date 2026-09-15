@@ -32,15 +32,6 @@
             });
         });
 
-        /* Deprecated schema id elements are available on every db context too: the count is
-         * a read, and what it counts is repaired by the deprecated schemas rewrite of a
-         * migration start. */
-        Array.prototype.forEach.call(card.querySelectorAll('.deprecated-schema-id-collection'), function (collection) {
-            collection.querySelector('[data-role="count-deprecated-schema-ids"]').addEventListener('click', function () {
-                countDeprecatedSchemaIdDocuments(card, collection);
-            });
-        });
-
         /* Missing origin references are available on every db context too: the scan is a
          * read, and the repair control renders only on the writable repositories. */
         Array.prototype.forEach.call(card.querySelectorAll('.missing-origin-collection'), function (collection) {
@@ -241,6 +232,12 @@
 
         if (collection.documentsWithoutSchemaId > 0)
             body.appendChild(buildExtraRow(null, 'missing', collection.documentsWithoutSchemaId));
+
+        /* Not an addend of the column: these documents are counted above under their schema
+         * id, and this says how many of them carry it under the previous element name. */
+        if (collection.documentsOnDeprecatedSchemaIdElement > 0)
+            body.appendChild(buildExtraRow(
+                null, 'deprecated-element', collection.documentsOnDeprecatedSchemaIdElement));
     }
 
     function buildExtraRow(schemaId, kind, documentsCount) {
@@ -262,7 +259,7 @@
         }
         var tag = document.createElement('span');
         tag.className = 'schema-tag ' + kind;
-        tag.textContent = kind === 'missing' ? 'no schema id' : kind;
+        tag.textContent = extraRowLabel(kind);
         schemaCell.appendChild(tag);
         row.appendChild(schemaCell);
 
@@ -272,6 +269,14 @@
         row.appendChild(countCell);
 
         return row;
+    }
+
+    function extraRowLabel(kind) {
+        switch (kind) {
+            case 'missing': return 'no schema id';
+            case 'deprecated-element': return 'of the above, on the deprecated schema id element';
+            default: return kind;
+        }
     }
 
     function setCount(cell, documentsCount, needsMigration) {
@@ -285,47 +290,6 @@
         cell.className = documentsCount === 0
             ? 'numeric muted'
             : 'numeric' + (needsMigration ? ' needs-migration' : '');
-    }
-
-    function countDeprecatedSchemaIdDocuments(card, collection) {
-        var button = collection.querySelector('[data-role="count-deprecated-schema-ids"]');
-        var count = collection.querySelector('[data-role="deprecated-schema-id-count"]');
-        button.disabled = true;
-        button.textContent = 'Counting…';
-
-        fetch(baseUrl + '?handler=DeprecatedSchemaIdDocuments' +
-            '&identifier=' + encodeURIComponent(card.dataset.identifier) +
-            '&repositoryName=' + encodeURIComponent(collection.dataset.repository), {
-            headers: { 'Accept': 'application/json' }
-        }).then(function (response) {
-            if (!response.ok)
-                throw new Error('HTTP ' + response.status);
-            return response.json();
-        }).then(function (result) {
-            renderDeprecatedSchemaIdCount(collection, result);
-            button.textContent = result.isUnavailable ? 'Count documents' : 'Recount';
-        }).catch(function () {
-            count.textContent = '—';
-            count.className = 'muted';
-            button.textContent = 'Count failed, retry';
-        }).then(function () {
-            button.disabled = false;
-        });
-    }
-
-    function renderDeprecatedSchemaIdCount(collection, result) {
-        var count = collection.querySelector('[data-role="deprecated-schema-id-count"]');
-
-        if (result.isUnavailable) {
-            count.textContent = 'Unavailable: an exclusive access is running';
-            count.className = 'muted';
-        } else if (result.documentsCount === 0) {
-            count.textContent = 'No document to migrate';
-            count.className = 'muted';
-        } else {
-            count.textContent = result.documentsCount.toLocaleString() + ' documents to migrate';
-            count.className = 'deprecated-schema-id-documents';
-        }
     }
 
     function scanMissingOriginReferences(card, collection) {
