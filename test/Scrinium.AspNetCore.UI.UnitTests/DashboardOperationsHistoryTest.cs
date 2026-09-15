@@ -36,9 +36,11 @@ using Xunit;
 
 namespace Etherna.Scrinium.AspNetCore.UI
 {
-    /* SCR-288: the polled status carries the latest migration operations alone, so the whole
-     * history is reachable only through its own handler, walked one page at a time. */
-    public class DashboardMigrationsHistoryTest
+    /* SCR-288: the polled status carries the latest operations alone, so the whole history is
+     * reachable only through its own handler, walked one page at a time. The operations
+     * collection is polymorphic, and so is the history: migrations, references repairs and
+     * seedings render side by side, each with what it records. */
+    public class DashboardOperationsHistoryTest
     {
         // Internal classes.
         private sealed class AllowAllAuthFilter : IDashboardAuthFilter
@@ -55,7 +57,7 @@ namespace Etherna.Scrinium.AspNetCore.UI
         private readonly Mock<IDbContext> dbContextMock;
 
         // Constructor.
-        public DashboardMigrationsHistoryTest()
+        public DashboardOperationsHistoryTest()
         {
             engineMock = new Mock<IDbContextEngine>();
             engineMock.Setup(engine => engine.Identifier).Returns(DbContextIdentifier);
@@ -69,6 +71,10 @@ namespace Etherna.Scrinium.AspNetCore.UI
             dbContextMock.Setup(dbContext => dbContext.Engine).Returns(engineMock.Object);
             dbContextMock.Setup(dbContext => dbContext.IsMigrationRunningAsync())
                 .ReturnsAsync((DbMigrationOperation?)null);
+            dbContextMock.Setup(dbContext => dbContext.IsReferencesRepairRunningAsync())
+                .ReturnsAsync((ReferencesRepairOperation?)null);
+            dbContextMock.Setup(dbContext => dbContext.GetLastReferencesRepairsAsync(It.IsAny<int>(), It.IsAny<int>()))
+                .ReturnsAsync([]);
             dbContextMock.Setup(dbContext => dbContext.RepositoryRegistry).Returns(repositoryRegistryMock.Object);
         }
 
@@ -111,8 +117,45 @@ namespace Etherna.Scrinium.AspNetCore.UI
             //a full page can be followed by another one
             Assert.Contains("\"hasMore\":true", responseJson, StringComparison.Ordinal);
             dbContextMock.Verify(
-                dbContext => dbContext.GetLastMigrationsAsync(2, It.IsAny<int>()),
+                dbContext => dbContext.GetLastOperationsAsync(2, It.IsAny<int>()),
                 Times.Once());
+        }
+
+        [Fact]
+        public async Task HistoryPageRendersEveryKindOfOperation()
+        {
+            /* Migrations, references repairs and seedings share the operations collection: the
+             * history reads them as they are stored, and each reports what it records — a
+             * seeding records nothing but its own existence. */
+
+            // Setup.
+            var repairOperation = new ReferencesRepairOperation(
+                engineMock.Object,
+                "posts",
+                new Dictionary<string, OriginDeleteMode>
+                {
+                    ["Author"] = OriginDeleteMode.DeleteReferencingDocument
+                });
+            dbContextMock.Setup(dbContext => dbContext.GetLastOperationsAsync(It.IsAny<int>(), It.IsAny<int>()))
+                .ReturnsAsync([
+                    new DbMigrationOperation(engineMock.Object),
+                    repairOperation,
+                    new SeedOperation(engineMock.Object)
+                ]);
+            using var host = await StartDashboardHostAsync();
+
+            // Action.
+            var response = await GetHistoryPageAsync(host, "0");
+
+            // Assert.
+            response.EnsureSuccessStatusCode();
+            var responseJson = await response.Content.ReadAsStringAsync();
+            Assert.Contains("\"kind\":\"Migration\"", responseJson, StringComparison.Ordinal);
+            Assert.Contains("\"kind\":\"Seed\"", responseJson, StringComparison.Ordinal);
+            Assert.Contains("\"kind\":\"ReferencesRepair\"", responseJson, StringComparison.Ordinal);
+            //a repair carries the collection it repairs, and the plan it was started with
+            Assert.Contains("\"repository\":\"posts\"", responseJson, StringComparison.Ordinal);
+            Assert.Contains("\"elementPath\":\"Author\"", responseJson, StringComparison.Ordinal);
         }
 
         [Theory]
@@ -134,23 +177,23 @@ namespace Etherna.Scrinium.AspNetCore.UI
             // Assert.
             Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
             dbContextMock.Verify(
-                dbContext => dbContext.GetLastMigrationsAsync(It.IsAny<int>(), It.IsAny<int>()),
+                dbContext => dbContext.GetLastOperationsAsync(It.IsAny<int>(), It.IsAny<int>()),
                 Times.Never());
         }
 
         // Helpers.
         private static async Task<HttpResponseMessage> GetHistoryPageAsync(IHost host, string historyPage) =>
             await host.GetTestClient().GetAsync(new Uri(
-                $"{PagePath}?handler=Migrations&identifier={DbContextIdentifier}&historyPage={historyPage}",
+                $"{PagePath}?handler=Operations&identifier={DbContextIdentifier}&historyPage={historyPage}",
                 UriKind.Relative));
 
         /* A page as long as the requested one has older operations behind it, a shorter one
          * is the last: the handler tells them apart without knowing the history size. */
         private void SetupHistory(bool fillPage) =>
-            dbContextMock.Setup(dbContext => dbContext.GetLastMigrationsAsync(It.IsAny<int>(), It.IsAny<int>()))
+            dbContextMock.Setup(dbContext => dbContext.GetLastOperationsAsync(It.IsAny<int>(), It.IsAny<int>()))
                 .ReturnsAsync((int _, int take) => Enumerable
                     .Range(0, fillPage ? take : take - 1)
-                    .Select(_ => new DbMigrationOperation(engineMock.Object))
+                    .Select(_ => (OperationBase)new DbMigrationOperation(engineMock.Object))
                     .ToList());
 
         private async Task<IHost> StartDashboardHostAsync() =>

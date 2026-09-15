@@ -32,6 +32,7 @@ namespace Etherna.Scrinium.AspNetCore
             IBsonSerializerRegistry bsonSerializerRegistry,
             IDbMaintainer dbMaintainer,
             IDbMigrationManager dbContextMigrationManager,
+            IReferencesRepairManager referencesRepairManager,
             IDiscriminatorRegistry discriminatorRegistry,
             IExecutionContext executionContext,
             IMapRegistry mapRegistry,
@@ -44,6 +45,7 @@ namespace Etherna.Scrinium.AspNetCore
             BsonSerializerRegistry = bsonSerializerRegistry;
             DbMaintainer = dbMaintainer;
             DbMigrationManager = dbContextMigrationManager;
+            ReferencesRepairManager = referencesRepairManager;
             DiscriminatorRegistry = discriminatorRegistry;
             ExecutionContext = executionContext;
             MapRegistry = mapRegistry;
@@ -56,6 +58,7 @@ namespace Etherna.Scrinium.AspNetCore
         public IBsonSerializerRegistry BsonSerializerRegistry { get; }
         public IDbMaintainer DbMaintainer { get; }
         public IDbMigrationManager DbMigrationManager { get; }
+        public IReferencesRepairManager ReferencesRepairManager { get; }
         public IDiscriminatorRegistry DiscriminatorRegistry { get; }
         public IExecutionContext ExecutionContext { get; }
         public IMapRegistry MapRegistry { get; }

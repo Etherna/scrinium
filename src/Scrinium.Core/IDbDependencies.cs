@@ -27,6 +27,7 @@ namespace Etherna.Scrinium.Core
         IBsonSerializerRegistry BsonSerializerRegistry { get; }
         IDbMaintainer DbMaintainer { get; }
         IDbMigrationManager DbMigrationManager { get; }
+        IReferencesRepairManager ReferencesRepairManager { get; }
         IDiscriminatorRegistry DiscriminatorRegistry { get; }
         IExecutionContext ExecutionContext { get; }
         IMapRegistry MapRegistry { get; }

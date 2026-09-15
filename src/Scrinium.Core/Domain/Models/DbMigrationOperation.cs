@@ -18,7 +18,7 @@ using System.Collections.Generic;
 
 namespace Etherna.Scrinium.Core.Domain.Models
 {
-    public class DbMigrationOperation : OperationBase
+    public class DbMigrationOperation : OperationBase, IRunnableOperation
     {
         // Enums.
         public enum Status
@@ -60,6 +60,11 @@ namespace Etherna.Scrinium.Core.Domain.Models
         /// </summary>
         public virtual bool IsDeprecatedSchemaRewriteEnabled { get; protected set; }
         public virtual bool IsDryRun { get; protected set; }
+        /// <summary>
+        /// True while the operation is neither closed nor cancelled: a status reporting a
+        /// migration in progress, whether or not its owner is still alive.
+        /// </summary>
+        public virtual bool IsOpen => CurrentStatus is Status.New or Status.Running;
         /// <summary>
         /// If true, a documents migration of this operation aborts at its first failing document,
         /// instead of skipping it and processing every other document.

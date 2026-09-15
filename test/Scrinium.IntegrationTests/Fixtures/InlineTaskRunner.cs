@@ -110,6 +110,8 @@ namespace Etherna.Scrinium.IntegrationTests.Fixtures
 
         public void RunMigrateDbTask(Type dbContextType, string dbMigrationOpId) { }
 
+        public void RunRepairReferencesTask(Type dbContextType, string referencesRepairOpId) { }
+
         public void RunUpdateDocDependenciesTask(
             Type dbContextType,
             Type referenceDbContextType,

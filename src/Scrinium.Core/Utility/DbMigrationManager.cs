@@ -23,6 +23,7 @@ using Microsoft.Extensions.Logging;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace Etherna.Scrinium.Core.Utility
@@ -60,189 +61,156 @@ namespace Etherna.Scrinium.Core.Utility
 
             var dbMigrationOp = (DbMigrationOperation)await dbContext.DbOperations.FindOneAsync(dbMigrationOpId).ConfigureAwait(false);
 
-            // Resume the db context lock claimed with the operation at its start, keeping the
-            // lease renewed while migrating, unless an outer flow (e.g. seeding) already holds one.
-            /* An operation unable to resume its claim doesn't own the lock anymore: another
-             * owner took it over after the lease expiration, or the claim has been released.
-             * Executing would break the exclusive window, so the operation closes cancelled
-             * without migrating. */
-            var ambientLockLease = dbContext.Engine.DbContextLock.TryGetAmbientLease();
-            var ownedLockLease = ambientLockLease is null
-                ? await dbContext.Engine.DbContextLock.TryResumeClaimAsync(dbMigrationOpId).ConfigureAwait(false)
-                : null;
-            var lockLease = ambientLockLease ?? ownedLockLease;
-            if (lockLease is null)
-            {
-                if (dbMigrationOp.CurrentStatus is DbMigrationOperation.Status.New or DbMigrationOperation.Status.Running)
+            List<Exception> errors = [];
+            var executed = await DbOperationLifecycle.TryExecuteAsync(
+                dbContext,
+                dbMigrationOpId,
+                dbMigrationOp,
+                taskId,
+                /* The operation state saves without the lock lost token: an operation losing
+                 * its lease still has to record what it did and close failed. */
+                async lockLostCancellation =>
                 {
-                    dbMigrationOp.TaskCancelled();
-                    await dbContext.SaveChangesAsync().ConfigureAwait(false);
-                }
+                    try
+                    {
+                        // Remove old indexes.
+                        /* Read-only repositories deny index management: their indexes belong to the
+                         * collection owner, so they stay out of the migration index steps.
+                         * A dry run skips the index steps entirely: index management has no simulation. */
+                        if (!dbMigrationOp.IsDryRun)
+                        {
+                            foreach (var repository in dbContext.RepositoryRegistry.Repositories.Where(r => !r.IsReadOnly))
+                            {
+                                dbMigrationOp.AddLog(new DeleteOldIndexesMigrationLog(
+                                    repository.Name,
+                                    MigrationLogBase.ExecutionState.Executing));
+                                await dbContext.SaveChangesAsync(CancellationToken.None).ConfigureAwait(false);
 
-                logger.DbMigrationCancelledWithoutLockClaim(dbMigrationOpId, dbContext.Engine.Options.DbName);
+                                try
+                                {
+                                    await repository.DeleteOldIndexesAsync(lockLostCancellation).ConfigureAwait(false);
 
+                                    dbMigrationOp.AddLog(new DeleteOldIndexesMigrationLog(
+                                        repository.Name,
+                                        MigrationLogBase.ExecutionState.Succeded));
+                                }
+                                catch (Exception e)
+                                {
+                                    errors.Add(e);
+
+                                    dbMigrationOp.AddLog(new DeleteOldIndexesMigrationLog(
+                                        repository.Name,
+                                        MigrationLogBase.ExecutionState.Failed));
+                                }
+
+                                await dbContext.SaveChangesAsync(CancellationToken.None).ConfigureAwait(false);
+                            }
+                        }
+
+                        // Migrate documents.
+                        /* The document migrations the application declares, and then, when the
+                         * operation asks for it, the rewrite of the documents left on a deprecated
+                         * schema on every writable collection: one loop, so both report through the
+                         * same logs and honor the same dry run and stop at first error. Read-only
+                         * repositories stay out of the rewrite, like they stay out of the index
+                         * steps: their documents belong to the collection owner. */
+                        var documentMigrations = dbContext.DocumentMigrationList;
+                        if (dbMigrationOp.IsDeprecatedSchemaRewriteEnabled)
+                            documentMigrations = documentMigrations.Concat(
+                                dbContext.RepositoryRegistry.Repositories
+                                    .Where(repository => !repository.IsReadOnly)
+                                    .Select(repository => repository.BuildDeprecatedSchemaDocumentsMigration()));
+
+                        foreach (var docMigration in documentMigrations)
+                        {
+                            //running document migration, reporting progress on a single rolling log
+                            var result = await docMigration.MigrateAsync(
+                                dbContext.Engine.Options.MigrationCallbackEveryTotDocuments,
+                                async procDocs =>
+                                {
+                                    dbMigrationOp.AddDocumentMigrationLog(new DocumentMigrationLog(
+                                        docMigration.SourceRepository.Name,
+                                        MigrationLogBase.ExecutionState.Executing,
+                                        procDocs));
+
+                                    await dbContext.SaveChangesAsync(CancellationToken.None).ConfigureAwait(false);
+                                },
+                                dbMigrationOp.IsDryRun,
+                                dbMigrationOp.IsStopAtFirstErrorEnabled,
+                                dbContext.Engine.Options.MigrationEvictEveryTotDocuments,
+                                lockLostCancellation).ConfigureAwait(false);
+
+                            if (!result.Succeded)
+                                errors.Add(new ScriniumDbMigrationException(
+                                    result.TotDocumentErrors > 0
+                                        ? $"Documents migration failed on \"{docMigration.SourceRepository.Name}\" repository with {result.TotDocumentErrors} document errors"
+                                        : $"Documents migration failed on \"{docMigration.SourceRepository.Name}\" repository"));
+
+                            //ended document migration log, replacing the rolling progress one
+                            dbMigrationOp.AddDocumentMigrationLog(new DocumentMigrationLog(
+                                docMigration.SourceRepository.Name,
+                                result.Succeded
+                                    ? MigrationLogBase.ExecutionState.Succeded
+                                    : MigrationLogBase.ExecutionState.Failed,
+                                result.MigratedDocuments,
+                                result.DocumentErrors,
+                                result.TotDocumentErrors));
+
+                            await dbContext.SaveChangesAsync(CancellationToken.None).ConfigureAwait(false);
+                        }
+
+                        // Build new indexes.
+                        //read-only repositories and dry runs stay out of the index steps, like above
+                        if (!dbMigrationOp.IsDryRun)
+                        {
+                            foreach (var repository in dbContext.RepositoryRegistry.Repositories.Where(r => !r.IsReadOnly))
+                            {
+                                dbMigrationOp.AddLog(new BuildNewIndexesMigrationLog(
+                                    repository.Name,
+                                    MigrationLogBase.ExecutionState.Executing));
+                                await dbContext.SaveChangesAsync(CancellationToken.None).ConfigureAwait(false);
+
+                                try
+                                {
+                                    await repository.BuildNewIndexesAsync(lockLostCancellation).ConfigureAwait(false);
+
+                                    dbMigrationOp.AddLog(new BuildNewIndexesMigrationLog(
+                                        repository.Name,
+                                        MigrationLogBase.ExecutionState.Succeded));
+                                }
+                                catch (Exception e)
+                                {
+                                    errors.Add(e);
+
+                                    dbMigrationOp.AddLog(new BuildNewIndexesMigrationLog(
+                                        repository.Name,
+                                        MigrationLogBase.ExecutionState.Failed));
+                                }
+
+                                await dbContext.SaveChangesAsync(CancellationToken.None).ConfigureAwait(false);
+                            }
+                        }
+                    }
+                    catch (Exception e)
+                    {
+                        /* An unhandled exception closes the operation failed, like a reported
+                         * one: leaving it running would deny every new migration. */
+                        errors.Add(e);
+                    }
+
+                    return errors.Count == 0;
+                },
+                logger).ConfigureAwait(false);
+
+            // Report errors.
+            if (!executed)
+            {
                 if (throwOnErrors)
                     throw new ScriniumDbMigrationException(
                         $"Error migrating {dbContext.Engine.Identifier} dbContext: operation {dbMigrationOpId} doesn't own the db context lock anymore");
                 return;
             }
 
-            /* A lost lease cancels the running steps: the exclusive window is not guaranteed
-             * anymore. The operation state keeps saving without the token, to close failed. */
-            var lockLostCancellation = lockLease.LeaseLostToken;
-
-            List<Exception> errors = [];
-
-            try
-            {
-                try
-                {
-                    // Start migrate operation.
-                    dbMigrationOp.TaskStarted(taskId);
-                    await dbContext.SaveChangesAsync().ConfigureAwait(false);
-
-                    // Remove old indexes.
-                    /* Read-only repositories deny index management: their indexes belong to the
-                     * collection owner, so they stay out of the migration index steps.
-                     * A dry run skips the index steps entirely: index management has no simulation. */
-                    if (!dbMigrationOp.IsDryRun)
-                    {
-                        foreach (var repository in dbContext.RepositoryRegistry.Repositories.Where(r => !r.IsReadOnly))
-                        {
-                            dbMigrationOp.AddLog(new DeleteOldIndexesMigrationLog(
-                                repository.Name,
-                                MigrationLogBase.ExecutionState.Executing));
-                            await dbContext.SaveChangesAsync().ConfigureAwait(false);
-
-                            try
-                            {
-                                await repository.DeleteOldIndexesAsync(lockLostCancellation).ConfigureAwait(false);
-
-                                dbMigrationOp.AddLog(new DeleteOldIndexesMigrationLog(
-                                    repository.Name,
-                                    MigrationLogBase.ExecutionState.Succeded));
-                            }
-                            catch (Exception e)
-                            {
-                                errors.Add(e);
-
-                                dbMigrationOp.AddLog(new DeleteOldIndexesMigrationLog(
-                                    repository.Name,
-                                    MigrationLogBase.ExecutionState.Failed));
-                            }
-
-                            await dbContext.SaveChangesAsync().ConfigureAwait(false);
-                        }
-                    }
-
-                    // Migrate documents.
-                    /* The document migrations the application declares, and then, when the
-                     * operation asks for it, the rewrite of the documents left on a deprecated
-                     * schema on every writable collection: one loop, so both report through the
-                     * same logs and honor the same dry run and stop at first error. Read-only
-                     * repositories stay out of the rewrite, like they stay out of the index
-                     * steps: their documents belong to the collection owner. */
-                    var documentMigrations = dbContext.DocumentMigrationList;
-                    if (dbMigrationOp.IsDeprecatedSchemaRewriteEnabled)
-                        documentMigrations = documentMigrations.Concat(
-                            dbContext.RepositoryRegistry.Repositories
-                                .Where(repository => !repository.IsReadOnly)
-                                .Select(repository => repository.BuildDeprecatedSchemaDocumentsMigration()));
-
-                    foreach (var docMigration in documentMigrations)
-                    {
-                        //running document migration, reporting progress on a single rolling log
-                        var result = await docMigration.MigrateAsync(
-                            dbContext.Engine.Options.MigrationCallbackEveryTotDocuments,
-                            async procDocs =>
-                            {
-                                dbMigrationOp.AddDocumentMigrationLog(new DocumentMigrationLog(
-                                    docMigration.SourceRepository.Name,
-                                    MigrationLogBase.ExecutionState.Executing,
-                                    procDocs));
-
-                                await dbContext.SaveChangesAsync().ConfigureAwait(false);
-                            },
-                            dbMigrationOp.IsDryRun,
-                            dbMigrationOp.IsStopAtFirstErrorEnabled,
-                            dbContext.Engine.Options.MigrationEvictEveryTotDocuments,
-                            lockLostCancellation).ConfigureAwait(false);
-
-                        if (!result.Succeded)
-                            errors.Add(new ScriniumDbMigrationException(
-                                result.TotDocumentErrors > 0
-                                    ? $"Documents migration failed on \"{docMigration.SourceRepository.Name}\" repository with {result.TotDocumentErrors} document errors"
-                                    : $"Documents migration failed on \"{docMigration.SourceRepository.Name}\" repository"));
-
-                        //ended document migration log, replacing the rolling progress one
-                        dbMigrationOp.AddDocumentMigrationLog(new DocumentMigrationLog(
-                            docMigration.SourceRepository.Name,
-                            result.Succeded
-                                ? MigrationLogBase.ExecutionState.Succeded
-                                : MigrationLogBase.ExecutionState.Failed,
-                            result.MigratedDocuments,
-                            result.DocumentErrors,
-                            result.TotDocumentErrors));
-
-                        await dbContext.SaveChangesAsync().ConfigureAwait(false);
-                    }
-
-                    // Build new indexes.
-                    //read-only repositories and dry runs stay out of the index steps, like above
-                    if (!dbMigrationOp.IsDryRun)
-                    {
-                        foreach (var repository in dbContext.RepositoryRegistry.Repositories.Where(r => !r.IsReadOnly))
-                        {
-                            dbMigrationOp.AddLog(new BuildNewIndexesMigrationLog(
-                                repository.Name,
-                                MigrationLogBase.ExecutionState.Executing));
-                            await dbContext.SaveChangesAsync().ConfigureAwait(false);
-
-                            try
-                            {
-                                await repository.BuildNewIndexesAsync(lockLostCancellation).ConfigureAwait(false);
-
-                                dbMigrationOp.AddLog(new BuildNewIndexesMigrationLog(
-                                    repository.Name,
-                                    MigrationLogBase.ExecutionState.Succeded));
-                            }
-                            catch (Exception e)
-                            {
-                                errors.Add(e);
-
-                                dbMigrationOp.AddLog(new BuildNewIndexesMigrationLog(
-                                    repository.Name,
-                                    MigrationLogBase.ExecutionState.Failed));
-                            }
-
-                            await dbContext.SaveChangesAsync().ConfigureAwait(false);
-                        }
-                    }
-                }
-                catch (Exception e)
-                {
-                    // An unhandled exception can't leave the operation on running status,
-                    // or no new migration could ever start on the db context.
-                    errors.Add(e);
-                }
-
-                // Complete operation.
-                if (errors.Count == 0)
-                    dbMigrationOp.TaskCompleted();
-                else
-                    dbMigrationOp.TaskFailed();
-
-                await dbContext.SaveChangesAsync().ConfigureAwait(false);
-            }
-            finally
-            {
-                // Release the lock lease resumed by this execution, permitting new claims.
-                // An ambient lease belongs to its outer flow, that releases it itself.
-                if (ownedLockLease is not null)
-                    await ownedLockLease.DisposeAsync().ConfigureAwait(false);
-            }
-
-            // Report errors.
             if (errors.Count > 0)
             {
                 var migrationException = new ScriniumDbMigrationException(
@@ -319,84 +287,17 @@ namespace Etherna.Scrinium.Core.Utility
                 dbContext.Engine.IsExclusiveWriteEnabled)
                 return null;
 
-            // Claim the db context lock with the new operation as owner.
-            /* The claim is atomic on the server: with concurrent starts from any process a
-             * single operation wins, and the losers delete themselves. A queued or running
-             * migration (or a seeding) holds the lock, denying the start; a dead owner stops
-             * renewing its lease, whose expiration unblocks new claims without manual repair.
-             * The claimed lease also covers the window between here and the task execution
-             * resuming it: until then nothing renews it. */
             var migrateOp = new DbMigrationOperation(dbContext.Engine, dryRun, stopAtFirstError, rewriteDeprecatedSchemas);
-            await dbContext.DbOperations.CreateAsync(migrateOp).ConfigureAwait(false);
 
-            if (!await dbContext.Engine.DbContextLock.TryClaimAsync(migrateOp.Id, lockLeaseDuration).ConfigureAwait(false))
-            {
-                // Drop the operation of the denied start, reporting the denial anyway.
-                /* A cleanup failure would report a failed start instead of a denied one: the
-                 * operation left behind closes with the orphaned ones at the next start. */
-                try
-                {
-                    await dbContext.DbOperations.DeleteAsync(migrateOp).ConfigureAwait(false);
-                }
-                catch (Exception cleanupException)
-                {
-                    logger.DbMigrationDeniedStartCleanupFailed(
-                        migrateOp.Id, dbContext.Engine.Options.DbName, cleanupException);
-                }
+            var started = await DbOperationLifecycle.TryStartAsync(
+                dbContext,
+                migrateOp,
+                lockLeaseDuration,
+                () => taskRunner.RunMigrateDbTask(dbContext.GetType(), migrateOp.Id),
+                logger).ConfigureAwait(false);
 
-                return null;
-            }
-
-            /* Everything after the claim either hands the lock over to the migration task, or
-             * releases it: a claim held by an operation whose task never runs would deny every
-             * migration and seeding of the db context until its lease expiration. */
-            try
-            {
-                // Close the migration operations orphaned by dead owners, directly on the server.
-                /* Their statuses would misreport a migration in progress forever, while the
-                 * lock lease protecting them is already expired. Server side updates tolerate
-                 * the operations deleted meanwhile by concurrent losing starts. */
-                var cancelledOps = await dbContext.DbOperations.UpdateManyAsync(
-                    Builders<OperationBase>.Filter.OfType<DbMigrationOperation>(op =>
-                        op.DbContextName == dbContext.Engine.Identifier &&
-                        op.Id != migrateOp.Id &&
-                        op.CurrentStatus == DbMigrationOperation.Status.New),
-                    Builders<OperationBase>.Update.Set(
-                        op => ((DbMigrationOperation)op).CurrentStatus,
-                        DbMigrationOperation.Status.Cancelled)).ConfigureAwait(false);
-                var failedOps = await dbContext.DbOperations.UpdateManyAsync(
-                    Builders<OperationBase>.Filter.OfType<DbMigrationOperation>(op =>
-                        op.DbContextName == dbContext.Engine.Identifier &&
-                        op.Id != migrateOp.Id &&
-                        op.CurrentStatus == DbMigrationOperation.Status.Running),
-                    Builders<OperationBase>.Update.Set(
-                        op => ((DbMigrationOperation)op).CurrentStatus,
-                        DbMigrationOperation.Status.Failed)).ConfigureAwait(false);
-                if (cancelledOps.ModifiedCount + failedOps.ModifiedCount > 0)
-                    logger.DbMigrationClosedOrphanedOperations(
-                        cancelledOps.ModifiedCount + failedOps.ModifiedCount,
-                        dbContext.Engine.Options.DbName);
-
-                taskRunner.RunMigrateDbTask(dbContext.GetType(), migrateOp.Id);
-            }
-            catch
-            {
-                // Release the claim and drop the operation, without masking the start failure.
-                try
-                {
-                    await dbContext.Engine.DbContextLock.TryReleaseAsync(migrateOp.Id).ConfigureAwait(false);
-                    await dbContext.DbOperations.DeleteAsync(migrateOp).ConfigureAwait(false);
-                }
-                catch (Exception cleanupException)
-                {
-                    logger.DbMigrationStartCleanupFailed(
-                        migrateOp.Id, dbContext.Engine.Options.DbName, cleanupException);
-                }
-
-                throw;
-            }
-
-            return migrateOp;
+            return started ? migrateOp : null;
         }
+
     }
 }

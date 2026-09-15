@@ -518,6 +518,23 @@ code {
   margin-left: auto;
 }
 
+.repair-path-error {
+  color: var(--danger);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.75rem;
+  margin-top: 0.15rem;
+}
+
+.missing-origin-collection select {
+  background-color: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 0.3rem;
+  color: inherit;
+  font-family: inherit;
+  font-size: 0.8rem;
+  padding: 0.15rem 0.3rem;
+}
+
 .schemas-table .missing-origins {
   color: var(--danger);
   font-weight: 600;
@@ -635,12 +652,40 @@ code {
 
 /* Live migration log
 -------------------------------------------------- */
-.migration-live {
+.operation-live {
   border: 1px solid var(--warning);
   border-radius: 0.5rem;
   background-color: #fffbeb;
-  margin-top: 1rem;
+  margin-bottom: 0.75rem;
   padding: 0.75rem 1rem;
+}
+
+.operation-live h4 {
+  align-items: center;
+  display: flex;
+  font-size: 0.95rem;
+  gap: 0.5rem;
+  margin: 0 0 0.5rem;
+}
+
+/* Migrations
+-------------------------------------------------- */
+.migrations {
+  margin-top: 1.25rem;
+}
+
+.migrations > summary {
+  cursor: pointer;
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+.migration-controls {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin: 0.5rem 0;
 }
 
 .migration-live-meta {
@@ -725,18 +770,18 @@ code {
 
 /* Migrations history
 -------------------------------------------------- */
-.migration-history {
-  margin-top: 1.25rem;
+.card-operations {
+  margin-top: 1rem;
 }
 
-.migration-history-header {
+.card-operations-header {
   align-items: baseline;
   display: flex;
   flex-wrap: wrap;
   gap: 0.75rem;
 }
 
-.migration-history-header .btn {
+.card-operations-header .btn {
   font-size: 0.8rem;
   margin-left: auto;
   padding: 0.25rem 0.7rem;
@@ -753,6 +798,21 @@ code {
   margin-bottom: 0.5rem;
 }
 
+/* An operation with nothing to expand renders its summary line alone. */
+.history-entry-flat {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  font-size: 0.9rem;
+  padding: 0.5rem 0.75rem;
+}
+
+.status-badge.kind {
+  background-color: var(--neutral-bg);
+  color: var(--neutral);
+}
+
 .history-entry summary {
   cursor: pointer;
   display: flex;
@@ -765,6 +825,11 @@ code {
 
 .history-entry .log-list {
   margin: 0 0.75rem 0.75rem;
+}
+
+.history-entry .schemas-table {
+  margin: 0 0.75rem 0.75rem;
+  width: calc(100% - 1.5rem);
 }
 
 .history-dates {

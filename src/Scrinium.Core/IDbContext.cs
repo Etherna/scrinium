@@ -14,6 +14,7 @@
 
 using Etherna.Scrinium.Core.Domain.Models;
 using Etherna.Scrinium.Core.Migration;
+using Etherna.Scrinium.Core.Options;
 using Etherna.Scrinium.Core.Repositories;
 using Etherna.Scrinium.Core.Utility;
 using System;
@@ -138,11 +139,41 @@ namespace Etherna.Scrinium.Core
         /// <param name="throwOnErrors">If true, throw an exception when the migration completes with errors</param>
         Task ExecuteMigrationAsync(string dbMigrationOpId, string? taskId = null, bool throwOnErrors = false);
 
+        /// <summary>
+        /// Execute the missing origin references repair of an operation started before,
+        /// closing it completed or failed.
+        /// </summary>
+        /// <param name="referencesRepairOpId">The operation id</param>
+        /// <param name="taskId">The id of the background task executing it</param>
+        /// <param name="throwOnErrors">If true, rethrow what failed the operation</param>
+        Task ExecuteReferencesRepairAsync(string referencesRepairOpId, string? taskId = null, bool throwOnErrors = false);
+
         Task<List<DbMigrationOperation>> GetLastMigrationsAsync(int page, int take);
 
         Task<DbMigrationOperation> GetMigrationAsync(string migrateOperationId);
 
+        /// <summary>
+        /// Read a page of the operations of this db context, most recent first, whatever kind
+        /// they are: migrations, references repairs and seedings share the operations
+        /// collection, and this reads them as they are stored, without filtering by type.
+        /// </summary>
+        /// <param name="page">The page to read, from 0</param>
+        /// <param name="take">The operations of a page</param>
+        Task<List<OperationBase>> GetLastOperationsAsync(int page, int take);
+
+        Task<List<ReferencesRepairOperation>> GetLastReferencesRepairsAsync(int page, int take);
+
+        Task<ReferencesRepairOperation> GetReferencesRepairAsync(string referencesRepairOpId);
+
         Task<DbMigrationOperation?> IsMigrationRunningAsync();
+
+        /// <summary>
+        /// The open missing origin references repair operation of this db context, whatever
+        /// collection it repairs, or null when none is open. An operation stays open also when
+        /// the instance executing it dies: pair it with a live db context lock lease to tell a
+        /// repair really in progress from one orphaned by a dead owner.
+        /// </summary>
+        Task<ReferencesRepairOperation?> IsReferencesRepairRunningAsync();
 
         /// <summary>
         /// Tell if a live lease, exclusive or shared, holds the lock of an application
@@ -301,6 +332,28 @@ namespace Etherna.Scrinium.Core
             bool stopAtFirstError = false,
             TimeSpan? lockLeaseDuration = null,
             bool rewriteDeprecatedSchemas = false);
+
+        /// <summary>
+        /// Start the repair of the references pointing to missing origin documents on one
+        /// collection, claiming the db context lock and enqueuing the execution in background:
+        /// it runs like a migration does, reporting its progress one reference element path at
+        /// a time.
+        /// </summary>
+        /// <param name="repositoryName">The repository whose collection is repaired</param>
+        /// <param name="repairModesByElementPath">What to apply to each reference element
+        /// path: the plan of the operation, readable before it runs</param>
+        /// <param name="dryRun">If true, execute the repair with its collection writes
+        /// simulated, reporting what it would have done without persisting anything</param>
+        /// <param name="lockLeaseDuration">Duration of the lock lease claimed by this start,
+        /// defaulted to <see cref="Utility.ResourceLock.DefaultLeaseDuration"/></param>
+        /// <returns>The new operation, or null when the start is denied: a read-only db
+        /// context, an exclusive access already running in this process, or the db context
+        /// lock held by another owner</returns>
+        Task<ReferencesRepairOperation?> TryStartReferencesRepairAsync(
+            string repositoryName,
+            IReadOnlyDictionary<string, OriginDeleteMode> repairModesByElementPath,
+            bool dryRun = false,
+            TimeSpan? lockLeaseDuration = null);
 
         /// <summary>
         /// Start a scope keeping transient the models materialized inside it: at the scope

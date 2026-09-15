@@ -79,10 +79,14 @@ namespace Etherna.Scrinium.AspNetCore.UI
 
             dbContextMock = new Mock<IDbContext>();
             dbContextMock.Setup(dbContext => dbContext.Engine).Returns(engineMock.Object);
-            dbContextMock.Setup(dbContext => dbContext.GetLastMigrationsAsync(It.IsAny<int>(), It.IsAny<int>()))
+            dbContextMock.Setup(dbContext => dbContext.GetLastOperationsAsync(It.IsAny<int>(), It.IsAny<int>()))
                 .ReturnsAsync([operationMock.Object]);
             dbContextMock.Setup(dbContext => dbContext.IsMigrationRunningAsync())
                 .ReturnsAsync((DbMigrationOperation?)null);
+            dbContextMock.Setup(dbContext => dbContext.IsReferencesRepairRunningAsync())
+                .ReturnsAsync((ReferencesRepairOperation?)null);
+            dbContextMock.Setup(dbContext => dbContext.GetLastReferencesRepairsAsync(It.IsAny<int>(), It.IsAny<int>()))
+                .ReturnsAsync([]);
             dbContextMock.Setup(dbContext => dbContext.RepositoryRegistry).Returns(repositoryRegistryMock.Object);
         }
 

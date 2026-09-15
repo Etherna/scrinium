@@ -48,6 +48,11 @@ namespace Etherna.Scrinium.HF.Tasks
                 task => task.RunAsync(dbContextType, dbMigrationOpId, null!),
                 new EnqueuedState(scriniumOptions.DbMaintenanceQueueName));
 
+        public void RunRepairReferencesTask(Type dbContextType, string referencesRepairOpId) =>
+            backgroundJobClient.Create<RepairReferencesTaskFacade>(
+                task => task.RunAsync(dbContextType, referencesRepairOpId, null!),
+                new EnqueuedState(scriniumOptions.DbMaintenanceQueueName));
+
         public void RunUpdateDocDependenciesTask(
             Type dbContextType,
             Type referenceDbContextType,
