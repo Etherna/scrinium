@@ -384,6 +384,15 @@ namespace Etherna.Scrinium.AspNetCore.UI.Areas.Scrinium.Pages
             {
                 headers.ContentSecurityPolicy = ContentSecurityPolicy;
                 headers.XFrameOptions = "DENY";
+
+                /* The page renders the antiforgery token, and the antiforgery replaces the
+                 * cache headers of a response carrying one unless they already deny both
+                 * caching and storing — logging that it had to, once per render. Declaring
+                 * both here leaves it nothing to override: the outcome is the same, the
+                 * warning stops hiding the case it exists for, an application whose deliberate
+                 * cache policy really was contradicted. The handlers below stay on `no-store`:
+                 * they render no token, so the antiforgery never reaches them. */
+                headers.CacheControl = "no-cache, no-store";
             }
         }
 
