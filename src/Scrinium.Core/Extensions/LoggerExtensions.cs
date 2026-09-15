@@ -183,6 +183,12 @@ namespace Etherna.Scrinium.Core.Extensions
                 new EventId(15, nameof(RepositoryDeletedDocument)),
                 "Repository {RepositoryName} of DbContext {DbName} deleted document with Id: {ModelId}");
 
+        private static readonly Action<ILogger, string, string, string, string, Exception> _repositoryDeletedMissingOriginReferencingDocuments =
+            LoggerMessage.Define<string, string, string, string>(
+                LogLevel.Debug,
+                new EventId(79, nameof(RepositoryDeletedMissingOriginReferencingDocuments)),
+                "Repository {RepositoryName} of DbContext {DbName} deleted the documents referencing missing origin document {MissingOriginId} at path {ElementPath}");
+
         private static readonly Action<ILogger, string, string, string, Exception> _repositoryFoundDocument =
             LoggerMessage.Define<string, string, string>(
                 LogLevel.Debug,
@@ -358,11 +364,11 @@ namespace Etherna.Scrinium.Core.Extensions
                 new EventId(18, nameof(RepositoryQueriedCollection)),
                 "Repository {RepositoryName} of DbContext {DbName} queried collection");
 
-        private static readonly Action<ILogger, string, string, long, long, Exception> _repositoryRemovedMissingOriginReferences =
-            LoggerMessage.Define<string, string, long, long>(
+        private static readonly Action<ILogger, string, string, long, long, long, Exception> _repositoryRepairedMissingOriginReferences =
+            LoggerMessage.Define<string, string, long, long, long>(
                 LogLevel.Information,
-                new EventId(65, nameof(RepositoryRemovedMissingOriginReferences)),
-                "Repository {RepositoryName} of DbContext {DbName} removed the references to {MissingOriginIdsCount} missing origin documents, updating {UpdatedDocumentsCount} documents");
+                new EventId(65, nameof(RepositoryRepairedMissingOriginReferences)),
+                "Repository {RepositoryName} of DbContext {DbName} repaired the references to {MissingOriginIdsCount} missing origin documents, updating {UpdatedDocumentsCount} documents and deleting {DeletedDocumentsCount} documents");
 
         //*** WARNING LOGS ***
         private static readonly Action<ILogger, string, string, string?, Exception> _dbContextImplicitLazyLoad =
@@ -377,29 +383,29 @@ namespace Etherna.Scrinium.Core.Extensions
                 new EventId(62, nameof(DbContextMissingOriginDocument)),
                 "DbContext {DbName} found no origin document loading a summary model of type {ModelType} from repository {RepositoryName}: the referred document doesn't exist on its collection");
 
-        private static readonly Action<ILogger, string, string, Exception> _dbMigrationCancelledWithoutLockClaim =
+        private static readonly Action<ILogger, string, string, Exception> _dbOperationCancelledWithoutLockClaim =
             LoggerMessage.Define<string, string>(
                 LogLevel.Warning,
-                new EventId(54, nameof(DbMigrationCancelledWithoutLockClaim)),
-                "Db migration operation {DbMigrationOpId} of DbContext {DbName} cancelled: the operation doesn't own the db context lock anymore");
+                new EventId(54, nameof(DbOperationCancelledWithoutLockClaim)),
+                "Db operation {DbOperationId} of DbContext {DbName} cancelled: the operation doesn't own the db context lock anymore");
 
-        private static readonly Action<ILogger, long, string, Exception> _dbMigrationClosedOrphanedOperations =
+        private static readonly Action<ILogger, long, string, Exception> _dbOperationClosedOrphanedOperations =
             LoggerMessage.Define<long, string>(
                 LogLevel.Warning,
-                new EventId(55, nameof(DbMigrationClosedOrphanedOperations)),
-                "DbMigrationManager closed {OperationsCount} migration operations of DbContext {DbName}, orphaned by dead owners with expired lock leases");
+                new EventId(55, nameof(DbOperationClosedOrphanedOperations)),
+                "Closed {OperationsCount} operations of DbContext {DbName}, orphaned by dead owners with expired lock leases");
 
-        private static readonly Action<ILogger, string, string, Exception> _dbMigrationDeniedStartCleanupFailed =
+        private static readonly Action<ILogger, string, string, Exception> _dbOperationDeniedStartCleanupFailed =
             LoggerMessage.Define<string, string>(
                 LogLevel.Warning,
-                new EventId(58, nameof(DbMigrationDeniedStartCleanupFailed)),
-                "Db migration operation {DbMigrationOpId} of DbContext {DbName} didn't claim the db context lock, and couldn't be deleted: it closes with the orphaned operations at the next start");
+                new EventId(58, nameof(DbOperationDeniedStartCleanupFailed)),
+                "Db operation {DbOperationId} of DbContext {DbName} didn't claim the db context lock, and couldn't be deleted: it closes with the orphaned operations at the next start");
 
-        private static readonly Action<ILogger, string, string, Exception> _dbMigrationStartCleanupFailed =
+        private static readonly Action<ILogger, string, string, Exception> _dbOperationStartCleanupFailed =
             LoggerMessage.Define<string, string>(
                 LogLevel.Warning,
-                new EventId(57, nameof(DbMigrationStartCleanupFailed)),
-                "Db migration operation {DbMigrationOpId} of DbContext {DbName} failed to start, and couldn't release the db context lock it claimed: the lease will expire on its own");
+                new EventId(57, nameof(DbOperationStartCleanupFailed)),
+                "Db operation {DbOperationId} of DbContext {DbName} failed to start, and couldn't release the db context lock it claimed: the lease will expire on its own");
 
         private static readonly Action<ILogger, string, Exception> _dbContextAbortedTransaction =
             LoggerMessage.Define<string>(
@@ -479,6 +485,12 @@ namespace Etherna.Scrinium.Core.Extensions
                 LogLevel.Error,
                 new EventId(42, nameof(DbMigrationFailed)),
                 "Db migration operation {DbMigrationOpId} of DbContext {DbName} failed");
+
+        private static readonly Action<ILogger, string, string, Exception> _referencesRepairFailed =
+            LoggerMessage.Define<string, string>(
+                LogLevel.Error,
+                new EventId(81, nameof(ReferencesRepairFailed)),
+                "References repair operation {ReferencesRepairOpId} of DbContext {DbName} failed");
 
         private static readonly Action<ILogger, string, string, Exception> _resourceLockLeaseLost =
             LoggerMessage.Define<string, string>(
@@ -585,11 +597,8 @@ namespace Etherna.Scrinium.Core.Extensions
         public static void DbMaintainerSkippedDependenciesUpdateWithoutReferences(this ILogger logger, string dbName, string modelId) =>
             _dbMaintainerSkippedDependenciesUpdateWithoutReferences(logger, dbName, modelId, null!);
 
-        public static void DbMigrationCancelledWithoutLockClaim(this ILogger logger, string dbMigrationOpId, string dbName) =>
-            _dbMigrationCancelledWithoutLockClaim(logger, dbMigrationOpId, dbName, null!);
-
-        public static void DbMigrationClosedOrphanedOperations(this ILogger logger, long operationsCount, string dbName) =>
-            _dbMigrationClosedOrphanedOperations(logger, operationsCount, dbName, null!);
+        public static void ReferencesRepairFailed(this ILogger logger, string repairOpId, string dbName, Exception exception) =>
+            _referencesRepairFailed(logger, repairOpId, dbName, exception);
 
         public static void DbMigrationFailed(this ILogger logger, string dbMigrationOpId, string dbName, Exception exception) =>
             _dbMigrationFailed(logger, dbMigrationOpId, dbName, exception);
@@ -597,11 +606,17 @@ namespace Etherna.Scrinium.Core.Extensions
         public static void DbMigrationManagerInitialized(this ILogger logger, string dbName) =>
             _dbMigrationManagerInitialized(logger, dbName, null!);
 
-        public static void DbMigrationDeniedStartCleanupFailed(this ILogger logger, string dbMigrationOpId, string dbName, Exception exception) =>
-            _dbMigrationDeniedStartCleanupFailed(logger, dbMigrationOpId, dbName, exception);
+        public static void DbOperationCancelledWithoutLockClaim(this ILogger logger, string dbOperationId, string dbName) =>
+            _dbOperationCancelledWithoutLockClaim(logger, dbOperationId, dbName, null!);
 
-        public static void DbMigrationStartCleanupFailed(this ILogger logger, string dbMigrationOpId, string dbName, Exception exception) =>
-            _dbMigrationStartCleanupFailed(logger, dbMigrationOpId, dbName, exception);
+        public static void DbOperationClosedOrphanedOperations(this ILogger logger, long operationsCount, string dbName) =>
+            _dbOperationClosedOrphanedOperations(logger, operationsCount, dbName, null!);
+
+        public static void DbOperationDeniedStartCleanupFailed(this ILogger logger, string dbOperationId, string dbName, Exception exception) =>
+            _dbOperationDeniedStartCleanupFailed(logger, dbOperationId, dbName, exception);
+
+        public static void DbOperationStartCleanupFailed(this ILogger logger, string dbOperationId, string dbName, Exception exception) =>
+            _dbOperationStartCleanupFailed(logger, dbOperationId, dbName, exception);
 
         public static void DeleteDocDependenciesTaskEnded(this ILogger logger, Type dbContextType, string deletedRepositoryName, string modelId) =>
             _deleteDocDependenciesTaskEnded(logger, dbContextType, deletedRepositoryName, modelId, null!);
@@ -651,6 +666,9 @@ namespace Etherna.Scrinium.Core.Extensions
         public static void RepositoryDeletedDocuments(this ILogger logger, string repositoryName, string dbName, long deletedCount) =>
             _repositoryDeletedDocuments(logger, repositoryName, dbName, deletedCount, null!);
 
+        public static void RepositoryDeletedMissingOriginReferencingDocuments(this ILogger logger, string repositoryName, string dbName, string elementPath, string missingOriginId) =>
+            _repositoryDeletedMissingOriginReferencingDocuments(logger, repositoryName, dbName, missingOriginId, elementPath, null!);
+
         public static void RepositoryFoundAndUpdatedDocument(this ILogger logger, string repositoryName, string dbName, bool matched) =>
             _repositoryFoundAndUpdatedDocument(logger, repositoryName, dbName, matched, null!);
 
@@ -675,8 +693,8 @@ namespace Etherna.Scrinium.Core.Extensions
         public static void RepositoryRemovedMissingOriginReference(this ILogger logger, string repositoryName, string dbName, string elementPath, string missingOriginId) =>
             _repositoryRemovedMissingOriginReference(logger, repositoryName, dbName, missingOriginId, elementPath, null!);
 
-        public static void RepositoryRemovedMissingOriginReferences(this ILogger logger, string repositoryName, string dbName, long missingOriginIdsCount, long updatedDocumentsCount) =>
-            _repositoryRemovedMissingOriginReferences(logger, repositoryName, dbName, missingOriginIdsCount, updatedDocumentsCount, null!);
+        public static void RepositoryRepairedMissingOriginReferences(this ILogger logger, string repositoryName, string dbName, long missingOriginIdsCount, long updatedDocumentsCount, long deletedDocumentsCount) =>
+            _repositoryRepairedMissingOriginReferences(logger, repositoryName, dbName, missingOriginIdsCount, updatedDocumentsCount, deletedDocumentsCount, null!);
 
         public static void RepositoryReplacedDocument(this ILogger logger, string repositoryName, string dbName, string modelId) =>
             _repositoryReplacedDocument(logger, repositoryName, dbName, modelId, null!);

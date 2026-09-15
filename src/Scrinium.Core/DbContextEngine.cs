@@ -83,6 +83,7 @@ namespace Etherna.Scrinium.Core
             DbContextType = dbContextType;
             DbMaintainer = dependencies.DbMaintainer;
             DbMigrationManager = dependencies.DbMigrationManager;
+            ReferencesRepairManager = dependencies.ReferencesRepairManager;
             DiscriminatorRegistry = dependencies.DiscriminatorRegistry;
             ExecutionContext = dependencies.ExecutionContext;
             MapRegistry = dependencies.MapRegistry;
@@ -99,6 +100,7 @@ namespace Etherna.Scrinium.Core
             // Initialize internal dependencies.
             DbMaintainer.Initialize(this, logger);
             DbMigrationManager.Initialize(this, logger);
+            ReferencesRepairManager.Initialize(this, logger);
             DiscriminatorRegistry.Initialize(this, logger);
             MapRegistry.Initialize(this, logger);
             InitializeSerializerRegistry();
@@ -111,6 +113,7 @@ namespace Etherna.Scrinium.Core
             {
                 //internal maps
                 new DbMigrationOperationMap().Register(this);
+                new ReferencesRepairOperationMap().Register(this);
                 new ModelBaseMap().Register(this);
                 new OperationBaseMap().Register(this);
                 new SeedOperationMap().Register(this);
@@ -172,6 +175,7 @@ namespace Etherna.Scrinium.Core
         public Type DbContextType { get; private set; } = null!;
         public IDbMaintainer DbMaintainer { get; private set; } = null!;
         public IDbMigrationManager DbMigrationManager { get; private set; } = null!;
+        public IReferencesRepairManager ReferencesRepairManager { get; private set; } = null!;
         public IDiscriminatorRegistry DiscriminatorRegistry { get; private set; } = null!;
         public IExecutionContext ExecutionContext { get; private set; } = null!;
         public string Identifier => Options.Identifier ?? DbContextType.Name;

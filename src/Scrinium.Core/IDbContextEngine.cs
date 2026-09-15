@@ -70,6 +70,7 @@ namespace Etherna.Scrinium.Core
         /// Database operator interested into migrations execution.
         /// </summary>
         IDbMigrationManager DbMigrationManager { get; }
+        IReferencesRepairManager ReferencesRepairManager { get; }
 
         /// <summary>
         /// Registry for discriminator configuration.

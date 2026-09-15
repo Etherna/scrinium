@@ -15,6 +15,7 @@
 using Etherna.MongoDB.Driver;
 using Etherna.Scrinium.Core.Domain.Models;
 using Etherna.Scrinium.Core.Migration;
+using Etherna.Scrinium.Core.Options;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -148,17 +149,41 @@ namespace Etherna.Scrinium.Core.Repositories
         string ModelIdToString(object model);
 
         /// <summary>
-        /// Remove from the collection documents the references pointing to missing origin
+        /// Repair the references of the collection documents pointing to missing origin
         /// documents, scanning them like
-        /// <see cref="FindMissingOriginReferencesAsync(CancellationToken)"/> does: a reference
-        /// hosted as an array item is pulled out of its array, any other one is set to null,
-        /// deserializing like a null reference from then on. This is a raw bulk repair: it
-        /// writes server side without loading models, and the reference paths the scan can't
-        /// verify stay untouched, reported apart.
+        /// <see cref="FindMissingOriginReferencesAsync(CancellationToken)"/> does. Each
+        /// reference element path is repaired the way its mapping declares the deletion of an
+        /// origin document is propagated
+        /// (<see cref="Serialization.Serializers.ReferenceSerializerConfiguration.OriginDelete"/>),
+        /// the policy the dangling references found here never reached: a path declaring
+        /// <see cref="OriginDeleteMode.RemoveReference"/> has its references pulled out of
+        /// their array, or set to null, deserializing like a null reference from then on; one
+        /// declaring <see cref="OriginDeleteMode.DeleteReferencingDocument"/> has the documents
+        /// carrying them deleted through the repository domain delete, which propagates their
+        /// own reference policies in turn; one declaring
+        /// <see cref="OriginDeleteMode.KeepReference"/> keeps its dangling references, and is
+        /// not even scanned. <paramref name="repairModesByElementPath"/> overrides the declared
+        /// policy of the paths it names. The reference paths the scan can't verify stay
+        /// untouched, reported apart.
         /// </summary>
+        /// <param name="repairModesByElementPath">The repair mode to apply to a reference
+        /// element path, overriding its declared origin delete policy. Every path left out is
+        /// repaired as its mapping declares</param>
         /// <param name="cancellationToken">Cancellation token</param>
-        /// <returns>One removal per reference element path, with the unverifiable paths aside</returns>
-        Task<MissingOriginReferencesRemovalReport> RemoveMissingOriginReferencesAsync(
+        /// <returns>One repair per reference element path, with the unverifiable paths aside</returns>
+        /// <exception cref="UnauthorizedAccessException">The repository is read-only</exception>
+        /// <exception cref="ArgumentException">A named element path is not a verifiable
+        /// reference of this collection</exception>
+        /// <param name="dryRun">If true, execute the repair with its collection writes
+        /// simulated: the scan reads for real, the updates and the deletes never reach the
+        /// server, and the report tells what the repair would have done</param>
+        /// <param name="progressAsync">Invoked while a path is repaired, with what it brought
+        /// so far, and once more when the path ends: a long scan renders its counters growing
+        /// instead of staying silent until it completes</param>
+        Task<MissingOriginReferencesRepairReport> RepairMissingOriginReferencesAsync(
+            IReadOnlyDictionary<string, OriginDeleteMode>? repairModesByElementPath = null,
+            bool dryRun = false,
+            Func<MissingOriginReferencesPathRepair, Task>? progressAsync = null,
             CancellationToken cancellationToken = default);
 
         Task ReplaceAsync(

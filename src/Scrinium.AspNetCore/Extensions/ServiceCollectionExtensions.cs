@@ -113,6 +113,7 @@ namespace Etherna.Scrinium.AspNetCore.Extensions
             services.TryAddTransient<IDbDependencies, DbDependencies>();
             services.TryAddTransient<IDbMaintainer, DbMaintainer>();
             services.TryAddTransient<IDbMigrationManager, DbMigrationManager>();
+            services.TryAddTransient<IReferencesRepairManager, ReferencesRepairManager>();
             services.TryAddTransient<IDiscriminatorRegistry, DiscriminatorRegistry>();
             services.TryAddTransient<IMapRegistry, MapRegistry>();
             services.TryAddTransient<IRepositoryRegistry, RepositoryRegistry>();
@@ -121,6 +122,7 @@ namespace Etherna.Scrinium.AspNetCore.Extensions
             //tasks
             services.TryAddTransient<IDeleteDocDependenciesTask, DeleteDocDependenciesTask>();
             services.TryAddTransient<IMigrateDbContextTask, MigrateDbContextTask>();
+            services.TryAddTransient<IRepairReferencesTask, RepairReferencesTask>();
             services.TryAddTransient<IUpdateDocDependenciesTask, UpdateDocDependenciesTask>();
 
             return configuration;

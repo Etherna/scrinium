@@ -196,13 +196,13 @@ namespace Etherna.Scrinium.AspNetCore.UI.Areas.Scrinium.Pages
         }
 
         /// <summary>
-        /// Read a page of the migration operations history of a db context, the most recent
-        /// first. The polled status carries the latest operations alone: reaching the older
-        /// ones is an explicit request, one page at a time.
+        /// Read a page of the operations history of a db context, the most recent first,
+        /// whatever kind they are. The polled status carries the latest operations alone:
+        /// reaching the older ones is an explicit request, one page at a time.
         /// </summary>
         /* The page number can't be named `page`: Razor Pages reserves that route value for
          * the page path itself, and a handler parameter of that name binds to it. */
-        public async Task<IActionResult> OnGetMigrationsAsync(string identifier, int historyPage = 0)
+        public async Task<IActionResult> OnGetOperationsAsync(string identifier, int historyPage = 0)
         {
             InitializePage();
 
@@ -220,7 +220,7 @@ namespace Etherna.Scrinium.AspNetCore.UI.Areas.Scrinium.Pages
                     error = "The history page must be a non negative number, inside the paging range."
                 });
 
-            var operations = await dbContext.GetLastMigrationsAsync(historyPage, HistoryPageLength).ConfigureAwait(false);
+            var operations = await dbContext.GetLastOperationsAsync(historyPage, HistoryPageLength).ConfigureAwait(false);
 
             return new JsonResult(new
             {
@@ -265,10 +265,13 @@ namespace Etherna.Scrinium.AspNetCore.UI.Areas.Scrinium.Pages
                 {
                     elementPath = pathReport.ElementPath,
                     originRepositoryNames = pathReport.OriginRepositoryNames,
+                    //what the mapping declares a deleted origin does, the default of a repair
+                    originDelete = pathReport.OriginDelete.ToString(),
                     missingOriginIdsCount = pathReport.MissingOriginIdsCount,
-                    //a capped listing: the counts always report the full amounts
+                    //capped listings: the counts always report the full amounts
                     trackedMissingOriginIds = pathReport.TrackedMissingOriginIds,
-                    referencingDocumentsCount = pathReport.ReferencingDocumentsCount
+                    referencingDocumentsCount = pathReport.ReferencingDocumentsCount,
+                    trackedReferencingDocumentIds = pathReport.TrackedReferencingDocumentIds
                 }),
                 unverifiableElementPaths = report?.UnverifiableElementPaths
             });
@@ -335,15 +338,29 @@ namespace Etherna.Scrinium.AspNetCore.UI.Areas.Scrinium.Pages
                     await dbContext.Engine.DbContextLock.IsLockedAsync().ConfigureAwait(false)
                         ? openOperation
                         : null;
-                var lastOperations = await dbContext.GetLastMigrationsAsync(0, HistoryLength).ConfigureAwait(false);
+                var lastOperations = await dbContext.GetLastOperationsAsync(0, HistoryLength).ConfigureAwait(false);
+
+                /* The references repairs share the db context lock with the migrations, so one
+                 * runs at a time and the same liveness rule tells a running operation from one
+                 * orphaned by a dead owner. */
+                var openRepair = await dbContext.IsReferencesRepairRunningAsync().ConfigureAwait(false);
+                var runningRepair =
+                    openRepair is not null &&
+                    await dbContext.Engine.DbContextLock.IsLockedAsync().ConfigureAwait(false)
+                        ? openRepair
+                        : null;
+                /* The kinds share the db context lock, so at most one of them runs: the card
+                 * reports one running operation, whatever kind it is. */
+                var runningAnyOperation = (OperationBase?)runningOperation ?? runningRepair;
 
                 statuses.Add(new
                 {
                     identifier = dbContext.Engine.Identifier,
-                    isLocked = runningOperation is not null || dbContext.Engine.IsExclusiveWriteEnabled,
-                    runningOperation = runningOperation is null ? null : ProjectOperation(runningOperation),
+                    isLocked = runningAnyOperation is not null || dbContext.Engine.IsExclusiveWriteEnabled,
+                    runningOperation = runningAnyOperation is null ? null : ProjectOperation(runningAnyOperation),
+                    //the history of every kind: migrations, references repairs and seedings
                     lastOperations = lastOperations
-                        .Where(op => op.Id != runningOperation?.Id)
+                        .Where(op => op.Id != runningAnyOperation?.Id)
                         .Select(ProjectOperation)
                 });
             }
@@ -371,54 +388,95 @@ namespace Etherna.Scrinium.AspNetCore.UI.Areas.Scrinium.Pages
         }
 
         /// <summary>
-        /// Remove from a single collection the references pointing to missing origin
-        /// documents. The collection is scanned again server side: the removal never
-        /// trusts a list of ids sent by the browser.
+        /// Start the repair of the references of a single collection pointing to missing
+        /// origin documents: each reference element path is repaired the way its mapping
+        /// declares a deleted origin is propagated, unless the request asks for another mode.
+        /// It runs as a db operation, under the db context lock: the request starts it, the
+        /// status handler follows it. The collection is scanned again by the operation: the
+        /// repair never trusts a list of ids sent by the browser, only the action per path.
         /// </summary>
-        public async Task<IActionResult> OnPostRemoveMissingOriginReferencesAsync(string identifier, string repositoryName)
+        public async Task<IActionResult> OnPostRepairMissingOriginReferencesAsync(
+            string identifier,
+            string repositoryName,
+            bool dryRun = false,
+            int? lockLeaseDurationMinutes = null,
+            string[]? elementPaths = null,
+            string[]? repairModes = null)
         {
             InitializePage();
 
             var dbContext = DbContexts.FirstOrDefault(dbc => dbc.Engine.Identifier == identifier);
             var repository = dbContext?.RepositoryRegistry.Repositories
                 .FirstOrDefault(repo => repo.Name == repositoryName);
-            if (repository is null)
+            if (dbContext is null || repository is null)
                 return NotFound();
 
-            /* The page doesn't render the removal control on a read-only repository, but the
-             * request doesn't have to come from it. */
+            /* The page doesn't render the repair controls on a read-only repository, but the
+             * request doesn't have to come from them. */
             if (repository.IsReadOnly)
                 return BadRequest(new
                 {
-                    removed = false,
+                    started = false,
                     error = $"The repository \"{repository.Name}\" is read-only."
                 });
 
-            MissingOriginReferencesRemovalReport report;
-            try
-            {
-                report = await repository.RemoveMissingOriginReferencesAsync().ConfigureAwait(false);
-            }
-            catch (UnauthorizedAccessException)
-            {
-                //an exclusive access (a running migration) denies access to the collection
-                return new JsonResult(new
+            //the lease duration is bounded server side, like the one of a migration start
+            if (lockLeaseDurationMinutes is not > 0)
+                return BadRequest(new
                 {
-                    removed = false,
-                    error = "The collection is unavailable: an exclusive access is running."
+                    started = false,
+                    error = "The lock lease duration must be a positive number of minutes."
                 });
+            if (lockLeaseDurationMinutes > MaxLockLeaseDurationMinutes)
+                return BadRequest(new
+                {
+                    started = false,
+                    error = $"The lock lease duration can't exceed {MaxLockLeaseDurationMinutes} minutes."
+                });
+
+            /* The chosen actions arrive as two parallel lists, one entry per reference element
+             * path of the scan the page rendered: anything else is a request the page never
+             * composed. */
+            elementPaths ??= [];
+            repairModes ??= [];
+            if (elementPaths.Length != repairModes.Length)
+                return BadRequest(new
+                {
+                    started = false,
+                    error = "Every reference path must carry its repair mode."
+                });
+            if (elementPaths.Length == 0)
+                return BadRequest(new
+                {
+                    started = false,
+                    error = "The repair needs at least one reference path."
+                });
+
+            var repairModesByElementPath = new Dictionary<string, OriginDeleteMode>(StringComparer.Ordinal);
+            for (var i = 0; i < elementPaths.Length; i++)
+            {
+                //a numeric value parses as an enum without being one of its modes
+                if (!Enum.TryParse<OriginDeleteMode>(repairModes[i], out var repairMode) ||
+                    !Enum.IsDefined(repairMode))
+                    return BadRequest(new
+                    {
+                        started = false,
+                        error = $"Unknown repair mode \"{repairModes[i]}\"."
+                    });
+
+                repairModesByElementPath[elementPaths[i]] = repairMode;
             }
+
+            var repairOperation = await dbContext.TryStartReferencesRepairAsync(
+                repository.Name,
+                repairModesByElementPath,
+                dryRun,
+                TimeSpan.FromMinutes(lockLeaseDurationMinutes.Value)).ConfigureAwait(false);
 
             return new JsonResult(new
             {
-                removed = true,
-                pathRemovals = report.PathRemovals.Select(pathRemoval => new
-                {
-                    elementPath = pathRemoval.ElementPath,
-                    missingOriginIdsCount = pathRemoval.MissingOriginIdsCount,
-                    updatedDocumentsCount = pathRemoval.UpdatedDocumentsCount
-                }),
-                unverifiableElementPaths = report.UnverifiableElementPaths
+                started = repairOperation is not null,
+                operationId = repairOperation?.Id
             });
         }
 
@@ -473,8 +531,25 @@ namespace Etherna.Scrinium.AspNetCore.UI.Areas.Scrinium.Pages
             DbContexts = dbContextTypes.Select(type => (IDbContext)serviceProvider.GetRequiredService(type));
         }
 
-        private static object ProjectOperation(DbMigrationOperation operation) => new
+        /* The operations collection is polymorphic, and so is the history rendering it: each
+         * kind projects what it records, under the kind the page switches on. A seeding
+         * records nothing but its existence — it is written only when a seed succeeds — so
+         * that is what it reports. */
+        private static object ProjectOperation(OperationBase operation) => operation switch
         {
+            DbMigrationOperation migrationOperation => ProjectMigration(migrationOperation),
+            ReferencesRepairOperation repairOperation => ProjectReferencesRepair(repairOperation),
+            _ => new
+            {
+                kind = "Seed",
+                id = operation.Id,
+                creationDateTime = ObjectId.TryParse(operation.Id, out var seedObjectId) ? new DateTimeOffset(seedObjectId.CreationTime) : (DateTimeOffset?)null
+            }
+        };
+
+        private static object ProjectMigration(DbMigrationOperation operation) => new
+        {
+            kind = "Migration",
             id = operation.Id,
             isDryRun = operation.IsDryRun,
             stopAtFirstError = operation.IsStopAtFirstErrorEnabled,
@@ -500,6 +575,29 @@ namespace Etherna.Scrinium.AspNetCore.UI.Areas.Scrinium.Pages
                     documentId = error.DocumentId,
                     message = error.Message
                 })
+            })
+        };
+
+        private static object ProjectReferencesRepair(ReferencesRepairOperation operation) => new
+        {
+            kind = "ReferencesRepair",
+            id = operation.Id,
+            repository = operation.RepositoryName,
+            isDryRun = operation.IsDryRun,
+            status = operation.CurrentStatus.ToString(),
+            //the ObjectId id embeds the creation instant
+            creationDateTime = ObjectId.TryParse(operation.Id, out var objectId) ? new DateTimeOffset(objectId.CreationTime) : (DateTimeOffset?)null,
+            completedDateTime = operation.CompletedDateTime,
+            //the plan of the operation, readable from the moment it opens
+            pathStates = operation.PathStates.Select(pathState => new
+            {
+                elementPath = pathState.ElementPath,
+                repairMode = pathState.RepairMode.ToString(),
+                state = pathState.State.ToString(),
+                missingOriginIdsCount = pathState.MissingOriginIdsCount,
+                updatedDocumentsCount = pathState.UpdatedDocumentsCount,
+                deletedDocumentsCount = pathState.DeletedDocumentsCount,
+                errorMessage = pathState.ErrorMessage
             })
         };
 

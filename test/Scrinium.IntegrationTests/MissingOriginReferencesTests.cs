@@ -14,7 +14,10 @@
 
 using Etherna.MongoDB.Bson;
 using Etherna.MongoDB.Driver;
+using Etherna.Scrinium.Core.Domain.Models;
+using Etherna.Scrinium.Core.Domain.Models.ReferencesRepairOpAgg;
 using Etherna.Scrinium.Core.ExecContext.AsyncLocal;
+using Etherna.Scrinium.Core.Options;
 using Etherna.Scrinium.Core.Repositories;
 using Etherna.Scrinium.IntegrationTests.Fixtures;
 using Etherna.Scrinium.IntegrationTests.Models;
@@ -221,12 +224,13 @@ namespace Etherna.Scrinium.IntegrationTests
         }
 
         [Fact]
-        public async Task RemovesTheReferencesToMissingOriginDocuments()
+        public async Task RepairRemovesTheReferencesToMissingOriginDocuments()
         {
-            /* The removal scans like the find does and repairs what it verifies: a reference
-             * hosted as an array item is pulled out of its array, a single valued one is set
-             * to null. Valid references stay untouched, and the repaired document loads
-             * normally, reading the removed references as null. */
+            /* The repair scans like the find does and repairs what it verifies: on a path
+             * whose mapping removes the reference — the default policy — a reference hosted as
+             * an array item is pulled out of its array, a single valued one is set to null.
+             * Valid references stay untouched, and the repaired document loads normally,
+             * reading the removed references as null. */
 
             // Setup.
             using var contextHandler = AsyncLocalContext.Instance.InitAsyncLocalContext();
@@ -240,16 +244,17 @@ namespace Etherna.Scrinium.IntegrationTests
             await DeleteRawPostAsync(brokenPost.Id);
 
             // Action.
-            var report = await dbContext.Blogs.RemoveMissingOriginReferencesAsync();
+            var report = await dbContext.Blogs.RepairMissingOriginReferencesAsync();
 
-            // Assert: the removal reports both repaired paths.
+            // Assert: the repair reports both repaired paths.
             Assert.Empty(report.UnverifiableElementPaths);
-            var lastPostRemoval = report.PathRemovals.Single(pathRemoval => pathRemoval.ElementPath == "LastPost");
-            Assert.True(lastPostRemoval.MissingOriginIdsCount >= 1);
-            Assert.True(lastPostRemoval.UpdatedDocumentsCount >= 1);
-            var postsRemoval = report.PathRemovals.Single(pathRemoval => pathRemoval.ElementPath == "Posts");
-            Assert.True(postsRemoval.MissingOriginIdsCount >= 1);
-            Assert.True(postsRemoval.UpdatedDocumentsCount >= 1);
+            var lastPostRepair = report.PathRepairs.Single(pathRepair => pathRepair.ElementPath == "LastPost");
+            Assert.Equal(OriginDeleteMode.RemoveReference, lastPostRepair.RepairMode);
+            Assert.True(lastPostRepair.MissingOriginIdsCount >= 1);
+            Assert.True(lastPostRepair.UpdatedDocumentsCount >= 1);
+            var postsRepair = report.PathRepairs.Single(pathRepair => pathRepair.ElementPath == "Posts");
+            Assert.True(postsRepair.MissingOriginIdsCount >= 1);
+            Assert.True(postsRepair.UpdatedDocumentsCount >= 1);
 
             //the raw document: the single reference is null, the array kept only the valid item
             var blogsCollection = dbContext.Engine.Database.GetCollection<BsonDocument>("blogs");
@@ -278,7 +283,7 @@ namespace Etherna.Scrinium.IntegrationTests
         }
 
         [Fact]
-        public async Task RemovesTheReferencesInsideDictionaryValues()
+        public async Task RepairRemovesTheReferencesInsideDictionaryValues()
         {
             /* A reference hosted as a dictionary value in array of documents representation
              * is not an array item itself: the removal sets it to null inside its entry,
@@ -303,13 +308,14 @@ namespace Etherna.Scrinium.IntegrationTests
             await DeleteRawPostAsync(brokenPost.Id);
 
             // Action.
-            var report = await dbContext.Catalogs.RemoveMissingOriginReferencesAsync();
+            var report = await dbContext.Catalogs.RepairMissingOriginReferencesAsync();
 
             // Assert.
-            var indexedRemoval = Assert.Single(report.PathRemovals);
-            Assert.Equal("IndexedPosts", indexedRemoval.ElementPath);
-            Assert.Equal(1, indexedRemoval.MissingOriginIdsCount);
-            Assert.Equal(1, indexedRemoval.UpdatedDocumentsCount);
+            var indexedRepair = Assert.Single(report.PathRepairs);
+            Assert.Equal("IndexedPosts", indexedRepair.ElementPath);
+            Assert.Equal(OriginDeleteMode.RemoveReference, indexedRepair.RepairMode);
+            Assert.Equal(1, indexedRepair.MissingOriginIdsCount);
+            Assert.Equal(1, indexedRepair.UpdatedDocumentsCount);
 
             //the raw document: the broken entry keeps its key with a null value, the valid one is untouched
             var catalogsCollection = dbContext.Engine.Database.GetCollection<BsonDocument>("catalogs");
@@ -359,9 +365,9 @@ namespace Etherna.Scrinium.IntegrationTests
         }
 
         [Fact]
-        public async Task RemovalIsDeniedOnReadOnlyRepositories()
+        public async Task RepairIsDeniedOnReadOnlyRepositories()
         {
-            /* A read-only repository denies every write on its collection: the removal fails
+            /* A read-only repository denies every write on its collection: the repair fails
              * fast, before scanning anything. */
 
             // Setup.
@@ -370,7 +376,270 @@ namespace Etherna.Scrinium.IntegrationTests
 
             // Action and assert.
             await Assert.ThrowsAsync<UnauthorizedAccessException>(
-                () => readOnlyDbContext.Notes.RemoveMissingOriginReferencesAsync());
+                () => readOnlyDbContext.Notes.RepairMissingOriginReferencesAsync());
+        }
+
+        [Fact]
+        public async Task FindReportsTheOriginDeletePolicyOfEachPath()
+        {
+            /* The mapping declares what the deletion of an origin document does to the
+             * documents referencing it: the scan reports it per path, since it is what a
+             * repair of that path follows by default. */
+
+            // Setup.
+            using var contextHandler = AsyncLocalContext.Instance.InitAsyncLocalContext();
+
+            // Action.
+            var mixtapesReport = await dbContext.Mixtapes.FindMissingOriginReferencesAsync();
+            var royaltiesReport = await dbContext.Royalties.FindMissingOriginReferencesAsync();
+
+            // Assert.
+            Assert.Equal(
+                OriginDeleteMode.RemoveReference,
+                GetPathReport(mixtapesReport, "Highlight").OriginDelete);
+            Assert.Equal(
+                OriginDeleteMode.KeepReference,
+                GetPathReport(mixtapesReport, "Pinned").OriginDelete);
+            Assert.Equal(
+                OriginDeleteMode.DeleteReferencingDocument,
+                GetPathReport(royaltiesReport, "Subject").OriginDelete);
+        }
+
+        [Fact]
+        public async Task FindListsTheDocumentsCarryingTheDanglingReferences()
+        {
+            /* The missing origin ids say what is broken, the referencing document ids say
+             * where: an operator looks those documents up before repairing anything. */
+
+            // Setup.
+            using var contextHandler = AsyncLocalContext.Instance.InitAsyncLocalContext();
+            var brokenPost = new Post("broken", "content");
+            var blog = new Blog("blog title");
+            blog.AddPost(brokenPost); //also the last post
+            await dbContext.Blogs.CreateAsync(blog);
+
+            await DeleteRawPostAsync(brokenPost.Id);
+
+            // Action.
+            var report = await dbContext.Blogs.FindMissingOriginReferencesAsync();
+
+            // Assert.
+            var lastPostReport = GetPathReport(report, "LastPost");
+            Assert.Contains(brokenPost.Id, lastPostReport.TrackedMissingOriginIds);
+            Assert.Contains(blog.Id, lastPostReport.TrackedReferencingDocumentIds);
+            Assert.True(lastPostReport.ReferencingDocumentsCount >= 1);
+        }
+
+        [Fact]
+        public async Task RepairOperationAppliesTheChosenModesAndReportsEachPath()
+        {
+            /* The repair runs as a db operation: it carries its plan from the moment it opens,
+             * claims the db context lock, and reports every path it was started with. */
+
+            // Setup.
+            using var contextHandler = AsyncLocalContext.Instance.InitAsyncLocalContext();
+            await ResetRoyaltiesAsync();
+            fixture.TaskRunner.ClearPending();
+
+            var track = new Track("track");
+            await dbContext.Tracks.CreateAsync(track);
+            var royalty = new Royalty("author", track);
+            await dbContext.Royalties.CreateAsync(royalty);
+
+            await DeleteRawTrackAsync(track.Id);
+
+            // Action.
+            var repairOp = await dbContext.TryStartReferencesRepairAsync(
+                "royalties",
+                new Dictionary<string, OriginDeleteMode> { ["Subject"] = OriginDeleteMode.DeleteReferencingDocument });
+            Assert.NotNull(repairOp);
+
+            //the plan is readable before anything runs
+            Assert.Equal(ReferencesRepairOperation.Status.New, repairOp.CurrentStatus);
+            var plannedPath = Assert.Single(repairOp.PathStates);
+            Assert.Equal("Subject", plannedPath.ElementPath);
+            Assert.Equal(OriginDeleteMode.DeleteReferencingDocument, plannedPath.RepairMode);
+            Assert.Equal(ReferencesRepairPathState.ExecutionState.Pending, plannedPath.State);
+
+            await dbContext.ExecuteReferencesRepairAsync(repairOp.Id);
+
+            // Assert.
+            using var verifyScope = fixture.ServiceProvider.CreateScope();
+            var verifyDbContext = verifyScope.ServiceProvider.GetRequiredService<ITestDbContext>();
+            var completedOp = await verifyDbContext.GetReferencesRepairAsync(repairOp.Id);
+
+            Assert.Equal(ReferencesRepairOperation.Status.Completed, completedOp.CurrentStatus);
+            var repairedPath = Assert.Single(completedOp.PathStates);
+            Assert.Equal(ReferencesRepairPathState.ExecutionState.Succeded, repairedPath.State);
+            Assert.Equal(1, repairedPath.MissingOriginIdsCount);
+            Assert.Equal(1, repairedPath.DeletedDocumentsCount);
+            Assert.Equal(0, repairedPath.UpdatedDocumentsCount);
+
+            //the referencing document is gone, and the lock is free for the next operation
+            Assert.Null(await dbContext.Royalties.TryFindOneAsync(royalty.Id));
+            Assert.False(await dbContext.Engine.DbContextLock.IsLockedAsync());
+        }
+
+        [Fact]
+        public async Task DryRunRepairOperationReportsWithoutPersisting()
+        {
+            /* A dry run executes the same operation with its collection writes simulated: it
+             * reports what it would repair, and the documents stay as they are. */
+
+            // Setup.
+            using var contextHandler = AsyncLocalContext.Instance.InitAsyncLocalContext();
+            await ResetRoyaltiesAsync();
+            fixture.TaskRunner.ClearPending();
+
+            var track = new Track("track");
+            await dbContext.Tracks.CreateAsync(track);
+            var royalty = new Royalty("author", track);
+            await dbContext.Royalties.CreateAsync(royalty);
+
+            await DeleteRawTrackAsync(track.Id);
+
+            // Action.
+            var repairOp = await dbContext.TryStartReferencesRepairAsync(
+                "royalties",
+                new Dictionary<string, OriginDeleteMode> { ["Subject"] = OriginDeleteMode.DeleteReferencingDocument },
+                dryRun: true);
+            Assert.NotNull(repairOp);
+            await dbContext.ExecuteReferencesRepairAsync(repairOp.Id);
+
+            // Assert.
+            using var verifyScope = fixture.ServiceProvider.CreateScope();
+            var verifyDbContext = verifyScope.ServiceProvider.GetRequiredService<ITestDbContext>();
+            var completedOp = await verifyDbContext.GetReferencesRepairAsync(repairOp.Id);
+
+            Assert.True(completedOp.IsDryRun);
+            Assert.Equal(ReferencesRepairOperation.Status.Completed, completedOp.CurrentStatus);
+            var simulatedPath = Assert.Single(completedOp.PathStates);
+            Assert.Equal(1, simulatedPath.MissingOriginIdsCount);
+            Assert.Equal(1, simulatedPath.DeletedDocumentsCount);
+
+            //nothing was persisted: the referencing document is still there
+            Assert.NotNull(await dbContext.Royalties.TryFindOneAsync(royalty.Id));
+        }
+
+        [Fact]
+        public async Task RepairAppliesTheRequestedModeOverTheMapping()
+        {
+            /* The declared policy is the default, not the only option: an operator repairing a
+             * cascade path by removing the reference keeps the referencing documents. */
+
+            // Setup.
+            using var contextHandler = AsyncLocalContext.Instance.InitAsyncLocalContext();
+            await ResetRoyaltiesAsync();
+
+            var track = new Track("track");
+            await dbContext.Tracks.CreateAsync(track);
+            var royalty = new Royalty("author", track);
+            await dbContext.Royalties.CreateAsync(royalty);
+
+            await DeleteRawTrackAsync(track.Id);
+
+            // Action.
+            var report = await dbContext.Royalties.RepairMissingOriginReferencesAsync(
+                new Dictionary<string, OriginDeleteMode> { ["Subject"] = OriginDeleteMode.RemoveReference });
+
+            // Assert.
+            var subjectRepair = GetPathRepair(report, "Subject");
+            Assert.Equal(OriginDeleteMode.RemoveReference, subjectRepair.RepairMode);
+            Assert.Equal(0, subjectRepair.DeletedDocumentsCount);
+            Assert.True(subjectRepair.UpdatedDocumentsCount >= 1);
+
+            //the referencing document survives, with its dangling reference removed
+            var rawRoyalty = await ReadRawRoyaltyAsync(royalty.Id);
+            Assert.Equal(BsonNull.Value, rawRoyalty["Subject"]);
+        }
+
+        [Fact]
+        public async Task RepairDeletesTheReferencingDocumentsWhenTheMappingDeclaresIt()
+        {
+            /* A reference declaring the referencing document delete on origin delete has its
+             * documents deleted by the repair too: the dangling references it finds are the
+             * ones that propagation never reached. */
+
+            // Setup.
+            using var contextHandler = AsyncLocalContext.Instance.InitAsyncLocalContext();
+            await ResetRoyaltiesAsync();
+            fixture.TaskRunner.ClearPending();
+
+            var deletedTrack = new Track("deleted");
+            var keptTrack = new Track("kept");
+            await dbContext.Tracks.CreateAsync(deletedTrack);
+            await dbContext.Tracks.CreateAsync(keptTrack);
+
+            var danglingRoyalty = new Royalty("author", deletedTrack);
+            var validRoyalty = new Royalty("author", keptTrack);
+            await dbContext.Royalties.CreateAsync(danglingRoyalty);
+            await dbContext.Royalties.CreateAsync(validRoyalty);
+
+            //the origin document leaves out of any domain flow: nothing propagated the delete
+            await DeleteRawTrackAsync(deletedTrack.Id);
+
+            // Action.
+            var report = await dbContext.Royalties.RepairMissingOriginReferencesAsync();
+
+            // Assert.
+            var subjectRepair = GetPathRepair(report, "Subject");
+            Assert.Equal(OriginDeleteMode.DeleteReferencingDocument, subjectRepair.RepairMode);
+            Assert.Equal(0, subjectRepair.UpdatedDocumentsCount);
+            Assert.Equal(1, subjectRepair.DeletedDocumentsCount);
+
+            //the referencing document is gone, the one on a living origin stays
+            Assert.Null(await dbContext.Royalties.TryFindOneAsync(danglingRoyalty.Id));
+            Assert.NotNull(await dbContext.Royalties.TryFindOneAsync(validRoyalty.Id));
+
+            //the delete went through the domain: it propagates its own reference policies
+            Assert.Contains(fixture.TaskRunner.PendingModelIds, id => Equals(id, danglingRoyalty.Id));
+        }
+
+        [Fact]
+        public async Task RepairKeepsTheReferencesTheMappingKeeps()
+        {
+            /* A reference explicitly declaring to keep the reference on origin delete keeps
+             * its dangling references by design: the repair leaves that path alone, while the
+             * paths of the same collection following the default are repaired. */
+
+            // Setup.
+            using var contextHandler = AsyncLocalContext.Instance.InitAsyncLocalContext();
+            var track = new Track("track");
+            await dbContext.Tracks.CreateAsync(track);
+
+            var mixtape = new Mixtape("mixtape") { Highlight = track, Pinned = track };
+            await dbContext.Mixtapes.CreateAsync(mixtape);
+
+            await DeleteRawTrackAsync(track.Id);
+
+            // Action.
+            var report = await dbContext.Mixtapes.RepairMissingOriginReferencesAsync();
+
+            // Assert.
+            var pinnedRepair = GetPathRepair(report, "Pinned");
+            Assert.Equal(OriginDeleteMode.KeepReference, pinnedRepair.RepairMode);
+            //a kept path isn't even scanned
+            Assert.Equal(0, pinnedRepair.MissingOriginIdsCount);
+            Assert.Equal(OriginDeleteMode.RemoveReference, GetPathRepair(report, "Highlight").RepairMode);
+
+            var rawMixtape = await ReadRawMixtapeAsync(mixtape.Id);
+            Assert.Equal(ObjectId.Parse(track.Id), rawMixtape["Pinned"]["_id"].AsObjectId);
+            Assert.Equal(BsonNull.Value, rawMixtape["Highlight"]);
+        }
+
+        [Fact]
+        public async Task RepairRefusesAnElementPathTheCollectionDoesntHave()
+        {
+            /* A mode addressing a path this collection has no verifiable reference at is a
+             * caller error, not something to apply silently to nothing. */
+
+            // Setup.
+            using var contextHandler = AsyncLocalContext.Instance.InitAsyncLocalContext();
+
+            // Action and assert.
+            await Assert.ThrowsAsync<ArgumentException>(
+                () => dbContext.Royalties.RepairMissingOriginReferencesAsync(
+                    new Dictionary<string, OriginDeleteMode> { ["NotAReference"] = OriginDeleteMode.RemoveReference }));
         }
 
         // Helpers.
@@ -382,10 +651,33 @@ namespace Etherna.Scrinium.IntegrationTests
             await postsCollection.DeleteOneAsync(Builders<BsonDocument>.Filter.Eq("_id", ObjectId.Parse(postId)));
         }
 
+        /* Delete an origin track out of any domain flow, like a raw cleanup or another
+         * application would do: the references pointing to it stay on their documents. */
+        private async Task DeleteRawTrackAsync(string trackId)
+        {
+            var tracksCollection = dbContext.Engine.Database.GetCollection<BsonDocument>("tracks");
+            await tracksCollection.DeleteOneAsync(Builders<BsonDocument>.Filter.Eq("_id", ObjectId.Parse(trackId)));
+        }
+
+        private static MissingOriginReferencesPathRepair GetPathRepair(
+            MissingOriginReferencesRepairReport report,
+            string elementPath) =>
+            report.PathRepairs.Single(pathRepair => pathRepair.ElementPath == elementPath);
+
         private static MissingOriginReferencesPathReport GetPathReport(
             MissingOriginReferencesReport report,
             string elementPath) =>
             report.PathReports.Single(pathReport => pathReport.ElementPath == elementPath);
+
+        private async Task<BsonDocument> ReadRawMixtapeAsync(string mixtapeId) =>
+            await dbContext.Engine.Database.GetCollection<BsonDocument>("mixtapes")
+                .Find(Builders<BsonDocument>.Filter.Eq("_id", ObjectId.Parse(mixtapeId)))
+                .SingleAsync();
+
+        private async Task<BsonDocument> ReadRawRoyaltyAsync(string royaltyId) =>
+            await dbContext.Engine.Database.GetCollection<BsonDocument>("royalties")
+                .Find(Builders<BsonDocument>.Filter.Eq("_id", ObjectId.Parse(royaltyId)))
+                .SingleAsync();
 
         /* The catalogs collection is used by these tests only: purging it keeps their
          * exact assertions independent from the execution order. */
@@ -393,6 +685,15 @@ namespace Etherna.Scrinium.IntegrationTests
         {
             var catalogsCollection = dbContext.Engine.Database.GetCollection<BsonDocument>("catalogs");
             await catalogsCollection.DeleteManyAsync(Builders<BsonDocument>.Filter.Empty);
+        }
+
+        /* A repair of the royalties deletes every royalty whose subject track is missing:
+         * purging the collection keeps the exact counts of these tests independent from the
+         * documents the other tests left there. */
+        private async Task ResetRoyaltiesAsync()
+        {
+            var royaltiesCollection = dbContext.Engine.Database.GetCollection<BsonDocument>("royalties");
+            await royaltiesCollection.DeleteManyAsync(Builders<BsonDocument>.Filter.Empty);
         }
     }
 }
