@@ -383,6 +383,12 @@ namespace Etherna.Scrinium.Core.Extensions
                 new EventId(62, nameof(DbContextMissingOriginDocument)),
                 "DbContext {DbName} found no origin document loading a summary model of type {ModelType} from repository {RepositoryName}: the referred document doesn't exist on its collection");
 
+        private static readonly Action<ILogger, string, string, string?, Exception> _dbContextReferenceWriteLazyLoad =
+            LoggerMessage.Define<string, string, string?>(
+                LogLevel.Warning,
+                new EventId(82, nameof(DbContextReferenceWriteLazyLoad)),
+                "DbContext {DbName} loaded the origin document of a summary model of type {ModelType} to write its member {MemberName}: the stored reference documents don't carry it, so every write of one of them costs a load");
+
         private static readonly Action<ILogger, string, string, Exception> _dbOperationCancelledWithoutLockClaim =
             LoggerMessage.Define<string, string>(
                 LogLevel.Warning,
@@ -524,6 +530,9 @@ namespace Etherna.Scrinium.Core.Extensions
 
         public static void DbContextMissingOriginDocument(this ILogger logger, string dbName, string modelType, string repositoryName) =>
             _dbContextMissingOriginDocument(logger, dbName, modelType, repositoryName, null!);
+
+        public static void DbContextReferenceWriteLazyLoad(this ILogger logger, string dbName, string modelType, string? memberName) =>
+            _dbContextReferenceWriteLazyLoad(logger, dbName, modelType, memberName, null!);
 
         public static void DbContextRegisteredChangedModel(this ILogger logger, string dbName, string modelId, string repositoryName) =>
             _dbContextRegisteredChangedModel(logger, dbName, modelId, repositoryName, null!);

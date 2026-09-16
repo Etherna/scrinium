@@ -366,7 +366,12 @@ namespace Etherna.Scrinium.Core.Serialization.Serializers
             if (actualType != value.GetType())
                 args.SerializeAsNominalType = true;
             var serializer = Configuration.ModelMaps[actualType].ActiveSchema.Serializer;
-            serializer.Serialize(localContext, args, value);
+            /* Write the summary inside the reference write scope: a member the schema declares
+             * and the stored summary doesn't carry reads from the origin document, and that
+             * load completes the document being written, instead of serving an application
+             * read (see ReferenceWriteHandler). */
+            using (ReferenceWriteHandler.TryEnter(dbContextEngine.ExecutionContext))
+                serializer.Serialize(localContext, args, value);
 
             // Add additional data.
             //add model map schema id

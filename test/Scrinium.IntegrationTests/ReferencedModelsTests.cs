@@ -308,6 +308,51 @@ namespace Etherna.Scrinium.IntegrationTests
         }
 
         [Fact]
+        public async Task MissingOriginDocumentDeniesTheReferenceWrite()
+        {
+            /* SCR-296: writing a reference reads every member its schema declares, and a stored
+             * summary can miss one of them (an element renamed without bumping the schema id,
+             * for instance). Without the origin document the write can't complete it, and the
+             * member it would write at its default value would persist as real data inside the
+             * denormalized copy: the write is denied whatever the reference tolerates on reads,
+             * where this one degrades by default. */
+
+            // Setup.
+            using var contextHandler = AsyncLocalContext.Instance.InitAsyncLocalContext();
+            var blog = new Blog("blog title");
+            await setupDbContext.Blogs.CreateAsync(blog);
+            var bookmark = new Bookmark("my bookmark", blog);
+            await setupDbContext.Bookmarks.CreateAsync(bookmark);
+
+            //the stored summary doesn't carry a member of its schema, and its origin document is gone
+            var bookmarksCollection = dbContext.Engine.Database.GetCollection<BsonDocument>(dbContext.Bookmarks.Name);
+            var bookmarkFilter = Builders<BsonDocument>.Filter.Eq("_id", ObjectId.Parse(bookmark.Id!));
+            await bookmarksCollection.UpdateOneAsync(
+                bookmarkFilter,
+                Builders<BsonDocument>.Update.Unset("Blog.Title"));
+            await DeleteDocumentAsync(dbContext.Blogs.Name, blog.Id!);
+
+            using var writeContextHandler = AsyncLocalContext.Instance.InitAsyncLocalContext();
+            var loadedBookmark = await dbContext.Bookmarks.FindOneAsync(bookmark.Id);
+
+            // Action and assert.
+            //the driver reports the denial wrapped into the member serializations it was running
+            var exception = await Assert.ThrowsAnyAsync<Exception>(
+                () => dbContext.Bookmarks.ReplaceAsync(loadedBookmark));
+            Exception? cause = exception;
+            while (cause is not null and not ScriniumMissingOriginDocumentException)
+                cause = cause.InnerException;
+            var deniedWrite = Assert.IsType<ScriniumMissingOriginDocumentException>(cause);
+            Assert.Contains(blog.Id!, deniedWrite.Message, StringComparison.Ordinal);
+            Assert.Contains(nameof(Blog), deniedWrite.Message, StringComparison.Ordinal);
+            Assert.Contains("default values", deniedWrite.Message, StringComparison.Ordinal);
+
+            //the denied write persisted nothing: the summary keeps the shape it had
+            var storedBookmark = await bookmarksCollection.Find(bookmarkFilter).SingleAsync();
+            Assert.False(storedBookmark["Blog"].AsBsonDocument.Contains("Title"));
+        }
+
+        [Fact]
         public async Task MissingOriginDocumentDeniesThePreload()
         {
             // Setup.

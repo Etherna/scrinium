@@ -163,6 +163,28 @@ namespace Etherna.Scrinium.Core
         }
 
         [Fact]
+        public void OnImplicitLazyLoadAllowsLoadsCompletingAReferenceWriteWithThrowMode()
+        {
+            /* SCR-296: the option denies the loads born from an application read. A load
+             * completing a summary that a reference write is serializing isn't one of them:
+             * denying it denies the write of a document whose stored summary doesn't carry a
+             * member of the current reference schema. */
+
+            // Setup.
+            options.ImplicitLazyLoad = ReactionMode.Throw;
+            using var contextHandler = AsyncLocalContext.Instance.InitAsyncLocalContext();
+
+            // Action, asserting no throw.
+            using (ReferenceWriteHandler.TryEnter(AsyncLocalContext.Instance))
+                internalDbContext.OnImplicitLazyLoad(typeof(FakeModel), "StringProp");
+
+            // Assert.
+            //outside of the write the same load is denied again
+            Assert.Throws<ScriniumLazyLoadingException>(
+                () => internalDbContext.OnImplicitLazyLoad(typeof(FakeModel), "StringProp"));
+        }
+
+        [Fact]
         public void OnMissingOriginDocumentDeniesSummariesWithThrowMode()
         {
             // Setup.
@@ -189,6 +211,31 @@ namespace Etherna.Scrinium.Core
             // Action, asserting no throw.
             internalDbContext.OnMissingOriginDocument(model);
             internalDbContext.OnMissingOriginDocument(model); //repeated: warn dedups per scope
+        }
+
+        [Theory]
+        [InlineData(ReactionMode.Silent)]
+        [InlineData(ReactionMode.Warn)]
+        public void OnMissingOriginDocumentDeniesSummariesOfAReferenceWriteWithAnyMode(ReactionMode mode)
+        {
+            /* SCR-296: a write serializing a reference can't complete its summary without the
+             * origin document, and the members it would write at their default values persist
+             * as real data inside the denormalized copy. */
+
+            // Setup.
+            var model = NewBoundProxy("id");
+            ((IReferenceable)model).SetAsSummary([], mode);
+            using var contextHandler = AsyncLocalContext.Instance.InitAsyncLocalContext();
+
+            // Action and assert.
+            using var referenceWrite = ReferenceWriteHandler.TryEnter(AsyncLocalContext.Instance);
+            var exception = Assert.Throws<ScriniumMissingOriginDocumentException>(
+                () => internalDbContext.OnMissingOriginDocument(model));
+            Assert.Contains(nameof(FakeModel), exception.Message, StringComparison.Ordinal);
+            Assert.Contains("id", exception.Message, StringComparison.Ordinal);
+            Assert.Contains(dbContext.FakeModels.Name, exception.Message, StringComparison.Ordinal);
+            //the message addresses the write, not the read tolerance of the reference
+            Assert.Contains("default values", exception.Message, StringComparison.Ordinal);
         }
 
         [Fact]
