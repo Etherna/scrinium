@@ -24,21 +24,22 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Options;
 using Moq;
 using System;
 using System.Collections.Generic;
-using System.Linq;
-using System.Text.RegularExpressions;
+using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
 using Xunit;
 
 namespace Etherna.Scrinium.AspNetCore.UI
 {
-    /* SCR-256: the dashboard counts the documents carrying their schema id under a deprecated
-     * element name and migrates them, one collection at a time, delegating the work to the
-     * collection repository. */
-    public class DashboardDeprecatedSchemaIdDocumentsTest
+    /* SCR-294: one section counts the documents of a collection by schema id, and the
+     * documents still carrying that id under the deprecated element name with them — the
+     * second count asks a different question about the same documents, not a different
+     * population, since the first resolves the schema id from either element name. */
+    public class DashboardSchemaCountsTest
     {
         // Internal classes.
         private sealed class AllowAllAuthFilter : IDashboardAuthFilter
@@ -57,7 +58,7 @@ namespace Etherna.Scrinium.AspNetCore.UI
         private readonly Mock<IRepository> repositoryMock;
 
         // Constructor.
-        public DashboardDeprecatedSchemaIdDocumentsTest()
+        public DashboardSchemaCountsTest()
         {
             var engineMock = new Mock<IDbContextEngine>();
             engineMock.Setup(engine => engine.Identifier).Returns(DbContextIdentifier);
@@ -76,52 +77,60 @@ namespace Etherna.Scrinium.AspNetCore.UI
 
         // Tests.
         [Fact]
-        public async Task CountReportsThroughTheGetHandler()
+        public async Task CountReportsTheSchemaIdsAndTheDeprecatedElementDocumentsTogether()
         {
             // Setup.
+            repositoryMock.Setup(repo => repo.CountDocumentsBySchemaIdAsync(It.IsAny<CancellationToken>()))
+                .ReturnsAsync((new Dictionary<string, long> { ["activeSchemaId"] = 12 }, 3));
             repositoryMock.Setup(repo => repo.CountDeprecatedSchemaIdDocumentsAsync(It.IsAny<CancellationToken>()))
                 .ReturnsAsync(7);
             using var host = await StartDashboardHostAsync();
 
             // Action.
-            var response = await host.GetTestClient().GetAsync(new Uri(
-                $"{PagePath}?handler=DeprecatedSchemaIdDocuments&identifier={DbContextIdentifier}&repositoryName={RepositoryName}",
-                UriKind.Relative));
+            var response = await GetSchemaCountsAsync(host);
 
             // Assert.
             response.EnsureSuccessStatusCode();
             var responseJson = await response.Content.ReadAsStringAsync();
             Assert.Contains("\"isUnavailable\":false", responseJson, StringComparison.Ordinal);
-            Assert.Contains("\"documentsCount\":7", responseJson, StringComparison.Ordinal);
+            Assert.Contains("\"schemaId\":\"activeSchemaId\"", responseJson, StringComparison.Ordinal);
+            Assert.Contains("\"documentsCount\":12", responseJson, StringComparison.Ordinal);
+            Assert.Contains("\"documentsWithoutSchemaId\":3", responseJson, StringComparison.Ordinal);
+            Assert.Contains("\"documentsOnDeprecatedSchemaIdElement\":7", responseJson, StringComparison.Ordinal);
         }
 
         [Fact]
-        public async Task CountReportsUnavailableDuringExclusiveAccess()
+        public async Task CountReportsUnavailableWhenTheDeprecatedElementCountIsDenied()
         {
-            /* An exclusive access (a running migration) denies reads on the collection: the
-             * handler reports the collection unavailable, instead of failing the request. */
+            /* An exclusive access (a running migration) can deny the collection between the
+             * two counts: reporting the first one alone would render a count the operator
+             * reads as complete, with the deprecated element documents silently missing. The
+             * collection reports unavailable instead, like when the first count is denied. */
 
             // Setup.
+            repositoryMock.Setup(repo => repo.CountDocumentsBySchemaIdAsync(It.IsAny<CancellationToken>()))
+                .ReturnsAsync((new Dictionary<string, long> { ["activeSchemaId"] = 12 }, 0));
             repositoryMock.Setup(repo => repo.CountDeprecatedSchemaIdDocumentsAsync(It.IsAny<CancellationToken>()))
                 .ThrowsAsync(new UnauthorizedAccessException());
             using var host = await StartDashboardHostAsync();
 
             // Action.
-            var response = await host.GetTestClient().GetAsync(new Uri(
-                $"{PagePath}?handler=DeprecatedSchemaIdDocuments&identifier={DbContextIdentifier}&repositoryName={RepositoryName}",
-                UriKind.Relative));
+            var response = await GetSchemaCountsAsync(host);
 
             // Assert.
             response.EnsureSuccessStatusCode();
-            Assert.Contains(
-                "\"isUnavailable\":true",
-                await response.Content.ReadAsStringAsync(),
-                StringComparison.Ordinal);
+            var responseJson = await response.Content.ReadAsStringAsync();
+            Assert.Contains("\"isUnavailable\":true", responseJson, StringComparison.Ordinal);
+            Assert.DoesNotContain("\"schemaId\"", responseJson, StringComparison.Ordinal);
         }
 
         [Fact]
-        public async Task PageRendersTheDeprecatedSchemaIdElementsSection()
+        public async Task PageRendersTheModelSchemasSectionAlone()
         {
+            /* The deprecated schema id elements had a section of their own while it also
+             * migrated: since SCR-290 it only counted, and the count belongs where the same
+             * documents are already counted. */
+
             // Setup.
             using var host = await StartDashboardHostAsync();
 
@@ -131,17 +140,16 @@ namespace Etherna.Scrinium.AspNetCore.UI
             // Assert.
             response.EnsureSuccessStatusCode();
             var pageHtml = await response.Content.ReadAsStringAsync();
-            Assert.Contains("Deprecated schema id elements", pageHtml, StringComparison.Ordinal);
-
-            //the count is a read: every repository gets its control, the read-only ones too
-            Assert.Equal(2, Regex.Matches(pageHtml, "data-role=\"count-deprecated-schema-ids\"").Count);
-
-            /* What the count counts is repaired by the deprecated schemas rewrite of a
-             * migration start, not by a control of its own. */
-            Assert.DoesNotContain("data-role=\"migrate-deprecated-schema-ids\"", pageHtml, StringComparison.Ordinal);
+            Assert.Contains("Model schemas", pageHtml, StringComparison.Ordinal);
+            Assert.DoesNotContain("Deprecated schema id elements", pageHtml, StringComparison.Ordinal);
         }
 
         // Helpers.
+        private static async Task<HttpResponseMessage> GetSchemaCountsAsync(IHost host) =>
+            await host.GetTestClient().GetAsync(new Uri(
+                $"{PagePath}?handler=SchemaCounts&identifier={DbContextIdentifier}&repositoryName={RepositoryName}",
+                UriKind.Relative));
+
         private Mock<IRepository> BuildRepositoryMock(string name, bool isReadOnly)
         {
             var repositoryMock = new Mock<IRepository>();
@@ -168,7 +176,7 @@ namespace Etherna.Scrinium.AspNetCore.UI
                         {
                             AuthFilters = [new AllowAllAuthFilter()]
                         });
-                        services.AddSingleton(Microsoft.Extensions.Options.Options.Create(scriniumOptions));
+                        services.AddSingleton(Options.Create(scriniumOptions));
                         services.AddSingleton(dbContextMock.Object);
                     })
                     .Configure(app =>

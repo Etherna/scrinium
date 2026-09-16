@@ -179,7 +179,11 @@
                             <code>@ModelMapSchema.IdElementName</code> element. Counting the
                             documents of each schema id scans the whole collection, so it runs only on request, one
                             collection at a time: documents counted on a deprecated, unrecognized or missing schema
-                            id are the ones a migration has to rewrite.
+                            id are the ones a migration has to rewrite. The count reads the schema id from that
+                            element or from the deprecated <code>@ModelMapSchema.DeprecatedIdElementName</code> one,
+                            so the documents still written under the previous name are already counted under their
+                            schema id: the last row says how many of them are, and a rewrite has to touch those too,
+                            whatever schema id they carry.
                         </text>);
                     }
                 </p>
@@ -223,40 +227,6 @@
                                 }
                             </tbody>
                         </table>
-                    </div>
-                }
-            </details>
-
-            <details class="deprecated-schema-ids">
-                <summary>Deprecated schema id elements</summary>
-
-                <p class="muted">
-                    The documents of each collection still carrying their schema id under a previous
-                    element name.
-                    @{
-                        RenderInfoTip(@<text>
-                            Documents written before the schema id element took the
-                            <code>@ModelMapSchema.IdElementName</code> name carry it in the
-                            <code>@ModelMapSchema.DeprecatedIdElementName</code> element,
-                            still recognized while reading them: they keep loading, but that name is
-                            <strong>deprecated</strong>, and a future version of Scrinium will stop reading it.
-                            Counting them scans the whole collection, so it runs
-                            only on request, one collection at a time. A non zero count is what the
-                            <strong>Rewrite deprecated schemas</strong> option of a migration start repairs:
-                            it rewrites each of those documents whole with its current active schema, so the
-                            current name carries the schema id at every level.
-                        </text>);
-                    }
-                </p>
-
-                @foreach (var repository in context.RepositoryRegistry.Repositories.OrderBy(r => r.Name))
-                {
-                    <div class="deprecated-schema-id-collection" data-repository="@repository.Name">
-                        <div class="deprecated-schema-id-collection-header">
-                            <h4>@repository.Name</h4>
-                            <span class="muted" data-role="deprecated-schema-id-count">&mdash;</span>
-                            <button type="button" class="btn secondary" data-role="count-deprecated-schema-ids">Count documents</button>
-                        </div>
                     </div>
                 }
             </details>

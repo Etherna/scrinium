@@ -163,39 +163,6 @@ namespace Etherna.Scrinium.AspNetCore.UI.Areas.Scrinium.Pages
         }
 
         /// <summary>
-        /// Count the documents of a single collection carrying their schema id under a
-        /// deprecated element name. This scans the whole collection, so it runs only on explicit
-        /// request, one collection at a time.
-        /// </summary>
-        public async Task<IActionResult> OnGetDeprecatedSchemaIdDocumentsAsync(string identifier, string repositoryName)
-        {
-            InitializePage();
-
-            var dbContext = DbContexts.FirstOrDefault(dbc => dbc.Engine.Identifier == identifier);
-            var repository = dbContext?.RepositoryRegistry.Repositories
-                .FirstOrDefault(repo => repo.Name == repositoryName);
-            if (repository is null)
-                return NotFound();
-
-            long? documentsCount = null;
-            try
-            {
-                documentsCount = await repository.CountDeprecatedSchemaIdDocumentsAsync().ConfigureAwait(false);
-            }
-            catch (UnauthorizedAccessException)
-            {
-                //an exclusive access (a running migration) denies reads on the collection
-            }
-
-            return new JsonResult(new
-            {
-                repository = repository.Name,
-                isUnavailable = documentsCount is null,
-                documentsCount
-            });
-        }
-
-        /// <summary>
         /// Read a page of the operations history of a db context, the most recent first,
         /// whatever kind they are. The polled status carries the latest operations alone:
         /// reaching the older ones is an explicit request, one page at a time.
@@ -293,14 +260,23 @@ namespace Etherna.Scrinium.AspNetCore.UI.Areas.Scrinium.Pages
 
             IReadOnlyDictionary<string, long>? documentsBySchemaId = null;
             var documentsWithoutSchemaId = 0L;
+            var documentsOnDeprecatedSchemaIdElement = 0L;
             try
             {
                 (documentsBySchemaId, documentsWithoutSchemaId) =
                     await repository.CountDocumentsBySchemaIdAsync().ConfigureAwait(false);
+
+                /* The same documents, asked a different question: the count above resolves the
+                 * schema id from the current element name or from the deprecated one, so the
+                 * documents still on the previous name are already counted under their schema
+                 * id. This says how many of them are, which a rewrite has to touch too. */
+                documentsOnDeprecatedSchemaIdElement =
+                    await repository.CountDeprecatedSchemaIdDocumentsAsync().ConfigureAwait(false);
             }
             catch (UnauthorizedAccessException)
             {
                 //an exclusive access (a running migration) denies reads on the collection
+                documentsBySchemaId = null;
             }
 
             return new JsonResult(new
@@ -313,7 +289,8 @@ namespace Etherna.Scrinium.AspNetCore.UI.Areas.Scrinium.Pages
                     schemaId = pair.Key,
                     documentsCount = pair.Value
                 }),
-                documentsWithoutSchemaId
+                documentsWithoutSchemaId,
+                documentsOnDeprecatedSchemaIdElement
             });
         }
 
