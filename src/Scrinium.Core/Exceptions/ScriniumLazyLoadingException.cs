@@ -20,7 +20,8 @@ namespace Etherna.Scrinium.Core.Exceptions
     /// Thrown on an implicit lazy load when the db context denies them
     /// (<see cref="Options.ReactionMode.Throw"/> on
     /// <see cref="Options.DbContextOptions.ImplicitLazyLoad"/>): a member of a summary model
-    /// was read without a preceding explicit preload.
+    /// was read without a preceding explicit preload. The option denies the application reads:
+    /// a load completing a summary that a reference write is serializing is never denied.
     /// </summary>
     public class ScriniumLazyLoadingException : Exception
     {

@@ -76,6 +76,7 @@ namespace Etherna.Scrinium.Core
         private readonly List<TransientModelsScope> transientModelsScopes = [];
         private readonly HashSet<(Type ModelType, string? MemberName)> warnedImplicitLazyLoads = [];
         private readonly HashSet<(Type ModelType, IRepository SourceRepository)> warnedMissingOriginDocuments = [];
+        private readonly HashSet<(Type ModelType, string? MemberName)> warnedReferenceWriteLazyLoads = [];
 
         // Initializer.
         public void AttachToEngine(
@@ -778,12 +779,19 @@ namespace Etherna.Scrinium.Core
         {
             ArgumentNullException.ThrowIfNull(modelType);
 
+            /* The option governs the loads born from an application read, the ones an explicit
+             * preload replaces. A load completing a summary the flow is writing isn't one of
+             * them: denying it wouldn't avoid the read, it would deny the write of a document
+             * whose stored summary doesn't carry a member of the current reference schema. It
+             * reports with its own message, so the amplification stays visible. */
+            var writingReference = ReferenceWriteHandler.IsWritingReference(engine.ExecutionContext);
+
             switch (engine.Options.ImplicitLazyLoad)
             {
                 case ReactionMode.Silent:
                     break;
 
-                case ReactionMode.Throw:
+                case ReactionMode.Throw when !writingReference:
                     throw new ScriniumLazyLoadingException(
                         $"Denied implicit lazy load on model type {modelType.Name}" +
                         (memberName is null ? " from a domain method" : $", member {memberName}") +
@@ -792,9 +800,16 @@ namespace Etherna.Scrinium.Core
                 default:
                     bool firstOccurrence;
                     lock (trackingLock)
-                        firstOccurrence = warnedImplicitLazyLoads.Add((modelType, memberName));
+                        firstOccurrence = writingReference
+                            ? warnedReferenceWriteLazyLoads.Add((modelType, memberName))
+                            : warnedImplicitLazyLoads.Add((modelType, memberName));
                     if (firstOccurrence)
-                        logger.DbContextImplicitLazyLoad(engine.Options.DbName, modelType.Name, memberName);
+                    {
+                        if (writingReference)
+                            logger.DbContextReferenceWriteLazyLoad(engine.Options.DbName, modelType.Name, memberName);
+                        else
+                            logger.DbContextImplicitLazyLoad(engine.Options.DbName, modelType.Name, memberName);
+                    }
                     break;
             }
         }
@@ -809,7 +824,14 @@ namespace Etherna.Scrinium.Core
             var modelType = engine.ProxyGenerator.PurgeProxyType(summaryModel.GetType());
             var sourceRepository = referenceable.SourceRepository;
 
-            switch (referenceable.MissingOriginDocument)
+            /* A write serializing a reference can't complete its summary without the origin
+             * document, and the members it would write at their default values persist as real
+             * data inside the denormalized copy. It is denied whatever the reference tolerates
+             * on reads: a failure naming the model, its id and its repository can be analyzed,
+             * a reference silently altered on a write can't. */
+            var writingReference = ReferenceWriteHandler.IsWritingReference(engine.ExecutionContext);
+
+            switch (writingReference ? ReactionMode.Throw : referenceable.MissingOriginDocument)
             {
                 case ReactionMode.Silent:
                     break;
@@ -831,8 +853,12 @@ namespace Etherna.Scrinium.Core
                     throw new ScriniumMissingOriginDocumentException(
                         $"Summary model of type {modelType.Name} with id {modelId ?? "null"} has no origin document " +
                         $"on repository {sourceRepository.Name}: the referred document doesn't exist on its collection, " +
-                        "and its members can't be loaded. Fix the db inconsistency, or configure the reference to " +
-                        "tolerate a missing origin document");
+                        "and its members can't be loaded. " +
+                        (writingReference
+                            ? "The write serializing this reference can't complete its summary: writing the not loaded " +
+                              "members at their default values would persist them as real data. Fix the db inconsistency, " +
+                              "or remove the reference from the document being written"
+                            : "Fix the db inconsistency, or configure the reference to tolerate a missing origin document"));
             }
         }
 

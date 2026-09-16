@@ -26,6 +26,7 @@ using Etherna.Scrinium.Core.Repositories;
 using Etherna.Scrinium.Core.Serialization.Mapping;
 using Etherna.Scrinium.Core.Serialization.Modifiers;
 using Etherna.Scrinium.Core.Serialization.Serializers;
+using Etherna.Scrinium.Core.Utility;
 using Moq;
 using System;
 using System.Collections.Generic;
@@ -481,6 +482,70 @@ namespace Etherna.Scrinium.Core
             //the summary wrote its denormalized members without reading its origin document
             sourceRepositoryMock.Verify(r => r.TryFindOneAsync(It.IsAny<object>(), It.IsAny<CancellationToken>()), Times.Never);
             Assert.True(((IReferenceable)model).IsSummary);
+            var expectedDocument = new BsonDocument
+            {
+                { "_s", "activeSchemaId" },
+                { "_id", "idVal" },
+                { "StringProp", "ok" }
+            };
+            Assert.Equal(0, serializedDocument.CompareTo(expectedDocument));
+        }
+
+        [Fact]
+        public void SerializeLoadsTheOriginDocumentToCompleteASummary()
+        {
+            /* SCR-296: a stored reference document can miss a member the active schema declares
+             * (an element renamed without bumping the schema id, for instance). Writing that
+             * summary reads the member, and the read completes the document being written from
+             * the origin document: it runs inside the reference write scope, where the implicit
+             * lazy load option never denies it. */
+
+            // Setup.
+            var serializer = BuildSerializer(mm => mm.MapMember(m => m.StringProp));
+            dbContextEngineMock.Setup(e => e.ProxyGenerator.IsProxyType(typeof(FakeModelProxy)))
+                .Returns(true);
+            dbContextEngineMock.Setup(e => e.ProxyGenerator.PurgeProxyType(typeof(FakeModelProxy)))
+                .Returns(typeof(FakeModel));
+
+            var sourceDbContextMock = new Mock<IDbContext>();
+            var proxyModelsDbContextMock = sourceDbContextMock.As<IProxyModelsDbContext>();
+            proxyModelsDbContextMock.Setup(c => c.SuppressChangeTracking())
+                .Returns(Mock.Of<IDisposable>());
+            //the db context decides on the load: capture the scope it sees when the summary asks for it
+            var writingReferenceOnLoad = false;
+            proxyModelsDbContextMock.Setup(c => c.OnImplicitLazyLoad(It.IsAny<Type>(), It.IsAny<string?>()))
+                .Callback(() => writingReferenceOnLoad =
+                    ReferenceWriteHandler.IsWritingReference(AsyncLocalContext.Instance));
+
+            var sourceRepositoryMock = new Mock<IRepository>();
+            sourceRepositoryMock.Setup(r => r.DbContext)
+                .Returns(sourceDbContextMock.Object);
+            sourceRepositoryMock.Setup(r => r.TryFindOneAsync(It.IsAny<object>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(new FakeModel { Id = "idVal", StringProp = "ok" });
+
+            //the summary carries no StringProp: the reference document didn't have its element
+            var model = new FakeModelProxy { Id = "idVal" };
+            ((IProxyModel)model).BindProxy(sourceDbContextMock.Object, sourceRepositoryMock.Object);
+            ((IReferenceable)model).ClearSettedMembers();
+            ((IReferenceable)model).SetAsSummary([], ReactionMode.Warn);
+
+            var serializedDocument = new BsonDocument();
+            using var bsonWriter = new BsonDocumentWriter(serializedDocument);
+            using var contextHandler = AsyncLocalContext.Instance.InitAsyncLocalContext();
+
+            // Action.
+            serializer.Serialize(
+                BsonSerializationContext.CreateRoot(bsonWriter),
+                new BsonSerializationArgs { NominalType = typeof(FakeModel) },
+                model);
+
+            // Assert.
+            //the write loaded the origin document, reporting the load as a reference write one
+            sourceRepositoryMock.Verify(
+                r => r.TryFindOneAsync(It.IsAny<object>(), It.IsAny<CancellationToken>()),
+                Times.Once);
+            Assert.True(writingReferenceOnLoad);
+            //and wrote the member it completed, instead of its default value
             var expectedDocument = new BsonDocument
             {
                 { "_s", "activeSchemaId" },

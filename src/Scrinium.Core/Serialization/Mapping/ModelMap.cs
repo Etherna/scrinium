@@ -270,7 +270,7 @@ namespace Etherna.Scrinium.Core.Serialization.Mapping
 
     [SuppressMessage("Reliability", "CA2000:Dispose objects before losing scope")]
     public sealed class ModelMap<TModel>(IDbContextEngine dbContextEngine)
-        : ModelMap(dbContextEngine, typeof(TModel)), IModelMapBuilder<TModel>, IReferenceModelMapBuilder<TModel>
+        : ModelMap(dbContextEngine, typeof(TModel)), IModelMapBuilder<TModel>
     {
         // Methods.
         public IModelMapBuilder<TModel> AddFallbackCustomSerializer(IBsonSerializer<TModel> fallbackSerializer)
@@ -321,40 +321,6 @@ namespace Etherna.Scrinium.Core.Serialization.Mapping
                 baseSchemaId,
                 fixDeserializedModelFunc,
                 this));
-            return this;
-        }
-
-        // Internals.
-        IReferenceModelMapBuilder<TModel> IReferenceModelMapBuilder<TModel>.AddFallbackCustomSerializer(
-            IBsonSerializer<TModel> fallbackSerializer)
-        {
-            AddFallbackCustomSerializer(fallbackSerializer);
-            return this;
-        }
-
-        IReferenceModelMapBuilder<TModel> IReferenceModelMapBuilder<TModel>.AddFallbackSchema(
-            Action<BsonClassMap<TModel>>? modelMapSchemaInitializer,
-            string? baseSchemaId)
-        {
-            AddFallbackSchema(modelMapSchemaInitializer, baseSchemaId);
-            return this;
-        }
-
-        IReferenceModelMapBuilder<TModel> IReferenceModelMapBuilder<TModel>.AddSecondarySchema(
-            string id,
-            Action<BsonClassMap<TModel>>? modelMapSchemaInitializer,
-            string? baseSchemaId)
-        {
-            AddSecondarySchema(id, modelMapSchemaInitializer, baseSchemaId);
-            return this;
-        }
-
-        IReferenceModelMapBuilder<TModel> IReferenceModelMapBuilder<TModel>.AddSecondarySchema<TOverrideNominal>(
-            string id,
-            Action<BsonClassMap<TOverrideNominal>>? modelMapSchemaInitializer,
-            string? baseSchemaId)
-        {
-            AddSecondarySchema<TOverrideNominal>(id, modelMapSchemaInitializer, baseSchemaId);
             return this;
         }
     }
