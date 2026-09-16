@@ -20,7 +20,7 @@ namespace Etherna.Scrinium.Core.Extensions
 {
     /*
      * Always group similar log delegates by type, always use incremental event ids.
-     * Last event id is: 78
+     * Last event id is: 82
      */
     public static class LoggerExtensions
     {

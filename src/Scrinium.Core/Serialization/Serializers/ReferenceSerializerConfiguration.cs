@@ -108,7 +108,10 @@ namespace Etherna.Scrinium.Core.Serialization.Serializers
                     modelMap);
                 modelMap.ActiveSchema = modelMapSchema;
 
-                return modelMap;
+                /* Hand out the reference builder surface as a wrapper of the model map: the
+                 * root builder surface, whose schemas declare the post-load fix function, stays
+                 * unreachable from here, a cast included (see ReferenceModelMapBuilder). */
+                return new ReferenceModelMapBuilder<TModel>(modelMap);
             });
 
         public BsonElement GetActiveSchemaIdBsonElement(Type modelType)
