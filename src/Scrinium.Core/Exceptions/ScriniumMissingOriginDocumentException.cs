@@ -21,7 +21,9 @@ namespace Etherna.Scrinium.Core.Exceptions
     /// origin documents (<see cref="Options.ReactionMode.Throw"/> on
     /// <see cref="Serialization.Serializers.ReferenceSerializerConfiguration.MissingOriginDocument"/>):
     /// the referred document doesn't exist anymore on the origin collection, so the summary
-    /// can't complete its members.
+    /// can't complete its members. A write serializing the reference throws it whatever the
+    /// reference tolerates on reads: it can't complete the summary it has to persist, and
+    /// writing the not loaded members at their default values would store them as real data.
     /// </summary>
     public class ScriniumMissingOriginDocumentException : Exception
     {
