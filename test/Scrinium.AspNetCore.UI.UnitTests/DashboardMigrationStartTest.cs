@@ -69,13 +69,17 @@ namespace Etherna.Scrinium.AspNetCore.UI
 
             dbContextMock = new Mock<IDbContext>();
             dbContextMock.Setup(dbContext => dbContext.Engine).Returns(engineMock.Object);
-            dbContextMock.Setup(dbContext => dbContext.GetLastMigrationsAsync(It.IsAny<int>(), It.IsAny<int>()))
+            dbContextMock.Setup(dbContext => dbContext.GetLastOperationsAsync(It.IsAny<int>(), It.IsAny<int>()))
+                .ReturnsAsync([]);
+            dbContextMock.Setup(dbContext => dbContext.IsReferencesRepairRunningAsync())
+                .ReturnsAsync((ReferencesRepairOperation?)null);
+            dbContextMock.Setup(dbContext => dbContext.GetLastReferencesRepairsAsync(It.IsAny<int>(), It.IsAny<int>()))
                 .ReturnsAsync([]);
             dbContextMock.Setup(dbContext => dbContext.IsMigrationRunningAsync())
                 .ReturnsAsync((DbMigrationOperation?)null);
             dbContextMock.Setup(dbContext => dbContext.RepositoryRegistry).Returns(repositoryRegistryMock.Object);
             dbContextMock.Setup(dbContext => dbContext.TryStartMigrationAsync(
-                    It.IsAny<bool>(), It.IsAny<bool>(), It.IsAny<TimeSpan?>()))
+                    It.IsAny<bool>(), It.IsAny<bool>(), It.IsAny<TimeSpan?>(), It.IsAny<bool>()))
                 .ReturnsAsync(new DbMigrationOperation(engineMock.Object));
         }
 
@@ -122,7 +126,27 @@ namespace Etherna.Scrinium.AspNetCore.UI
                 await response.Content.ReadAsStringAsync(),
                 StringComparison.Ordinal);
             dbContextMock.Verify(
-                dbContext => dbContext.TryStartMigrationAsync(false, false, TimeSpan.FromMinutes(25)),
+                dbContext => dbContext.TryStartMigrationAsync(false, false, TimeSpan.FromMinutes(25), false),
+                Times.Once());
+        }
+
+        [Fact]
+        public async Task StartForwardsTheRequestedDeprecatedSchemaRewrite()
+        {
+            /* Rewriting the documents left on a deprecated schema is an option of the start:
+             * it runs inside the same operation as the declared document migrations, sharing
+             * its lock and its index steps. */
+
+            // Setup.
+            using var host = await StartDashboardHostAsync();
+
+            // Action.
+            var response = await PostStartMigrationAsync(host, "25", rewriteDeprecatedSchemas: true);
+
+            // Assert.
+            response.EnsureSuccessStatusCode();
+            dbContextMock.Verify(
+                dbContext => dbContext.TryStartMigrationAsync(false, false, TimeSpan.FromMinutes(25), true),
                 Times.Once());
         }
 
@@ -190,7 +214,8 @@ namespace Etherna.Scrinium.AspNetCore.UI
 
         private static async Task<HttpResponseMessage> PostStartMigrationAsync(
             IHost host,
-            string? lockLeaseDurationMinutes)
+            string? lockLeaseDurationMinutes,
+            bool rewriteDeprecatedSchemas = false)
         {
             var client = host.GetTestClient();
 
@@ -198,7 +223,11 @@ namespace Etherna.Scrinium.AspNetCore.UI
             pageResponse.EnsureSuccessStatusCode();
             var (token, cookie) = await ExtractAntiforgeryAsync(pageResponse);
 
-            var form = new Dictionary<string, string> { ["identifier"] = DbContextIdentifier };
+            var form = new Dictionary<string, string>
+            {
+                ["identifier"] = DbContextIdentifier,
+                ["rewriteDeprecatedSchemas"] = rewriteDeprecatedSchemas.ToString(CultureInfo.InvariantCulture)
+            };
             if (lockLeaseDurationMinutes is not null)
                 form["lockLeaseDurationMinutes"] = lockLeaseDurationMinutes;
 
@@ -243,7 +272,7 @@ namespace Etherna.Scrinium.AspNetCore.UI
         private void VerifyNoMigrationStarted() =>
             dbContextMock.Verify(
                 dbContext => dbContext.TryStartMigrationAsync(
-                    It.IsAny<bool>(), It.IsAny<bool>(), It.IsAny<TimeSpan?>()),
+                    It.IsAny<bool>(), It.IsAny<bool>(), It.IsAny<TimeSpan?>(), It.IsAny<bool>()),
                 Times.Never());
     }
 }

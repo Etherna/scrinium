@@ -15,6 +15,7 @@
 using Etherna.Scrinium.AspNetCore.UI.Areas.Scrinium.Pages;
 using Etherna.Scrinium.AspNetCore.UI.Auth.Filters;
 using Etherna.Scrinium.Core;
+using Etherna.Scrinium.Core.Domain.Models;
 using Etherna.Scrinium.Core.Options;
 using Etherna.Scrinium.Core.Repositories;
 using Etherna.Scrinium.Core.Serialization.Mapping;
@@ -27,6 +28,7 @@ using Microsoft.Extensions.Hosting;
 using Moq;
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using System.Net;
 using System.Net.Http;
@@ -55,13 +57,14 @@ namespace Etherna.Scrinium.AspNetCore.UI
 
         // Fields.
         private readonly Mock<IDbContext> dbContextMock;
+        private readonly Mock<IDbContextEngine> engineMock;
         private readonly Mock<IRepository> readOnlyRepositoryMock;
         private readonly Mock<IRepository> repositoryMock;
 
         // Constructor.
         public DashboardMissingOriginReferencesTest()
         {
-            var engineMock = new Mock<IDbContextEngine>();
+            engineMock = new Mock<IDbContextEngine>();
             engineMock.Setup(engine => engine.Identifier).Returns(DbContextIdentifier);
             engineMock.Setup(engine => engine.MapRegistry.MapsByModelType).Returns(new Dictionary<Type, IMap>());
             engineMock.Setup(engine => engine.Options).Returns(new DbContextOptions());
@@ -85,7 +88,14 @@ namespace Etherna.Scrinium.AspNetCore.UI
             // Setup.
             repositoryMock.Setup(repo => repo.FindMissingOriginReferencesAsync(It.IsAny<CancellationToken>()))
                 .ReturnsAsync(new MissingOriginReferencesReport(
-                    [new MissingOriginReferencesPathReport("Author", ["authors"], 2, ["brokenId1", "brokenId2"], 5)],
+                    [new MissingOriginReferencesPathReport(
+                        "Author",
+                        ["authors"],
+                        OriginDeleteMode.DeleteReferencingDocument,
+                        2,
+                        ["brokenId1", "brokenId2"],
+                        5,
+                        ["referencingId1", "referencingId2"])],
                     ["Labels"]));
             using var host = await StartDashboardHostAsync();
 
@@ -103,6 +113,16 @@ namespace Etherna.Scrinium.AspNetCore.UI
             Assert.Contains("\"missingOriginIdsCount\":2", responseJson, StringComparison.Ordinal);
             Assert.Contains("\"trackedMissingOriginIds\":[\"brokenId1\",\"brokenId2\"]", responseJson, StringComparison.Ordinal);
             Assert.Contains("\"referencingDocumentsCount\":5", responseJson, StringComparison.Ordinal);
+            //the declared policy travels with the path: it is the default action of a repair
+            Assert.Contains(
+                "\"originDelete\":\"DeleteReferencingDocument\"",
+                responseJson,
+                StringComparison.Ordinal);
+            //the documents a repair would touch, so an operator can look them up first
+            Assert.Contains(
+                "\"trackedReferencingDocumentIds\":[\"referencingId1\",\"referencingId2\"]",
+                responseJson,
+                StringComparison.Ordinal);
             Assert.Contains("\"unverifiableElementPaths\":[\"Labels\"]", responseJson, StringComparison.Ordinal);
         }
 
@@ -144,67 +164,144 @@ namespace Etherna.Scrinium.AspNetCore.UI
             var pageHtml = await response.Content.ReadAsStringAsync();
             Assert.Contains("Missing origin references", pageHtml, StringComparison.Ordinal);
 
-            //every repository gets its scan control, only the writable one gets the removal
+            //every repository gets its scan control, only the writable one gets the repair
             Assert.Equal(2, Regex.Matches(pageHtml, "data-role=\"scan-references\"").Count);
-            var removalMatches = Regex.Matches(pageHtml, "data-role=\"remove-references\"");
-            Assert.Single(removalMatches);
+            var repairMatches = Regex.Matches(pageHtml, "data-role=\"repair-references\"");
+            Assert.Single(repairMatches);
+            //the repair runs as an operation: it offers a dry run, like a migration start
+            Assert.Single(Regex.Matches(pageHtml, "data-role=\"repair-references-dry-run\""));
 
-            //the removal control belongs to the writable repository block of the section
+            //the repair control belongs to the writable repository block of the section
             var sectionHtml = pageHtml[pageHtml.IndexOf("missing-origin-references", StringComparison.Ordinal)..];
             var writableBlockStart = sectionHtml.IndexOf($"data-repository=\"{RepositoryName}\"", StringComparison.Ordinal);
             var readOnlyBlockStart = sectionHtml.IndexOf($"data-repository=\"{ReadOnlyRepositoryName}\"", StringComparison.Ordinal);
-            var removalIndex = Regex.Match(sectionHtml, "data-role=\"remove-references\"").Index;
-            Assert.InRange(removalIndex, writableBlockStart, readOnlyBlockStart);
+            var repairIndex = Regex.Match(sectionHtml, "data-role=\"repair-references\"").Index;
+            Assert.InRange(repairIndex, writableBlockStart, readOnlyBlockStart);
         }
 
         [Fact]
-        public async Task RemovalIsRejectedOnAReadOnlyRepository()
+        public async Task RepairIsRejectedOnAReadOnlyRepository()
         {
-            /* The page doesn't render the removal control on a read-only repository, but the
-             * request doesn't have to come from it. */
+            /* The page doesn't render the repair controls on a read-only repository, but the
+             * request doesn't have to come from them. */
 
             // Setup.
             using var host = await StartDashboardHostAsync();
 
             // Action.
-            var response = await PostRemoveReferencesAsync(host, ReadOnlyRepositoryName);
+            var response = await PostRepairReferencesAsync(
+                host, ReadOnlyRepositoryName, [("Author", "RemoveReference")]);
 
             // Assert.
             Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
             var responseJson = await response.Content.ReadAsStringAsync();
-            Assert.Contains("\"removed\":false", responseJson, StringComparison.Ordinal);
+            Assert.Contains("\"started\":false", responseJson, StringComparison.Ordinal);
             Assert.Contains("read-only", responseJson, StringComparison.Ordinal);
-            readOnlyRepositoryMock.Verify(
-                repo => repo.RemoveMissingOriginReferencesAsync(It.IsAny<CancellationToken>()),
-                Times.Never());
+            VerifyNoRepairStarted();
         }
 
-        [Fact]
-        public async Task RemovalRunsThroughThePostHandler()
+        [Theory]
+        //a value that isn't a mode, and a numeric one parsing as the enum without being a mode
+        [InlineData("DropTheCollection")]
+        [InlineData("42")]
+        public async Task RepairIsRejectedWithAnUnknownMode(string repairMode)
         {
             // Setup.
-            repositoryMock.Setup(repo => repo.RemoveMissingOriginReferencesAsync(It.IsAny<CancellationToken>()))
-                .ReturnsAsync(new MissingOriginReferencesRemovalReport(
-                    [new MissingOriginReferencesPathRemoval("Author", 2, 5)],
-                    []));
             using var host = await StartDashboardHostAsync();
 
             // Action.
-            var response = await PostRemoveReferencesAsync(host, RepositoryName);
+            var response = await PostRepairReferencesAsync(host, RepositoryName, [("Author", repairMode)]);
+
+            // Assert.
+            Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+            Assert.Contains(
+                "\"started\":false",
+                await response.Content.ReadAsStringAsync(),
+                StringComparison.Ordinal);
+            VerifyNoRepairStarted();
+        }
+
+        [Fact]
+        public async Task RepairIsRejectedWithAnUnusableLockLeaseDuration()
+        {
+            /* The repair claims the same db context lock a migration claims, with the lease
+             * duration of the card: an unbounded one would keep the db context locked for as
+             * long as it says if this instance dies. */
+
+            // Setup.
+            using var host = await StartDashboardHostAsync();
+
+            // Action.
+            var response = await PostRepairReferencesAsync(
+                host,
+                RepositoryName,
+                [("Author", "RemoveReference")],
+                lockLeaseDurationMinutes: (IndexModel.MaxLockLeaseDurationMinutes + 1).ToString(CultureInfo.InvariantCulture));
+
+            // Assert.
+            Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+            Assert.Contains(
+                IndexModel.MaxLockLeaseDurationMinutes.ToString(CultureInfo.InvariantCulture),
+                await response.Content.ReadAsStringAsync(),
+                StringComparison.Ordinal);
+            VerifyNoRepairStarted();
+        }
+
+        [Fact]
+        public async Task RepairStartsAnOperationWithTheChosenModes()
+        {
+            // Setup.
+            IReadOnlyDictionary<string, OriginDeleteMode>? repairModes = null;
+            dbContextMock.Setup(dbContext => dbContext.TryStartReferencesRepairAsync(
+                    It.IsAny<string>(),
+                    It.IsAny<IReadOnlyDictionary<string, OriginDeleteMode>>(),
+                    It.IsAny<bool>(),
+                    It.IsAny<TimeSpan?>()))
+                .Callback((string _, IReadOnlyDictionary<string, OriginDeleteMode> modes, bool _, TimeSpan? _) =>
+                    repairModes = modes)
+                .ReturnsAsync(new ReferencesRepairOperation(
+                    engineMock.Object,
+                    RepositoryName,
+                    new Dictionary<string, OriginDeleteMode>()));
+            using var host = await StartDashboardHostAsync();
+
+            // Action.
+            var response = await PostRepairReferencesAsync(
+                host,
+                RepositoryName,
+                [("Author", "RemoveReference"), ("Editor", "DeleteReferencingDocument")],
+                dryRun: true);
 
             // Assert.
             response.EnsureSuccessStatusCode();
-            var responseJson = await response.Content.ReadAsStringAsync();
-            Assert.Contains("\"removed\":true", responseJson, StringComparison.Ordinal);
-            Assert.Contains("\"elementPath\":\"Author\"", responseJson, StringComparison.Ordinal);
-            Assert.Contains("\"missingOriginIdsCount\":2", responseJson, StringComparison.Ordinal);
-            Assert.Contains("\"updatedDocumentsCount\":5", responseJson, StringComparison.Ordinal);
-            repositoryMock.Verify(
-                repo => repo.RemoveMissingOriginReferencesAsync(It.IsAny<CancellationToken>()),
+            Assert.Contains(
+                "\"started\":true",
+                await response.Content.ReadAsStringAsync(),
+                StringComparison.Ordinal);
+
+            //the action chosen for each path is what the start forwards, with the dry run flag
+            Assert.NotNull(repairModes);
+            Assert.Equal(OriginDeleteMode.RemoveReference, repairModes["Author"]);
+            Assert.Equal(OriginDeleteMode.DeleteReferencingDocument, repairModes["Editor"]);
+            dbContextMock.Verify(
+                dbContext => dbContext.TryStartReferencesRepairAsync(
+                    RepositoryName,
+                    It.IsAny<IReadOnlyDictionary<string, OriginDeleteMode>>(),
+                    true,
+                    TimeSpan.FromMinutes(25)),
                 Times.Once());
         }
 
         // Helpers.
+        private void VerifyNoRepairStarted() =>
+            dbContextMock.Verify(
+                dbContext => dbContext.TryStartReferencesRepairAsync(
+                    It.IsAny<string>(),
+                    It.IsAny<IReadOnlyDictionary<string, OriginDeleteMode>>(),
+                    It.IsAny<bool>(),
+                    It.IsAny<TimeSpan?>()),
+                Times.Never());
+
         private Mock<IRepository> BuildRepositoryMock(string name, bool isReadOnly)
         {
             var repositoryMock = new Mock<IRepository>();
@@ -228,7 +325,12 @@ namespace Etherna.Scrinium.AspNetCore.UI
             return (tokenMatch.Groups[1].Value, cookie);
         }
 
-        private static async Task<HttpResponseMessage> PostRemoveReferencesAsync(IHost host, string repositoryName)
+        private static async Task<HttpResponseMessage> PostRepairReferencesAsync(
+            IHost host,
+            string repositoryName,
+            (string ElementPath, string RepairMode)[] repairModes,
+            bool dryRun = false,
+            string lockLeaseDurationMinutes = "25")
         {
             var client = host.GetTestClient();
 
@@ -236,13 +338,23 @@ namespace Etherna.Scrinium.AspNetCore.UI
             pageResponse.EnsureSuccessStatusCode();
             var (token, cookie) = await ExtractAntiforgeryAsync(pageResponse);
 
-            using var request = new HttpRequestMessage(HttpMethod.Post, PagePath + "?handler=RemoveMissingOriginReferences")
+            //the page sends the chosen actions as two parallel lists, one entry per path
+            List<KeyValuePair<string, string>> form =
+            [
+                new("identifier", DbContextIdentifier),
+                new("repositoryName", repositoryName),
+                new("dryRun", dryRun.ToString(CultureInfo.InvariantCulture)),
+                new("lockLeaseDurationMinutes", lockLeaseDurationMinutes)
+            ];
+            foreach (var (elementPath, repairMode) in repairModes)
             {
-                Content = new FormUrlEncodedContent(new Dictionary<string, string>
-                {
-                    ["identifier"] = DbContextIdentifier,
-                    ["repositoryName"] = repositoryName
-                })
+                form.Add(new KeyValuePair<string, string>("elementPaths", elementPath));
+                form.Add(new KeyValuePair<string, string>("repairModes", repairMode));
+            }
+
+            using var request = new HttpRequestMessage(HttpMethod.Post, PagePath + "?handler=RepairMissingOriginReferences")
+            {
+                Content = new FormUrlEncodedContent(form)
             };
             request.Headers.Add("Cookie", cookie);
             //same header sent by scriniumDash.js

@@ -83,12 +83,6 @@
                 else
                 {
                     <span class="status-badge" data-role="status">&hellip;</span>
-                    <label class="migration-option">
-                        <input type="checkbox" data-role="stop-at-first-error" disabled />
-                        Stop at first error
-                    </label>
-                    <button type="button" class="btn" data-role="start" disabled>Start migration</button>
-                    <button type="button" class="btn secondary" data-role="start-dry-run" disabled>Dry run</button>
                 }
             </header>
 
@@ -98,40 +92,80 @@
             }
             else
             {
-                <details class="migration-advanced">
-                    <summary>Advanced</summary>
+                @* Whatever runs on this db context reports here, at the top of the card: the
+                   sections below start the work, this one shows it happening and what happened. *@
+                <div class="card-operations">
+                    <div class="card-operations-header">
+                        <h3 data-role="history-title">Latest operations</h3>
+                        <button type="button" class="btn secondary" data-role="expand-history">Show all</button>
+                    </div>
 
-                    <label class="migration-option">
-                        Lock lease duration
-                        @{
-                            RenderInfoTip(@<text>
-                                How long this db context stays locked if this application instance dies before the
-                                migration finishes: until the lease expires, no instance can start a migration or a
-                                seeding of it. It also has to cover the delay before the background worker picks the
-                                job up, the only window nothing renews the lease. It does <strong>not</strong> have to
-                                cover the migration duration, however long it takes: the lease is renewed while the
-                                migration runs. Accepted up to @IndexModel.MaxLockLeaseDurationMinutes minutes.
-                            </text>);
-                        }
-                        <input type="number" data-role="lock-lease-duration" disabled
-                               min="1" max="@IndexModel.MaxLockLeaseDurationMinutes" step="1"
-                               value="@((int)ResourceLock.DefaultLeaseDuration.TotalMinutes)" />
-                        minutes
-                    </label>
-                </details>
-
-                <p class="action-feedback" data-role="feedback" hidden></p>
-
-                <div class="migration-live" data-role="live" hidden>
-                    <h3><span class="spinner"></span> Migration in progress</h3>
-                    <p class="migration-live-meta" data-role="live-meta"></p>
-                    <ol class="log-list" data-role="logs"></ol>
-                </div>
-
-                <div class="migration-history">
-                    <h3>Latest migrations</h3>
+                    <div class="operation-live" data-role="live" hidden></div>
                     <div data-role="history"><p class="muted">Loading&hellip;</p></div>
                 </div>
+
+                <details class="migrations">
+                    <summary>Migrations</summary>
+
+                    <p class="muted">
+                        The document migrations the application declares, with the index prune and build around them.
+                        @{
+                            RenderInfoTip(@<text>
+                                Nothing else is migrated, unless the deprecated schemas rewrite is asked for: the
+                                documents left on a deprecated schema are otherwise rewritten only by a migration
+                                declared on <code>IDbContext.DocumentMigrationList</code> addressing them. A dry run
+                                simulates them without persisting anything, and skips the index steps.
+                            </text>);
+                        }
+                    </p>
+
+                    <div class="migration-controls">
+                        <label class="migration-option">
+                            <input type="checkbox" data-role="stop-at-first-error" disabled />
+                            Stop at first error
+                        </label>
+                        <label class="migration-option">
+                            <input type="checkbox" data-role="rewrite-deprecated-schemas" disabled />
+                            Rewrite deprecated schemas
+                            @{
+                                RenderInfoTip(@<text>
+                                    Every writable collection also has the documents whose schema id isn't the active
+                                    one of their concrete type — those carrying it under the deprecated
+                                    <code>@ModelMapSchema.DeprecatedIdElementName</code> element included — written
+                                    back whole with their active schema, inside the same operation as the declared
+                                    migrations.
+                                </text>);
+                            }
+                        </label>
+                        <button type="button" class="btn" data-role="start" disabled>Start migration</button>
+                        <button type="button" class="btn secondary" data-role="start-dry-run" disabled>Dry run</button>
+                    </div>
+
+                    <details class="migration-advanced">
+                        <summary>Advanced</summary>
+
+                        <label class="migration-option">
+                            Lock lease duration
+                            @{
+                                RenderInfoTip(@<text>
+                                    How long this db context stays locked if this application instance dies before the
+                                    migration finishes: until the lease expires, no instance can start a migration, a
+                                    references repair or a seeding of it. It also has to cover the delay before the
+                                    background worker picks the job up, the only window nothing renews the lease. It
+                                    does <strong>not</strong> have to cover the operation duration, however long it
+                                    takes: the lease is renewed while it runs. Accepted up to
+                                    @IndexModel.MaxLockLeaseDurationMinutes minutes.
+                                </text>);
+                            }
+                            <input type="number" data-role="lock-lease-duration" disabled
+                                   min="1" max="@IndexModel.MaxLockLeaseDurationMinutes" step="1"
+                                   value="@((int)ResourceLock.DefaultLeaseDuration.TotalMinutes)" />
+                            minutes
+                        </label>
+                    </details>
+
+                    <p class="action-feedback" data-role="feedback" hidden></p>
+                </details>
             }
 
             <details class="model-schemas" data-role="schemas">
@@ -145,7 +179,11 @@
                             <code>@ModelMapSchema.IdElementName</code> element. Counting the
                             documents of each schema id scans the whole collection, so it runs only on request, one
                             collection at a time: documents counted on a deprecated, unrecognized or missing schema
-                            id are the ones a migration has to rewrite.
+                            id are the ones a migration has to rewrite. The count reads the schema id from that
+                            element or from the deprecated <code>@ModelMapSchema.DeprecatedIdElementName</code> one,
+                            so the documents still written under the previous name are already counted under their
+                            schema id: the last row says how many of them are, and a rewrite has to touch those too,
+                            whatever schema id they carry.
                         </text>);
                     }
                 </p>
@@ -189,48 +227,6 @@
                                 }
                             </tbody>
                         </table>
-                    </div>
-                }
-            </details>
-
-            <details class="deprecated-schema-ids">
-                <summary>Deprecated schema id elements</summary>
-
-                <p class="muted">
-                    The documents of each collection still carrying their schema id under a previous
-                    element name, and their migration.
-                    @{
-                        RenderInfoTip(@<text>
-                            Documents written before the schema id element took the
-                            <code>@ModelMapSchema.IdElementName</code> name carry it in the
-                            <code>@ModelMapSchema.DeprecatedIdElementName</code> element,
-                            still recognized while reading them: they keep loading, but that name is
-                            <strong>deprecated</strong>, and a future version of Scrinium will stop reading it.
-                            Counting them scans the whole collection, so it runs
-                            only on request, one collection at a time. The migration rewrites each of those
-                            documents whole with its current active schema, so the current name carries the
-                            schema id at every level: a document written under the current name has every
-                            sub-document written under it too, and stays out. Failing documents are skipped and
-                            reported, keeping the content they have.
-                        </text>);
-                    }
-                </p>
-
-                @foreach (var repository in context.RepositoryRegistry.Repositories.OrderBy(r => r.Name))
-                {
-                    <div class="deprecated-schema-id-collection" data-repository="@repository.Name">
-                        <div class="deprecated-schema-id-collection-header">
-                            <h4>@repository.Name</h4>
-                            <span class="muted" data-role="deprecated-schema-id-count">&mdash;</span>
-                            <button type="button" class="btn secondary" data-role="count-deprecated-schema-ids">Count documents</button>
-                            @if (!repository.IsReadOnly)
-                            {
-                                <button type="button" class="btn" data-role="migrate-deprecated-schema-ids" hidden>Migrate documents</button>
-                            }
-                        </div>
-
-                        <p class="action-feedback" data-role="migration-outcome" hidden></p>
-                        <ul class="deprecated-schema-id-errors" data-role="migration-errors" hidden></ul>
                     </div>
                 }
             </details>
@@ -288,17 +284,24 @@
                 <summary>Missing origin references</summary>
 
                 <p class="muted">
-                    The references of each collection whose origin document doesn't exist anymore, and their removal.
+                    The references of each collection whose origin document doesn't exist anymore, and their repair.
                     @{
                         RenderInfoTip(@<text>
                             A reference carries the id of its origin document: when that document doesn't
                             exist anymore on its collection, loading the reference finds nothing. The scan
                             reads every referenced id of the collection and verifies it against the origin
-                            collection, so it runs only on request, one collection at a time. The removal
-                            scans again and repairs what it verifies: a reference hosted as an array item is
-                            pulled out of its array, any other one is set to null, reading as a null
-                            reference from then on. Reference paths the scan can't verify are listed apart,
-                            and stay untouched.
+                            collection, so it runs only on request, one collection at a time. Each reference
+                            path declares in its mapping what the deletion of an origin document does to the
+                            documents referencing it, and these dangling references are the ones that
+                            propagation never reached: the repair follows that policy by default, and the
+                            action of each path can be changed before confirming. Removing pulls a reference
+                            out of its array, or sets it to null, reading as a null reference from then on;
+                            deleting removes the referencing documents with a domain delete, which
+                            propagates their own reference policies in turn. <strong>Fix</strong> runs it as
+                            an operation, under the db context lock like a migration, scanning the collection
+                            again and reporting each path as it goes; <strong>Dry run</strong> executes the
+                            same operation with its writes simulated. Reference paths the scan can't verify
+                            are listed apart, and stay untouched.
                         </text>);
                     }
                 </p>
@@ -311,11 +314,12 @@
                             <button type="button" class="btn secondary" data-role="scan-references">Scan references</button>
                             @if (!repository.IsReadOnly)
                             {
-                                <button type="button" class="btn" data-role="remove-references" hidden>Remove references</button>
+                                <button type="button" class="btn" data-role="repair-references" hidden>Fix</button>
+                                <button type="button" class="btn secondary" data-role="repair-references-dry-run" hidden>Dry run</button>
                             }
                         </div>
 
-                        <p class="muted" data-role="removal-outcome" hidden></p>
+                        <p class="action-feedback" data-role="repair-feedback" hidden></p>
                         <div data-role="scan-results"></div>
                     </div>
                 }

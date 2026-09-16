@@ -12,6 +12,7 @@
 // You should have received a copy of the GNU Lesser General Public License along with Scrinium.
 // If not, see <https://www.gnu.org/licenses/>.
 
+using Etherna.Scrinium.Core.Options;
 using System.Collections.Generic;
 
 namespace Etherna.Scrinium.Core.Repositories
@@ -22,9 +23,11 @@ namespace Etherna.Scrinium.Core.Repositories
     public class MissingOriginReferencesPathReport(
         string elementPath,
         IReadOnlyCollection<string> originRepositoryNames,
+        OriginDeleteMode originDelete,
         long missingOriginIdsCount,
         IReadOnlyCollection<string> trackedMissingOriginIds,
-        long referencingDocumentsCount)
+        long referencingDocumentsCount,
+        IReadOnlyCollection<string> trackedReferencingDocumentIds)
     {
         // Consts.
         /// <summary>
@@ -32,6 +35,12 @@ namespace Etherna.Scrinium.Core.Repositories
         /// <see cref="MissingOriginIdsCount"/> reports the full count.
         /// </summary>
         public const int MaxTrackedMissingOriginIds = 100;
+
+        /// <summary>
+        /// Most referencing document ids a path report lists.
+        /// <see cref="ReferencingDocumentsCount"/> reports the full count.
+        /// </summary>
+        public const int MaxTrackedReferencingDocumentIds = 100;
 
         // Properties.
         /// <summary>
@@ -44,6 +53,14 @@ namespace Etherna.Scrinium.Core.Repositories
         /// repository of the path.
         /// </summary>
         public long MissingOriginIdsCount { get; } = missingOriginIdsCount;
+
+        /// <summary>
+        /// What the mapping declares the deletion of an origin document does to the documents
+        /// referencing it, the policy a repair of this path follows by default. When the
+        /// schemas generating the path declare different policies, this is the most invasive
+        /// one, like the delete propagation applies.
+        /// </summary>
+        public OriginDeleteMode OriginDelete { get; } = originDelete;
 
         /// <summary>
         /// The origin repositories the referenced ids were verified against.
@@ -61,5 +78,12 @@ namespace Etherna.Scrinium.Core.Repositories
         /// <see cref="MaxTrackedMissingOriginIds"/> entries.
         /// </summary>
         public IReadOnlyCollection<string> TrackedMissingOriginIds { get; } = trackedMissingOriginIds;
+
+        /// <summary>
+        /// The ids of the documents carrying a reference to a tracked missing origin id: what
+        /// a repair of this path would touch, capped at
+        /// <see cref="MaxTrackedReferencingDocumentIds"/> entries.
+        /// </summary>
+        public IReadOnlyCollection<string> TrackedReferencingDocumentIds { get; } = trackedReferencingDocumentIds;
     }
 }

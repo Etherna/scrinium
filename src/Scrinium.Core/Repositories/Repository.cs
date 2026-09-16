@@ -21,6 +21,7 @@ using Etherna.Scrinium.Core.Exceptions;
 using Etherna.Scrinium.Core.Extensions;
 using Etherna.Scrinium.Core.FilterDefinition;
 using Etherna.Scrinium.Core.Migration;
+using Etherna.Scrinium.Core.Options;
 using Etherna.Scrinium.Core.ProxyModels;
 using Etherna.Scrinium.Core.Serialization.Mapping;
 using Etherna.Scrinium.Core.Serialization.Modifiers;
@@ -49,6 +50,10 @@ namespace Etherna.Scrinium.Core.Repositories
          * chunking bounds the query command size and the materialized result, whatever
          * the caller batch size. */
         private const int LoadFullModelsChunkSize = 1000;
+        /* A repair deleting the referencing documents loads them to delete them with a
+         * domain delete, one batch at a time inside a transient models scope: the batch bounds
+         * the loaded models memory and the scope evicts them, whatever the cascade fan out. */
+        private const int RepairDeleteBatchSize = 100;
         /* The referenced ids of a missing origin references scan verify their existence
          * with one $in read per chunk, bounded the same way. */
         private const int ScanReferencedIdsChunkSize = 1000;
@@ -92,6 +97,19 @@ namespace Etherna.Scrinium.Core.Repositories
         private static FilterDefinition<TModel> DeprecatedSchemaIdDocumentsFilter =>
             new BsonDocument(ModelMapSchema.DeprecatedIdElementName, new BsonDocument("$exists", true));
 
+        /* The documents left on a deprecated schema: the ones whose stored schema id isn't the
+         * active id of a concrete model type the collection can store. A $nin also matches a
+         * missing element, so the documents carrying their schema id under the deprecated
+         * element name match too, and rightly: what a rewrite lands under the current name at
+         * every level is the active schema. */
+        private FilterDefinition<TModel> DeprecatedSchemaDocumentsFilter =>
+            new BsonDocument(ModelMapSchema.IdElementName, new BsonDocument(
+                "$nin",
+                new BsonArray(DbContext.Engine.MapRegistry.MapsByModelType.Values
+                    .OfType<IModelMap>()
+                    .Where(map => !map.ModelType.IsAbstract && typeof(TModel).IsAssignableFrom(map.ModelType))
+                    .Select(map => map.ActiveSchema.Id))));
+
         private IInternalDbContext InternalDbContext => (IInternalDbContext)DbContext;
 
         // Public methods.
@@ -127,6 +145,12 @@ namespace Etherna.Scrinium.Core.Repositories
 
             return result;
         }
+
+        public virtual DocumentMigration BuildDeprecatedSchemaDocumentsMigration() =>
+            new DocumentMigration<TModel, TKey>(this)
+            {
+                DocumentsFilter = DeprecatedSchemaDocumentsFilter
+            };
 
         public virtual async Task BuildNewIndexesAsync(CancellationToken cancellationToken = default)
         {
@@ -344,21 +368,45 @@ namespace Etherna.Scrinium.Core.Repositories
                         return Task.CompletedTask;
                     }, cancellationToken).ConfigureAwait(false);
 
-                    // Count the documents carrying a reference to a tracked missing origin id.
-                    /* The count addresses the tracked ids: when the tracking cap drops some
-                     * of them, it is a lower bound of the documents to repair. */
+                    // Count and list the documents carrying a reference to a tracked missing origin id.
+                    /* Both address the tracked ids: when the tracking cap drops some of them,
+                     * the count is a lower bound of the documents to repair. The ids of those
+                     * documents are what an operator looks up before repairing anything, so
+                     * they are listed under their own cap, projecting the id alone. */
                     var referencingDocumentsCount = 0L;
+                    List<string> trackedReferencingDocumentIds = [];
                     if (trackedMissingOriginIds.Count > 0)
+                    {
+                        var referencingDocumentsFilter = new BsonDocument(
+                            scanPath.IdElementPath, new BsonDocument("$in", new BsonArray(trackedMissingOriginIds)));
+
                         referencingDocumentsCount = await collection.CountDocumentsAsync(
-                            new BsonDocument(scanPath.IdElementPath, new BsonDocument("$in", new BsonArray(trackedMissingOriginIds))),
+                            referencingDocumentsFilter,
                             cancellationToken: cancellationToken).ConfigureAwait(false);
+
+                        var rawCollection = collection.Database.GetCollection<BsonDocument>(
+                            collection.CollectionNamespace.CollectionName);
+                        using var referencingDocumentsCursor = await rawCollection.FindAsync(
+                            referencingDocumentsFilter,
+                            new FindOptions<BsonDocument, BsonDocument>
+                            {
+                                Limit = MissingOriginReferencesPathReport.MaxTrackedReferencingDocumentIds,
+                                Projection = new BsonDocument(IdElementName, 1)
+                            },
+                            cancellationToken).ConfigureAwait(false);
+                        while (await referencingDocumentsCursor.MoveNextAsync(cancellationToken).ConfigureAwait(false))
+                            trackedReferencingDocumentIds.AddRange(referencingDocumentsCursor.Current
+                                .Select(document => document[IdElementName].ToString()!));
+                    }
 
                     pathReports.Add(new MissingOriginReferencesPathReport(
                         scanPath.ElementPath,
                         scanPath.OriginRepositoryNames,
+                        scanPath.OriginDelete,
                         missingOriginIdsCount,
                         trackedMissingOriginIds.Select(id => id.ToString()!).ToArray(),
-                        referencingDocumentsCount));
+                        referencingDocumentsCount,
+                        trackedReferencingDocumentIds));
                 }
 
                 logger.RepositoryFoundMissingOriginReferences(
@@ -528,31 +576,86 @@ namespace Etherna.Scrinium.Core.Repositories
                 take);
         }
 
-        public virtual Task<MissingOriginReferencesRemovalReport> RemoveMissingOriginReferencesAsync(
+        public virtual Task<MissingOriginReferencesRepairReport> RepairMissingOriginReferencesAsync(
+            IReadOnlyDictionary<string, OriginDeleteMode>? repairModesByElementPath = null,
+            bool dryRun = false,
+            Func<MissingOriginReferencesPathRepair, Task>? progressAsync = null,
             CancellationToken cancellationToken = default)
         {
             /* Fail fast on a read-only repository: every write on its collection is denied,
-             * so a removal could only fail at its first found missing origin reference. */
+             * so a repair could only fail at its first found missing origin reference. */
             if (IsReadOnly)
                 throw new UnauthorizedAccessException(
-                    $"Can't remove missing origin references from collection \"{Name}\": the repository is read-only");
+                    $"Can't repair the missing origin references of collection \"{Name}\": the repository is read-only");
 
             return AccessToCollectionAsync(async collection =>
             {
+                /* A dry run executes the whole repair with its collection writes simulated:
+                 * the scan reads for real, the updates and the deletes never reach the server. */
+                using var dryRunHandler = dryRun
+                    ? new DryRunHandler(DbContext.Engine.ExecutionContext)
+                    : null;
+
                 var (scanPaths, unverifiableElementPaths) = BuildReferenceScanPaths();
 
-                var pathRemovals = new List<MissingOriginReferencesPathRemoval>();
+                /* A requested mode addresses a path of this collection: a path the collection
+                 * doesn't have (or doesn't verify) is a caller error, not something to apply
+                 * silently to nothing. */
+                if (repairModesByElementPath?.Keys
+                        .Where(elementPath => scanPaths.All(scanPath => scanPath.ElementPath != elementPath))
+                        .ToArray() is { Length: > 0 } unknownElementPaths)
+                    throw new ArgumentException(
+                        $"Collection \"{Name}\" has no verifiable reference at: {string.Join(", ", unknownElementPaths)}",
+                        nameof(repairModesByElementPath));
+
+                var pathRepairs = new List<MissingOriginReferencesPathRepair>();
                 foreach (var scanPath in scanPaths)
                 {
+                    /* Each path is repaired the way its mapping declares the deletion of an
+                     * origin document is propagated, unless the caller asks for another mode:
+                     * the dangling references the scan finds are the ones that propagation
+                     * never reached. */
+                    var repairMode =
+                        repairModesByElementPath is not null &&
+                        repairModesByElementPath.TryGetValue(scanPath.ElementPath, out var requestedMode)
+                            ? requestedMode
+                            : scanPath.OriginDelete;
+
+                    //a kept path keeps its dangling references by design: it isn't even scanned
+                    if (repairMode == OriginDeleteMode.KeepReference)
+                    {
+                        var keptRepair = new MissingOriginReferencesPathRepair(
+                            scanPath.ElementPath, repairMode, 0, 0, 0);
+                        pathRepairs.Add(keptRepair);
+
+                        if (progressAsync is not null)
+                            await progressAsync(keptRepair).ConfigureAwait(false);
+                        continue;
+                    }
+
                     var missingOriginIdsCount = 0L;
                     var updatedDocumentsCount = 0L;
+                    var deletedDocumentsCount = 0L;
                     await ScanMissingOriginIdsAsync(collection, scanPath, async missingOriginIds =>
                     {
-                        /* Each update addresses the documents still carrying that missing
-                         * origin id at the path: a reference concurrently rewritten to
-                         * another document doesn't match anymore, and stays untouched. */
                         foreach (var missingOriginId in missingOriginIds)
                         {
+                            if (repairMode == OriginDeleteMode.DeleteReferencingDocument)
+                            {
+                                deletedDocumentsCount += await DeleteReferencingDocumentsAsync(
+                                    scanPath, missingOriginId, dryRun, cancellationToken).ConfigureAwait(false);
+
+                                logger.RepositoryDeletedMissingOriginReferencingDocuments(
+                                    Name,
+                                    DbContext.Engine.Options.DbName,
+                                    scanPath.ElementPath,
+                                    missingOriginId.ToString()!);
+                                continue;
+                            }
+
+                            /* Each update addresses the documents still carrying that missing
+                             * origin id at the path: a reference concurrently rewritten to
+                             * another document doesn't match anymore, and stays untouched. */
                             var (update, updateOptions) = scanPath.BuildRemoveReferenceUpdate(missingOriginId);
                             var updateResult = await collection.UpdateManyAsync(
                                 new BsonDocument(scanPath.IdElementPath, new BsonDocument("$eq", missingOriginId)),
@@ -568,21 +671,38 @@ namespace Etherna.Scrinium.Core.Repositories
                                 missingOriginId.ToString()!);
                         }
                         missingOriginIdsCount += missingOriginIds.Count;
+
+                        /* Report what this chunk brought, so a long scan renders its counters
+                         * growing instead of staying silent until the path ends. */
+                        if (progressAsync is not null)
+                            await progressAsync(new MissingOriginReferencesPathRepair(
+                                scanPath.ElementPath,
+                                repairMode,
+                                missingOriginIdsCount,
+                                updatedDocumentsCount,
+                                deletedDocumentsCount)).ConfigureAwait(false);
                     }, cancellationToken).ConfigureAwait(false);
 
-                    pathRemovals.Add(new MissingOriginReferencesPathRemoval(
+                    var pathRepair = new MissingOriginReferencesPathRepair(
                         scanPath.ElementPath,
+                        repairMode,
                         missingOriginIdsCount,
-                        updatedDocumentsCount));
+                        updatedDocumentsCount,
+                        deletedDocumentsCount);
+                    pathRepairs.Add(pathRepair);
+
+                    if (progressAsync is not null)
+                        await progressAsync(pathRepair).ConfigureAwait(false);
                 }
 
-                logger.RepositoryRemovedMissingOriginReferences(
+                logger.RepositoryRepairedMissingOriginReferences(
                     Name,
                     DbContext.Engine.Options.DbName,
-                    pathRemovals.Sum(pathRemoval => pathRemoval.MissingOriginIdsCount),
-                    pathRemovals.Sum(pathRemoval => pathRemoval.UpdatedDocumentsCount));
+                    pathRepairs.Sum(pathRepair => pathRepair.MissingOriginIdsCount),
+                    pathRepairs.Sum(pathRepair => pathRepair.UpdatedDocumentsCount),
+                    pathRepairs.Sum(pathRepair => pathRepair.DeletedDocumentsCount));
 
-                return new MissingOriginReferencesRemovalReport(pathRemovals, unverifiableElementPaths);
+                return new MissingOriginReferencesRepairReport(pathRepairs, unverifiableElementPaths);
             });
         }
 
@@ -1116,7 +1236,7 @@ namespace Etherna.Scrinium.Core.Repositories
                 .Where(memberMap => memberMap is { IsEntityReferenceMember: true, IsIdMember: true });
 
             var unverifiableElementPaths = new SortedSet<string>(StringComparer.Ordinal);
-            List<(string IdElementPath, string ElementPath, string[] UnwindPaths, IMemberMap IdMemberMap, IRepository? OriginRepository)> scanEntries = [];
+            List<(string IdElementPath, string ElementPath, string[] UnwindPaths, IMemberMap IdMemberMap, OriginDeleteMode OriginDelete, IRepository? OriginRepository)> scanEntries = [];
             foreach (var idMemberMap in idMemberMaps)
             {
                 // Walk the element path, planning one unwind per array level.
@@ -1171,12 +1291,14 @@ namespace Etherna.Scrinium.Core.Repositories
                     continue;
                 }
 
+                var referenceSerializer = idMemberMap.TryFindHostingReferenceSerializer();
                 scanEntries.Add((
                     idElementPath.ToString(),
                     elementPath!,
                     [.. unwindPaths],
                     idMemberMap,
-                    idMemberMap.TryFindHostingReferenceSerializer()?.TryResolveSourceRepository(DbContext)));
+                    referenceSerializer?.Configuration.OriginDelete ?? OriginDeleteMode.KeepReference,
+                    referenceSerializer?.TryResolveSourceRepository(DbContext)));
             }
 
             // Merge the schemas sharing an id element path into one scan path.
@@ -1186,6 +1308,11 @@ namespace Etherna.Scrinium.Core.Repositories
                 .OrderBy(group => group.Key, StringComparer.Ordinal))
             {
                 // A path whose origin repository doesn't resolve can't verify its ids.
+                /* Schemas sharing the id element path can declare different origin delete
+                 * policies: the applied one is the most invasive of the group, mirroring how
+                 * the delete propagation task resolves the same overlap. */
+                var originDelete = pathGroup.Max(entry => entry.OriginDelete);
+
                 var originRepositories = pathGroup
                     .Select(entry => entry.OriginRepository)
                     .OfType<IRepository>()
@@ -1203,7 +1330,7 @@ namespace Etherna.Scrinium.Core.Repositories
                  * highest repetitions count of each prefix, flattening every shape. The
                  * prefixes nest along the path, so their length orders the stages. */
                 var unwindCountsByPrefix = new Dictionary<string, int>(StringComparer.Ordinal);
-                foreach (var (_, _, entryUnwindPaths, _, _) in pathGroup)
+                foreach (var (_, _, entryUnwindPaths, _, _, _) in pathGroup)
                     foreach (var prefixGroup in entryUnwindPaths.GroupBy(path => path, StringComparer.Ordinal))
                         unwindCountsByPrefix[prefixGroup.Key] = Math.Max(
                             unwindCountsByPrefix.GetValueOrDefault(prefixGroup.Key, 0),
@@ -1228,6 +1355,7 @@ namespace Etherna.Scrinium.Core.Repositories
                 scanPaths.Add(new ReferenceScanPath(
                     elementPath: pathGroup.First().ElementPath,
                     idElementPath: pathGroup.Key,
+                    originDelete: originDelete,
                     originCollections: originRepositories
                         .Select(repository => repository.DbContext.Engine.GetMongoCollection<BsonDocument>(repository.Name, isReadOnly: true))
                         .ToArray(),
@@ -1548,6 +1676,49 @@ namespace Etherna.Scrinium.Core.Repositories
             }).ConfigureAwait(false);
         }
 
+        /* Delete the documents referencing a missing origin id with a domain delete, batch by
+         * batch, like the delete propagation task does for the same policy: the deleted
+         * documents propagate their own reference policies in turn, chaining the cascade. The
+         * loop always reads the documents still referencing the id, so what a batch deleted
+         * doesn't match anymore, and mutual references terminate on the deleted documents. */
+        private async Task<long> DeleteReferencingDocumentsAsync(
+            ReferenceScanPath scanPath,
+            BsonValue missingOriginId,
+            bool dryRun,
+            CancellationToken cancellationToken)
+        {
+            /* A dry run persists nothing, so the documents a delete simulates stay where they
+             * are and the loop below would read them again forever: count what it would delete
+             * instead, which is the only thing a simulation can report anyway. */
+            if (dryRun)
+                return await AccessToCollectionAsync(collection => collection.CountDocumentsAsync(
+                    new BsonDocument(scanPath.IdElementPath, new BsonDocument("$eq", missingOriginId)),
+                    cancellationToken: cancellationToken)).ConfigureAwait(false);
+
+            var deletedDocumentsCount = 0L;
+            while (true)
+            {
+                using var transientScope = DbContext.StartTransientModelsScope();
+
+                List<TModel> referencingModels;
+                using (var referencingModelsCursor = await FindAsync(
+                    new BsonDocument(scanPath.IdElementPath, new BsonDocument("$eq", missingOriginId)),
+                    new FindOptions<TModel, TModel> { Limit = RepairDeleteBatchSize },
+                    cancellationToken).ConfigureAwait(false))
+                {
+                    referencingModels = await referencingModelsCursor.ToListAsync(cancellationToken).ConfigureAwait(false);
+                }
+                if (referencingModels.Count == 0)
+                    return deletedDocumentsCount;
+
+                foreach (var referencingModel in referencingModels)
+                {
+                    await DeleteAsync(referencingModel, cancellationToken: cancellationToken).ConfigureAwait(false);
+                    deletedDocumentsCount++;
+                }
+            }
+        }
+
         private static async Task ScanMissingOriginIdsAsync(
             IMongoCollection<TModel> collection,
             ReferenceScanPath scanPath,
@@ -1701,10 +1872,12 @@ namespace Etherna.Scrinium.Core.Repositories
          * everything precomputed to scan and repair it: the unwinds and the id element path
          * reading the referenced ids, the origin collections verifying their existence, and
          * the removal shape repairing a reference — pulled out of its array when the
-         * reference is an array item, set to null otherwise. */
+         * reference is an array item, set to null otherwise — and the origin delete policy
+         * the mapping declares for it, which a repair follows by default. */
         private sealed class ReferenceScanPath(
             string elementPath,
             string idElementPath,
+            OriginDeleteMode originDelete,
             IReadOnlyCollection<IMongoCollection<BsonDocument>> originCollections,
             IReadOnlyCollection<string> originRepositoryNames,
             ReferenceRemovalShape removalShape,
@@ -1713,6 +1886,7 @@ namespace Etherna.Scrinium.Core.Repositories
             // Properties.
             public string ElementPath { get; } = elementPath;
             public string IdElementPath { get; } = idElementPath;
+            public OriginDeleteMode OriginDelete { get; } = originDelete;
             public IReadOnlyCollection<IMongoCollection<BsonDocument>> OriginCollections { get; } = originCollections;
             public IReadOnlyCollection<string> OriginRepositoryNames { get; } = originRepositoryNames;
             public IReadOnlyCollection<string> UnwindPaths { get; } = unwindPaths;

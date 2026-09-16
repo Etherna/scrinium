@@ -62,6 +62,11 @@ namespace Etherna.Scrinium.Core.Utility
         /// completes, and how long the claim survives waiting for the background task runner to
         /// pick the operation up, the only window nothing renews it. It doesn't have to cover
         /// the migration duration, since the execution keeps the lease renewed</param>
+        /// <param name="rewriteDeprecatedSchemas">If true, the migration also rewrites the
+        /// documents left on a deprecated schema: the ones whose stored schema id isn't the
+        /// active one of their concrete type, the ones carrying it under the deprecated
+        /// element name included. They are rewritten whole with their active schema, after
+        /// the declared document migrations and inside the same operation</param>
         /// <returns>The new migration operation, or null when the start is denied: a read-only
         /// db context, an exclusive access already running in this process, or the db context
         /// lock held by another owner</returns>
@@ -69,6 +74,7 @@ namespace Etherna.Scrinium.Core.Utility
             IDbContext dbContext,
             bool dryRun = false,
             bool stopAtFirstError = false,
-            TimeSpan? lockLeaseDuration = null);
+            TimeSpan? lockLeaseDuration = null,
+            bool rewriteDeprecatedSchemas = false);
     }
 }

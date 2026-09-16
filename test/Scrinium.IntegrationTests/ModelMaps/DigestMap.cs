@@ -25,6 +25,12 @@ namespace Etherna.Scrinium.IntegrationTests.ModelMaps
 {
     internal sealed class DigestMap : IModelMapsCollector
     {
+        // Consts.
+        /* A schema a previous version of the application would have written its documents
+         * with: the documents carrying it are the ones a deprecated schemas rewrite repairs. */
+        public const string DeprecatedSchemaId = "0f1a4e30-9d4b-4a39-9f2d-5a1c7e0b2d61";
+
+        // Methods.
         public void Register(IDbContextEngine dbContextEngine)
         {
             dbContextEngine.MapRegistry.AddModelMap<Digest>(
@@ -35,7 +41,16 @@ namespace Etherna.Scrinium.IntegrationTests.ModelMaps
 
                     // Set members with custom serializers.
                     mm.SetMemberSerializer(m => m.PinnedNote, NoteReferenceSerializer(dbContextEngine));
-                });
+                })
+                .AddSecondarySchema(
+                    DeprecatedSchemaId,
+                    mm =>
+                    {
+                        mm.AutoMap();
+
+                        //an entity model is never embedded: the reference needs its serializer here too
+                        mm.SetMemberSerializer(m => m.PinnedNote, NoteReferenceSerializer(dbContextEngine));
+                    });
         }
 
         /// <summary>

@@ -12,18 +12,27 @@
 // You should have received a copy of the GNU Lesser General Public License along with Scrinium.
 // If not, see <https://www.gnu.org/licenses/>.
 
+using Etherna.Scrinium.Core.Options;
+
 namespace Etherna.Scrinium.Core.Repositories
 {
     /// <summary>
-    /// The references to missing origin documents removed from one reference element path
-    /// of a collection.
+    /// The repair applied to the references to missing origin documents of one reference
+    /// element path of a collection.
     /// </summary>
-    public class MissingOriginReferencesPathRemoval(
+    public class MissingOriginReferencesPathRepair(
         string elementPath,
+        OriginDeleteMode repairMode,
         long missingOriginIdsCount,
-        long updatedDocumentsCount)
+        long updatedDocumentsCount,
+        long deletedDocumentsCount)
     {
         // Properties.
+        /// <summary>
+        /// The documents deleted by the repair, when it deletes the referencing documents.
+        /// </summary>
+        public long DeletedDocumentsCount { get; } = deletedDocumentsCount;
+
         /// <summary>
         /// The reference element path, as the referencing documents nest it.
         /// </summary>
@@ -31,13 +40,22 @@ namespace Etherna.Scrinium.Core.Repositories
 
         /// <summary>
         /// The distinct referenced ids whose origin document doesn't exist on any origin
-        /// repository of the path.
+        /// repository of the path. A kept path is not scanned: it reports zero.
         /// </summary>
         public long MissingOriginIdsCount { get; } = missingOriginIdsCount;
 
         /// <summary>
-        /// The documents updated by the removals. A document is counted once per missing
-        /// origin id removed from it.
+        /// What the repair did with the references of the path:
+        /// <see cref="OriginDeleteMode.KeepReference"/> left them as they are,
+        /// <see cref="OriginDeleteMode.RemoveReference"/> removed them,
+        /// <see cref="OriginDeleteMode.DeleteReferencingDocument"/> deleted the documents
+        /// carrying them.
+        /// </summary>
+        public OriginDeleteMode RepairMode { get; } = repairMode;
+
+        /// <summary>
+        /// The documents updated by the reference removals. A document is counted once per
+        /// missing origin id removed from it.
         /// </summary>
         public long UpdatedDocumentsCount { get; } = updatedDocumentsCount;
     }

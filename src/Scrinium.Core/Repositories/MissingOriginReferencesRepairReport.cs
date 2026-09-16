@@ -17,19 +17,19 @@ using System.Collections.Generic;
 namespace Etherna.Scrinium.Core.Repositories
 {
     /// <summary>
-    /// The result of a removal of the references to missing origin documents on a collection:
-    /// one removal per scanned reference element path, and the paths the scan can't verify,
+    /// The result of a repair of the references to missing origin documents on a collection:
+    /// one repair per scanned reference element path, and the paths the scan can't verify,
     /// whose references stay untouched.
     /// </summary>
-    public class MissingOriginReferencesRemovalReport(
-        IReadOnlyCollection<MissingOriginReferencesPathRemoval> pathRemovals,
+    public class MissingOriginReferencesRepairReport(
+        IReadOnlyCollection<MissingOriginReferencesPathRepair> pathRepairs,
         IReadOnlyCollection<string> unverifiableElementPaths)
     {
         // Properties.
         /// <summary>
-        /// One removal per scanned reference element path, the clean ones included.
+        /// One repair per scanned reference element path, the clean ones included.
         /// </summary>
-        public IReadOnlyCollection<MissingOriginReferencesPathRemoval> PathRemovals { get; } = pathRemovals;
+        public IReadOnlyCollection<MissingOriginReferencesPathRepair> PathRepairs { get; } = pathRepairs;
 
         /// <summary>
         /// The reference element paths the scan can't verify: paths it can't address server
