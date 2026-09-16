@@ -49,6 +49,8 @@ namespace Etherna.Scrinium.Core.Domain.ModelMaps
                 .Returns(new Mock<IDbMaintainer>().Object);
             dependenciesMock.Setup(d => d.DbMigrationManager)
                 .Returns(new Mock<IDbMigrationManager>().Object);
+            dependenciesMock.Setup(d => d.ReferencesRepairManager)
+                .Returns(new Mock<IReferencesRepairManager>().Object);
             dependenciesMock.Setup(d => d.DiscriminatorRegistry)
                 .Returns(new Mock<IDiscriminatorRegistry>().Object);
             dependenciesMock.Setup(d => d.ExecutionContext)

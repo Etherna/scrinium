@@ -257,14 +257,41 @@ namespace Etherna.Scrinium.Core
         public Task ExecuteMigrationAsync(string dbMigrationOpId, string? taskId = null, bool throwOnErrors = false) =>
             engine.DbMigrationManager.ExecuteDbContextMigrationAsync(this, dbMigrationOpId, taskId, throwOnErrors);
 
+        public Task ExecuteReferencesRepairAsync(string referencesRepairOpId, string? taskId = null, bool throwOnErrors = false) =>
+            engine.ReferencesRepairManager.ExecuteReferencesRepairAsync(this, referencesRepairOpId, taskId, throwOnErrors);
+
         public Task<List<DbMigrationOperation>> GetLastMigrationsAsync(int page, int take) =>
             engine.DbMigrationManager.GetLastMigrationsAsync(this, page, take);
 
         public Task<DbMigrationOperation> GetMigrationAsync(string migrateOperationId) =>
             engine.DbMigrationManager.GetMigrationAsync(this, migrateOperationId);
 
+        /* The operations of every kind, read without a manager of their own: no single kind
+         * owns this, and the query is the plain paginated read of the operations collection.
+         * It runs with exclusive access allowance, like the per kind reads do, so it keeps
+         * working while an operation is locking the db context. */
+        public async Task<List<OperationBase>> GetLastOperationsAsync(int page, int take)
+        {
+            using var exclusiveAccess = new ExclusiveAccessHandler(engine);
+
+            // Paginate on Id: ObjectId ids embed the creation instant.
+            return await DbOperations.QueryElementsAsync(elements =>
+                elements.Where(op => op.DbContextName == engine.Identifier)
+                        .PaginateDescending(r => r.Id, page, take)
+                        .ToListAsync()).ConfigureAwait(false);
+        }
+
+        public Task<List<ReferencesRepairOperation>> GetLastReferencesRepairsAsync(int page, int take) =>
+            engine.ReferencesRepairManager.GetLastReferencesRepairsAsync(this, page, take);
+
+        public Task<ReferencesRepairOperation> GetReferencesRepairAsync(string referencesRepairOpId) =>
+            engine.ReferencesRepairManager.GetReferencesRepairAsync(this, referencesRepairOpId);
+
         public Task<DbMigrationOperation?> IsMigrationRunningAsync() =>
             engine.DbMigrationManager.IsMigrationRunningAsync(this);
+
+        public Task<ReferencesRepairOperation?> IsReferencesRepairRunningAsync() =>
+            engine.ReferencesRepairManager.IsReferencesRepairRunningAsync(this);
 
         public bool IsMemberLoaded<TModel>(TModel model, Expression<Func<TModel, object?>> member)
             where TModel : class, IEntityModel
@@ -552,8 +579,18 @@ namespace Etherna.Scrinium.Core
         public Task<DbMigrationOperation?> TryStartMigrationAsync(
             bool dryRun = false,
             bool stopAtFirstError = false,
+            TimeSpan? lockLeaseDuration = null,
+            bool rewriteDeprecatedSchemas = false) =>
+            engine.DbMigrationManager.TryStartDbContextMigrationAsync(
+                this, dryRun, stopAtFirstError, lockLeaseDuration, rewriteDeprecatedSchemas);
+
+        public Task<ReferencesRepairOperation?> TryStartReferencesRepairAsync(
+            string repositoryName,
+            IReadOnlyDictionary<string, OriginDeleteMode> repairModesByElementPath,
+            bool dryRun = false,
             TimeSpan? lockLeaseDuration = null) =>
-            engine.DbMigrationManager.TryStartDbContextMigrationAsync(this, dryRun, stopAtFirstError, lockLeaseDuration);
+            engine.ReferencesRepairManager.TryStartReferencesRepairAsync(
+                this, repositoryName, repairModesByElementPath, dryRun, lockLeaseDuration);
 
         public IDisposable StartTransientModelsScope()
         {

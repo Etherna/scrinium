@@ -20,6 +20,7 @@ using Etherna.Scrinium.Core.Domain.Models.DbMigrationOpAgg;
 using Etherna.Scrinium.Core.ExecContext.AsyncLocal;
 using Etherna.Scrinium.Core.Migration;
 using Etherna.Scrinium.IntegrationTests.Fixtures;
+using Etherna.Scrinium.IntegrationTests.ModelMaps;
 using Etherna.Scrinium.IntegrationTests.Models;
 using Microsoft.Extensions.DependencyInjection;
 using System;
@@ -33,6 +34,10 @@ namespace Etherna.Scrinium.IntegrationTests
     [Collection("Integration")]
     public class DbMigrationTests : IDisposable
     {
+        // Consts.
+        private const string DeprecatedSchemaIdElementName = "_m";
+        private const string SchemaIdElementName = "_s";
+
         // Fields.
         private readonly IntegrationFixture fixture;
         private readonly IMigrationsDbContext migrationsDbContext;
@@ -115,6 +120,47 @@ namespace Etherna.Scrinium.IntegrationTests
                 Assert.DoesNotContain("dryRunAggregateTarget", collectionNames);
                 Assert.DoesNotContain("dryRunMapReduceTarget", collectionNames);
             });
+        }
+
+        [Fact]
+        public async Task DryRunMigrationDoesNotRewriteTheDocumentsLeftOnADeprecatedSchema()
+        {
+            /* The deprecated schemas rewrite is an option of the operation: a dry run
+             * simulates it like it simulates the declared document migrations, reporting what
+             * it would rewrite without persisting anything. */
+
+            // Setup.
+            using var contextHandler = AsyncLocalContext.Instance.InitAsyncLocalContext();
+            await migrationsDbContext.Digests.DeleteManyAsync(Builders<Digest>.Filter.Empty);
+            await migrationsDbContext.Notes.DeleteManyAsync(Builders<Note>.Filter.Empty);
+            fixture.TaskRunner.ClearPending();
+
+            var note = new Note("note");
+            await setupDbContext.Notes.CreateAsync(note);
+            var digest = new Digest("deprecated schema", note);
+            await setupDbContext.Digests.CreateAsync(digest);
+            await UpdateRawDigestAsync(digest.Id, d => d[SchemaIdElementName] = DigestMap.DeprecatedSchemaId);
+
+            // Action.
+            var migrationOp = await migrationsDbContext.TryStartMigrationAsync(
+                dryRun: true, rewriteDeprecatedSchemas: true);
+            Assert.NotNull(migrationOp);
+            await migrationsDbContext.ExecuteMigrationAsync(migrationOp.Id);
+
+            // Assert.
+            //the rewrite ran, and reported the document it would have rewritten
+            var completedOp = await migrationsDbContext.GetMigrationAsync(migrationOp.Id);
+            Assert.Contains(completedOp.Logs, log => log is DocumentMigrationLog
+            {
+                CollectionName: "digests",
+                State: MigrationLogBase.ExecutionState.Succeded,
+                TotMigratedDocs: 1
+            });
+
+            //nothing was persisted: the document still carries the deprecated schema id
+            Assert.Equal(
+                DigestMap.DeprecatedSchemaId,
+                (await ReadRawDigestAsync(digest.Id))[SchemaIdElementName].AsString);
         }
 
         [Fact]
@@ -268,6 +314,40 @@ namespace Etherna.Scrinium.IntegrationTests
         }
 
         [Fact]
+        public async Task MigrationLeavesTheDocumentsOnADeprecatedSchemaWithoutTheOption()
+        {
+            /* A start executes the declared document migrations: the documents no declared
+             * migration addresses stay on the schema they were written with. */
+
+            // Setup.
+            using var contextHandler = AsyncLocalContext.Instance.InitAsyncLocalContext();
+            await migrationsDbContext.Digests.DeleteManyAsync(Builders<Digest>.Filter.Empty);
+            await migrationsDbContext.Notes.DeleteManyAsync(Builders<Note>.Filter.Empty);
+            fixture.TaskRunner.ClearPending();
+
+            var note = new Note("note");
+            await setupDbContext.Notes.CreateAsync(note);
+            var digest = new Digest("deprecated schema", note);
+            await setupDbContext.Digests.CreateAsync(digest);
+            await UpdateRawDigestAsync(digest.Id, d => d[SchemaIdElementName] = DigestMap.DeprecatedSchemaId);
+
+            // Action.
+            var migrationOp = await migrationsDbContext.TryStartMigrationAsync();
+            Assert.NotNull(migrationOp);
+            await migrationsDbContext.ExecuteMigrationAsync(migrationOp.Id);
+
+            // Assert.
+            var completedOp = await migrationsDbContext.GetMigrationAsync(migrationOp.Id);
+            Assert.Equal(DbMigrationOperation.Status.Completed, completedOp.CurrentStatus);
+            //the index steps ran, nothing rewrote the documents
+            Assert.Contains(completedOp.Logs, log => log is BuildNewIndexesMigrationLog { Repository: "digests" });
+            Assert.DoesNotContain(completedOp.Logs, log => log is DocumentMigrationLog);
+            Assert.Equal(
+                DigestMap.DeprecatedSchemaId,
+                (await ReadRawDigestAsync(digest.Id))[SchemaIdElementName].AsString);
+        }
+
+        [Fact]
         public async Task MigrationPersistsProcessedDocuments()
         {
             // Setup.
@@ -355,6 +435,72 @@ namespace Etherna.Scrinium.IntegrationTests
             Assert.Equal(MigrationLogBase.ExecutionState.Succeded, documentLog.State);
             Assert.Equal(601, documentLog.TotMigratedDocs);
             Assert.Equal(0, documentLog.TotErrorDocs);
+        }
+
+        [Fact]
+        public async Task MigrationRewritesTheDocumentsLeftOnADeprecatedSchemaWhenAsked()
+        {
+            /* The option rewrites the documents whose stored schema id isn't an active one,
+             * the ones carrying it under the deprecated element name included, inside the same
+             * operation as the declared document migrations. */
+
+            // Setup.
+            using var contextHandler = AsyncLocalContext.Instance.InitAsyncLocalContext();
+            await migrationsDbContext.Digests.DeleteManyAsync(Builders<Digest>.Filter.Empty);
+            await migrationsDbContext.Notes.DeleteManyAsync(Builders<Note>.Filter.Empty);
+            fixture.TaskRunner.ClearPending();
+
+            var note = new Note("note");
+            await setupDbContext.Notes.CreateAsync(note);
+
+            //a document written by a previous version of the application, on a since deprecated schema
+            var deprecatedSchemaDigest = new Digest("deprecated schema", note);
+            await setupDbContext.Digests.CreateAsync(deprecatedSchemaDigest);
+            await UpdateRawDigestAsync(
+                deprecatedSchemaDigest.Id, d => d[SchemaIdElementName] = DigestMap.DeprecatedSchemaId);
+
+            //a document written before the schema id element took its current name
+            var deprecatedElementDigest = new Digest("deprecated element", note);
+            await setupDbContext.Digests.CreateAsync(deprecatedElementDigest);
+            await UpdateRawDigestAsync(deprecatedElementDigest.Id, RenameSchemaIdElement);
+
+            /* A document already on the active schema, carrying an element no member maps: a
+             * rewrite would drop it, so it tells whether the migration touched it. */
+            var activeSchemaDigest = new Digest("active schema", note);
+            await setupDbContext.Digests.CreateAsync(activeSchemaDigest);
+            await UpdateRawDigestAsync(activeSchemaDigest.Id, d => d["StrayElement"] = "kept");
+
+            // Action.
+            var migrationOp = await migrationsDbContext.TryStartMigrationAsync(rewriteDeprecatedSchemas: true);
+            Assert.NotNull(migrationOp);
+            Assert.True(migrationOp.IsDeprecatedSchemaRewriteEnabled);
+            await migrationsDbContext.ExecuteMigrationAsync(migrationOp.Id);
+
+            // Assert.
+            //the rewrite ran inside the operation, with the index steps around it
+            var completedOp = await migrationsDbContext.GetMigrationAsync(migrationOp.Id);
+            Assert.Equal(DbMigrationOperation.Status.Completed, completedOp.CurrentStatus);
+            Assert.Contains(completedOp.Logs, log => log is BuildNewIndexesMigrationLog { Repository: "digests" });
+            Assert.Contains(completedOp.Logs, log => log is DocumentMigrationLog
+            {
+                CollectionName: "digests",
+                State: MigrationLogBase.ExecutionState.Succeded,
+                TotMigratedDocs: 2,
+                TotErrorDocs: 0
+            });
+
+            //both documents landed on the active schema, under the current element name
+            var activeSchemaId = migrationsDbContext.Engine.MapRegistry
+                .GetActiveSchemaIdBsonElement(typeof(Digest)).Value.AsString;
+            foreach (var digestId in new[] { deprecatedSchemaDigest.Id, deprecatedElementDigest.Id })
+            {
+                var rawDigest = await ReadRawDigestAsync(digestId);
+                Assert.False(rawDigest.Contains(DeprecatedSchemaIdElementName));
+                Assert.Equal(activeSchemaId, rawDigest[SchemaIdElementName].AsString);
+            }
+
+            //the document already on the active schema is left as it was
+            Assert.Equal("kept", (await ReadRawDigestAsync(activeSchemaDigest.Id))["StrayElement"].AsString);
         }
 
         [Fact]
@@ -634,6 +780,16 @@ namespace Etherna.Scrinium.IntegrationTests
                     new FindOptions<BsonDocument> { Sort = Builders<BsonDocument>.Sort.Ascending("_id") })).ToListAsync();
             });
 
+        /* Move the schema id of a document under the element name a previous version of
+         * Scrinium wrote it with, keeping its position among the elements. */
+        private static void RenameSchemaIdElement(BsonDocument document)
+        {
+            var elementIndex = document.IndexOfName(SchemaIdElementName);
+            var schemaId = document[SchemaIdElementName];
+            document.RemoveElement(document.GetElement(elementIndex));
+            document.InsertAt(elementIndex, new BsonElement(DeprecatedSchemaIdElementName, schemaId));
+        }
+
         private Task<BsonDocument> ReadRawDigestAsync(string digestId) =>
             migrationsDbContext.Digests.AccessToCollectionAsync(async collection =>
             {
@@ -641,6 +797,21 @@ namespace Etherna.Scrinium.IntegrationTests
                     collection.CollectionNamespace.CollectionName);
                 return await (await rawCollection.FindAsync(
                     Builders<BsonDocument>.Filter.Eq("_id", ObjectId.Parse(digestId)))).SingleAsync();
+            });
+
+        /* Rewrite a stored digest document raw, where a previous version of the application
+         * would have left it. */
+        private Task UpdateRawDigestAsync(string digestId, Action<BsonDocument> mutate) =>
+            migrationsDbContext.Digests.AccessToCollectionAsync(async collection =>
+            {
+                var rawCollection = collection.Database.GetCollection<BsonDocument>(
+                    collection.CollectionNamespace.CollectionName);
+                var filter = Builders<BsonDocument>.Filter.Eq("_id", ObjectId.Parse(digestId));
+                var rawDigest = await (await rawCollection.FindAsync(filter)).SingleAsync();
+
+                mutate(rawDigest);
+
+                await rawCollection.ReplaceOneAsync(filter, rawDigest);
             });
     }
 }

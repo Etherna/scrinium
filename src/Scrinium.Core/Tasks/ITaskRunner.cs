@@ -26,6 +26,7 @@ namespace Etherna.Scrinium.Core.Tasks
             object modelId,
             IEnumerable<string> idMemberMapIdentifiers);
         void RunMigrateDbTask(Type dbContextType, string dbMigrationOpId);
+        void RunRepairReferencesTask(Type dbContextType, string referencesRepairOpId);
         void RunUpdateDocDependenciesTask(
             Type dbContextType,
             Type referenceDbContextType,

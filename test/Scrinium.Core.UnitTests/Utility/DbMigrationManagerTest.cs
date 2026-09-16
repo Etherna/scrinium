@@ -466,13 +466,19 @@ namespace Etherna.Scrinium.Core.Utility
         }
 
         [Fact]
-        public async Task TryStartMigrationClosesOrphanedOperations()
+        public async Task TryStartMigrationClosesTheOrphanedOperationsOfEveryKind()
         {
+            /* After the claim, the operations orphaned by dead owners close directly on the
+             * server — and every kind of them, not the migrations alone: a claim only succeeds
+             * when nobody live holds the db context lock, so any other operation still open is
+             * orphaned whatever kind it is. Sweeping one kind alone would leave the others
+             * reported as running by the liveness check, which reads whether the lock is held,
+             * not by whom. Two statuses to close, per kind. */
+
             // Action.
             var migrationOp = await dbMigrationManager.TryStartDbContextMigrationAsync(dbContextMock.Object);
 
             // Assert.
-            //after the claim, the operations orphaned by dead owners close directly on the server
             Assert.NotNull(migrationOp);
             dbOperationsMock.Verify(
                 r => r.UpdateManyAsync(
@@ -480,7 +486,7 @@ namespace Etherna.Scrinium.Core.Utility
                     It.IsAny<UpdateDefinition<OperationBase>>(),
                     It.IsAny<UpdateOptions?>(),
                     It.IsAny<CancellationToken>()),
-                Times.Exactly(2));
+                Times.Exactly(4));
         }
 
         [Fact]

@@ -9,6 +9,12 @@ jobs:
   build-test-package:
     runs-on: ubuntu-latest
 
+    # Trusted publishing: the push authenticates with an API key nuget.org issues to this workflow
+    # for one hour, in exchange of a GitHub OIDC token, instead of with a stored key.
+    permissions:
+      contents: read
+      id-token: write
+
     env:
       SCRINIUM_TEST_DB_URL: mongodb://localhost:27017
 
@@ -44,5 +50,12 @@ jobs:
       - name: Generate nuget package
         run: dotnet pack --configuration Release --no-build -o nupkg
 
+      # The issued key lives one hour: request it next to the push that spends it.
+      - name: Login to NuGet
+        id: nuget-login
+        uses: NuGet/login@v1
+        with:
+          user: ${{secrets.NUGET_USER}}
+
       - name: Push packages
-        run: dotnet nuget push './nupkg/*.nupkg' --api-key ${{secrets.NUGET_KEY}} --source https://api.nuget.org/v3/index.json
+        run: dotnet nuget push './nupkg/*.nupkg' --api-key ${{steps.nuget-login.outputs.NUGET_API_KEY}} --source https://api.nuget.org/v3/index.json
