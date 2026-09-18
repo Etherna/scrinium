@@ -246,7 +246,8 @@ namespace Etherna.Scrinium.Core
         /// The seeding claims the db context lock, running once per db context across every
         /// application instance connected to the database: while another owner holds the lock
         /// (another application instance, or another flow of this process) the call waits,
-        /// re-reading the seeding state from the db.
+        /// re-reading the seeding state from the db. The <see cref="ChildDbContexts"/> seed
+        /// first, with the same arguments, so the seed of a parent finds them seeded.
         /// </summary>
         /// <param name="lockWaitTimeout">Maximum time this seeding waits for the db context
         /// lock held by ANOTHER owner, defaulted to the lease duration of this call. With the
@@ -259,7 +260,7 @@ namespace Etherna.Scrinium.Core
         /// db context stays locked if this application instance dies before the seeding
         /// completes. It doesn't have to cover the seeding duration, since the lease is renewed
         /// in background while the seeding runs</param>
-        /// <returns>True if seed has been executed. False otherwise</returns>
+        /// <returns>True if the seed of this db context has been executed. False otherwise</returns>
         /// <exception cref="Exceptions.ScriniumDbSeedingException">The seed failed, or the db
         /// context lock stayed held by another owner for the whole wait timeout</exception>
         Task<bool> SeedIfNeededAsync(TimeSpan? lockWaitTimeout = null, TimeSpan? lockLeaseDuration = null);

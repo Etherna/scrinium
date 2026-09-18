@@ -50,8 +50,14 @@ namespace Etherna.Scrinium.IntegrationTests.Fixtures
         public IReadOnlyDbContext ReadOnlyDbContext { get; private set; } = null!;
         public ISecondDbContext SecondDbContext { get; private set; } = null!;
         public string SecondDbName { get; } = "scrinium-it-second-" + Guid.NewGuid().ToString("N");
+        public string SeedChildDbName { get; } = "scrinium-it-seedchild-" + Guid.NewGuid().ToString("N");
+        public string SeedFailingChildDbName { get; } = "scrinium-it-seedfailchild-" + Guid.NewGuid().ToString("N");
+        public string SeedFailingParentDbName { get; } = "scrinium-it-seedfailparent-" + Guid.NewGuid().ToString("N");
+        public string SeedGrandparentDbName { get; } = "scrinium-it-seedgrandparent-" + Guid.NewGuid().ToString("N");
         public string SeedObserverOneDbName { get; } = "scrinium-it-seedobs1-" + Guid.NewGuid().ToString("N");
         public string SeedObserverTwoDbName { get; } = "scrinium-it-seedobs2-" + Guid.NewGuid().ToString("N");
+        public string SeedParentDbName { get; } = "scrinium-it-seedparent-" + Guid.NewGuid().ToString("N");
+        public ConcurrentDictionary<string, object?> SeedingFamilyObservations { get; } = new();
         public ConcurrentDictionary<string, IDictionary<object, object?>?> SeedingObservations { get; } = new();
         public IServiceProvider ServiceProvider => serviceProvider;
         internal InlineTaskRunner TaskRunner { get; private set; } = null!;
@@ -70,8 +76,13 @@ namespace Etherna.Scrinium.IntegrationTests.Fixtures
                 await TestDbContext.Engine.Client.DropDatabaseAsync(ParentDbName);
                 await TestDbContext.Engine.Client.DropDatabaseAsync(TestDbName);
                 await TestDbContext.Engine.Client.DropDatabaseAsync(SecondDbName);
+                await TestDbContext.Engine.Client.DropDatabaseAsync(SeedChildDbName);
+                await TestDbContext.Engine.Client.DropDatabaseAsync(SeedFailingChildDbName);
+                await TestDbContext.Engine.Client.DropDatabaseAsync(SeedFailingParentDbName);
+                await TestDbContext.Engine.Client.DropDatabaseAsync(SeedGrandparentDbName);
                 await TestDbContext.Engine.Client.DropDatabaseAsync(SeedObserverOneDbName);
                 await TestDbContext.Engine.Client.DropDatabaseAsync(SeedObserverTwoDbName);
+                await TestDbContext.Engine.Client.DropDatabaseAsync(SeedParentDbName);
             }
 
             if (serviceProvider is not null)
@@ -161,6 +172,41 @@ namespace Etherna.Scrinium.IntegrationTests.Fixtures
                     options =>
                     {
                         options.ConnectionString = $"{mongoDb.DbUrl}/{SeedObserverTwoDbName}";
+                    })
+                //writable hierarchy of three levels for the startup seeding tests, left unseeded here too
+                .AddDbContext<ISeedGrandparentDbContext, SeedGrandparentDbContext>(
+                    _ => new SeedGrandparentDbContext(SeedingFamilyObservations),
+                    options =>
+                    {
+                        options.ConnectionString = $"{mongoDb.DbUrl}/{SeedGrandparentDbName}";
+                        options.ParentFor<ISeedParentDbContext>();
+                    })
+                .AddDbContext<ISeedChildDbContext, SeedChildDbContext>(
+                    _ => new SeedChildDbContext(SeedingFamilyObservations),
+                    options =>
+                    {
+                        options.ConnectionString = $"{mongoDb.DbUrl}/{SeedChildDbName}";
+                    })
+                .AddDbContext<ISeedParentDbContext, SeedParentDbContext>(
+                    _ => new SeedParentDbContext(SeedingFamilyObservations),
+                    options =>
+                    {
+                        options.ConnectionString = $"{mongoDb.DbUrl}/{SeedParentDbName}";
+                        options.ParentFor<ISeedChildDbContext>();
+                    })
+                //writable parent and failing child for the startup seeding tests, never seeded
+                .AddDbContext<ISeedFailingChildDbContext, SeedFailingChildDbContext>(
+                    _ => new SeedFailingChildDbContext(SeedingFamilyObservations),
+                    options =>
+                    {
+                        options.ConnectionString = $"{mongoDb.DbUrl}/{SeedFailingChildDbName}";
+                    })
+                .AddDbContext<ISeedFailingParentDbContext, SeedFailingParentDbContext>(
+                    _ => new SeedFailingParentDbContext(),
+                    options =>
+                    {
+                        options.ConnectionString = $"{mongoDb.DbUrl}/{SeedFailingParentDbName}";
+                        options.ParentFor<ISeedFailingChildDbContext>();
                     })
                 //dedicated context for the object shaped member tests
                 .AddDbContext<IObjectMembersDbContext, ObjectMembersDbContext>(
