@@ -13,12 +13,14 @@
 // If not, see <https://www.gnu.org/licenses/>.
 
 using Etherna.Scrinium.Core;
+using Etherna.Scrinium.Core.Exceptions;
 using Etherna.Scrinium.Core.ExecContext.AsyncLocal;
 using Etherna.Scrinium.Core.Options;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 
@@ -27,8 +29,11 @@ namespace Etherna.Scrinium.AspNetCore.Extensions
     public static class ApplicationBuilderExtensions
     {
         /// <summary>
-        /// Seed every registered db context still not seeded, in parallel, blocking the
-        /// application startup until they all complete.
+        /// Seed every registered db context still not seeded, blocking the application startup
+        /// until they all complete. A db context seeds after the children it declares with
+        /// <see cref="DbContextOptions.ParentFor{TDbContext}"/>, so its seed finds them seeded,
+        /// and the db contexts not depending on each other seed in parallel. Each seeding runs
+        /// on a scope of its own.
         /// </summary>
         /// <param name="builder">The application builder</param>
         /// <param name="lockWaitTimeout">Maximum time each seeding waits for the db context lock
@@ -50,15 +55,44 @@ namespace Etherna.Scrinium.AspNetCore.Extensions
 
             var serviceProvider = builder.ApplicationServices;
             var scriniumOptions = serviceProvider.GetRequiredService<IOptions<ScriniumOptions>>();
+            var dbContextRegistrations = serviceProvider.GetServices<DbContextRegistration>().ToArray();
 
-            // Get dbcontext instances from a dedicated scope.
-            using var serviceScope = serviceProvider.CreateScope();
-            var dbContextTypes = scriniumOptions.Value.DbContextTypes;
-            var dbContexts = dbContextTypes.Select(type => (IDbContext)serviceScope.ServiceProvider.GetRequiredService(type));
+            // Seed, each db context after its children and the independent ones in parallel.
+            /* A seeding holds the exclusive access of its engine, and the saves of a parent
+             * cascade into its children: a parent seeding beside one of its children would
+             * write into an engine whose exclusive window belongs to another flow. Seeding
+             * the children first also lets the seed of a parent rely on what they seeded.
+             * A declared child type resolves to its registration like the scope attach
+             * resolves its instance, and the registrations never close a cycle. */
+            Dictionary<DbContextRegistration, Task> seedingTasks = [];
+            DbContextRegistration GetRegistration(Type dbContextType) =>
+                dbContextRegistrations.Last(registration =>
+                    registration.ServiceType == dbContextType ||
+                    registration.ImplementationType == dbContextType);
+            Task GetSeedingTask(DbContextRegistration registration)
+            {
+                if (!seedingTasks.TryGetValue(registration, out var seedingTask))
+                {
+                    var childSeedingTasks = registration.Options.ChildDbContextTypes
+                        .Select(GetRegistration)
+                        .Distinct()
+                        .ToDictionary(childRegistration => childRegistration, GetSeedingTask);
 
-            // Seed all dbcontexts in parallel, each inside its own execution context.
-            Task.WaitAll(dbContexts
-                .Select(dbContext => SeedDbContextAsync(dbContext, lockWaitTimeout, lockLeaseDuration))
+                    seedingTask = SeedDbContextAsync(
+                        serviceProvider,
+                        registration,
+                        childSeedingTasks,
+                        lockWaitTimeout,
+                        lockLeaseDuration);
+                    seedingTasks[registration] = seedingTask;
+                }
+
+                return seedingTask;
+            }
+
+            Task.WaitAll(scriniumOptions.Value.DbContextTypes
+                .Select(GetRegistration)
+                .Select(GetSeedingTask)
                 .ToArray());
 
             return builder;
@@ -66,13 +100,32 @@ namespace Etherna.Scrinium.AspNetCore.Extensions
 
         // Helpers.
         private static async Task SeedDbContextAsync(
-            IDbContext dbContext,
+            IServiceProvider serviceProvider,
+            DbContextRegistration registration,
+            Dictionary<DbContextRegistration, Task> childSeedingTasks,
             TimeSpan? lockWaitTimeout,
             TimeSpan? lockLeaseDuration)
         {
-            /* An execution context serves a single flow: seeding inside a shared one
-             * would share the ambient db state between the parallel seeds. */
+            // Wait for the seedings of the children, denying this one when any of them failed.
+            /* Each failed seeding reports its own error: this one reports what it didn't run
+             * for, instead of seeding over children left without their seed. */
+            await Task.WhenAll(childSeedingTasks.Values).ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
+
+            var failedChildDbContextNames = childSeedingTasks
+                .Where(pair => !pair.Value.IsCompletedSuccessfully)
+                .Select(pair => pair.Key.ImplementationType.Name)
+                .ToArray();
+            if (failedChildDbContextNames.Length > 0)
+                throw new ScriniumDbSeedingException(
+                    $"Can't seed {registration.ImplementationType.Name} dbContext: the seeding of its child db contexts " +
+                    $"{string.Join(", ", failedChildDbContextNames)} failed");
+
+            /* An execution context serves a single flow, and a scope a single unit of work:
+             * seeding inside shared ones would share the ambient db state and the db context
+             * instances, the attached children included, between the parallel seeds. */
             using var execContext = AsyncLocalContext.Instance.InitAsyncLocalContext();
+            using var serviceScope = serviceProvider.CreateScope();
+            var dbContext = (IDbContext)serviceScope.ServiceProvider.GetRequiredService(registration.ServiceType);
             await dbContext.SeedIfNeededAsync(lockWaitTimeout, lockLeaseDuration).ConfigureAwait(false);
         }
     }
