@@ -12,10 +12,13 @@
 // You should have received a copy of the GNU Lesser General Public License along with Scrinium.
 // If not, see <https://www.gnu.org/licenses/>.
 
+using Etherna.Scrinium.AspNetCore;
 using Etherna.Scrinium.Core.ExecContext.AsyncLocal;
+using Etherna.Scrinium.Core.Options;
 using Etherna.Scrinium.IntegrationTests.Fixtures;
 using Etherna.Scrinium.IntegrationTests.Models;
 using Microsoft.Extensions.DependencyInjection;
+using System;
 using System.Threading.Tasks;
 using Xunit;
 
@@ -25,6 +28,35 @@ namespace Etherna.Scrinium.IntegrationTests
     public class DependencyInjectionTests(IntegrationFixture fixture)
     {
         // Tests.
+        [Fact]
+        public void AddDbContextDeniesChildrenDeclaredInCycle()
+        {
+            /* Db contexts declaring each other as children, directly or through other ones,
+             * could neither resolve their scoped instances nor seed: the registration closing
+             * the cycle must fail fast, detailing it. */
+
+            // Setup.
+            var configuration = new ScriniumConfiguration(new ServiceCollection());
+            configuration
+                .AddDbContext<ITestDbContext, TestDbContext>(
+                    _ => new TestDbContext(),
+                    options => options.ParentFor<ISecondDbContext>())
+                .AddDbContext<ISecondDbContext, SecondDbContext>(
+                    _ => new SecondDbContext(),
+                    options => options.ParentFor<IParentDbContext>());
+
+            // Action & assert.
+            var exception = Assert.Throws<InvalidOperationException>(
+                () => configuration.AddDbContext<IParentDbContext, ParentDbContext>(
+                    _ => new ParentDbContext(),
+                    options => options.ParentFor<ITestDbContext>()));
+            Assert.Contains(nameof(DbContextOptions.ParentFor), exception.Message, StringComparison.Ordinal);
+            Assert.Contains(
+                $"{nameof(IParentDbContext)} -> {nameof(ITestDbContext)} -> {nameof(ISecondDbContext)} -> {nameof(IParentDbContext)}",
+                exception.Message,
+                StringComparison.Ordinal);
+        }
+
         [Fact]
         public async Task ProxyTypesAreRecognizedAcrossDbContexts()
         {

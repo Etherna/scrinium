@@ -1408,6 +1408,43 @@ namespace Etherna.Scrinium.Core
         }
 
         [Fact]
+        public async Task SeedIfNeededSeedsTheChildDbContextsFirst()
+        {
+            /* The seed of a parent can rely on what its children seeded, and its saves cascade
+             * into them: the children seed before the parent claims anything, with the
+             * arguments of its call. */
+
+            // Setup.
+            var lockWaitTimeout = TimeSpan.FromMinutes(2);
+            var lockLeaseDuration = TimeSpan.FromMinutes(3);
+            var isChildSeeded = false;
+            bool? wasChildSeededAtParentClaim = null;
+            var childDbContextMock = new Mock<IDbContext>();
+            childDbContextMock.Setup(c => c.SeedIfNeededAsync(lockWaitTimeout, lockLeaseDuration))
+                .Callback(() => isChildSeeded = true)
+                .ReturnsAsync(true);
+            var dbContextLockMock = new Mock<IResourceLock>();
+            dbContextLockMock.Setup(l => l.TryClaimAsync(It.IsAny<string>(), It.IsAny<TimeSpan?>()))
+                .Callback(() => wasChildSeededAtParentClaim = isChildSeeded)
+                .ReturnsAsync(true);
+            dbContextLockMock.Setup(l => l.TryResumeClaimAsync(It.IsAny<string>()))
+                .ReturnsAsync((IResourceLockLease?)null);
+            var seedingDbContext = BuildDbContextOnMockedEngine(
+                dbContextLockMock.Object,
+                new DbContextOptions(),
+                childDbContextMock.Object);
+
+            // Action.
+            //the resume denial stops the parent flow right after its claim
+            await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                seedingDbContext.SeedIfNeededAsync(lockWaitTimeout, lockLeaseDuration));
+
+            // Assert.
+            childDbContextMock.Verify(c => c.SeedIfNeededAsync(lockWaitTimeout, lockLeaseDuration), Times.Once());
+            Assert.True(wasChildSeededAtParentClaim);
+        }
+
+        [Fact]
         public async Task SeedIfNeededSkipsOnReadOnlyDbContext()
         {
             // Setup.
@@ -1645,7 +1682,8 @@ namespace Etherna.Scrinium.Core
          * and its seeding cache, without any database behind. */
         private static FakeDbContext BuildDbContextOnMockedEngine(
             IResourceLock dbContextLock,
-            DbContextOptions dbContextOptions)
+            DbContextOptions dbContextOptions,
+            params IDbContext[] childDbContexts)
         {
             bool? isSeededCache = false;
             var mockedEngineMock = new Mock<IDbContextEngine>();
@@ -1657,7 +1695,7 @@ namespace Etherna.Scrinium.Core
                 .Callback(value => isSeededCache = value ?? false);
 
             var newDbContext = new FakeDbContext();
-            newDbContext.AttachToEngine(mockedEngineMock.Object, [], new RepositoryRegistry());
+            newDbContext.AttachToEngine(mockedEngineMock.Object, childDbContexts, new RepositoryRegistry());
             return newDbContext;
         }
 

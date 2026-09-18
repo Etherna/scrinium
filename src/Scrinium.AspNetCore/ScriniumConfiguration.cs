@@ -32,6 +32,7 @@ namespace Etherna.Scrinium.AspNetCore
     {
         // Fields.
         private readonly object configLock = new();
+        private readonly List<DbContextRegistration> dbContextRegistrations = [];
         private readonly List<Type> dbContextTypes = new();
 
         // Properties.
@@ -71,6 +72,19 @@ namespace Etherna.Scrinium.AspNetCore
                 // Build dbContext options.
                 var options = new DbContextOptions();
                 dbContextOptionsConfig?.Invoke(options);
+
+                // Deny a children declaration closing a cycle.
+                /* A child attaches to the scoped instance of its parent, and seeds before it:
+                 * db contexts declaring each other as children, directly or through other
+                 * ones, could neither resolve nor seed. A declared child type still not
+                 * registered is verified by its own registration. */
+                var registration = new DbContextRegistration(typeof(TDbContext), typeof(TDbContextImpl), options);
+                var childrenCycle = FindChildrenCycle([registration], [.. dbContextRegistrations, registration]);
+                if (childrenCycle is not null)
+                    throw new InvalidOperationException(
+                        $"Can't register db context {typeof(TDbContext).Name}: the child db contexts declared with " +
+                        $"{nameof(DbContextOptions)}.{nameof(DbContextOptions.ParentFor)} close a cycle " +
+                        $"({string.Join(" -> ", childrenCycle.Append(registration).Select(r => r.ServiceType.Name))})");
 
                 // Register dbContext engine, keyed by its dbContext type.
                 services.AddKeyedSingleton<IDbContextEngine>(typeof(TDbContextImpl), (sp, _) =>
@@ -113,8 +127,9 @@ namespace Etherna.Scrinium.AspNetCore
                 });
                 services.AddScoped<TDbContext, TDbContextImpl>(sp => sp.GetRequiredService<TDbContextImpl>());
 
-                // Record the registration for the parent engines resolution.
-                services.AddSingleton(new DbContextRegistration(typeof(TDbContext), typeof(TDbContextImpl), options));
+                // Record the registration, for the parent engines resolution and the seeding order.
+                dbContextRegistrations.Add(registration);
+                services.AddSingleton(registration);
 
                 // Add db context type.
                 dbContextTypes.Add(typeof(TDbContext));
@@ -138,5 +153,25 @@ namespace Etherna.Scrinium.AspNetCore
                 scriniumOptionsBuilder.SetDbContextTypes(dbContextTypes);
             }
         }
+
+        // Helpers.
+        /// <summary>
+        /// Find the children declarations leading from the first db context of a path back to
+        /// itself, resolving each declared child type to its registration like the scope attach
+        /// resolves its instance
+        /// </summary>
+        private static DbContextRegistration[]? FindChildrenCycle(
+            DbContextRegistration[] path,
+            DbContextRegistration[] registrations) =>
+            path[^1].Options.ChildDbContextTypes
+                .Select(childDbContextType => registrations
+                    .LastOrDefault(registration =>
+                        registration.ServiceType == childDbContextType ||
+                        registration.ImplementationType == childDbContextType))
+                .OfType<DbContextRegistration>()
+                .Select(childRegistration => ReferenceEquals(childRegistration, path[0]) ?
+                    path :
+                    FindChildrenCycle([.. path, childRegistration], registrations))
+                .FirstOrDefault(childrenCycle => childrenCycle is not null);
     }
 }
