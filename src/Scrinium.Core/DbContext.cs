@@ -455,6 +455,14 @@ namespace Etherna.Scrinium.Core
 
         public async Task<bool> SeedIfNeededAsync(TimeSpan? lockWaitTimeout = null, TimeSpan? lockLeaseDuration = null)
         {
+            // Seed the child db contexts first.
+            /* The seed of a parent can rely on what its children seeded, and its saves cascade
+             * into them: a child still to seed would open its exclusive window on a flow
+             * already writing into it. They seed whatever this db context does, read-only or
+             * already seeded: a child can join a parent seeded before it. */
+            foreach (var child in ChildDbContexts)
+                await child.SeedIfNeededAsync(lockWaitTimeout, lockLeaseDuration).ConfigureAwait(false);
+
             // Skip on a read-only db context: seeding and migrations belong to the db owner.
             if (engine.Options.IsReadOnly)
             {
