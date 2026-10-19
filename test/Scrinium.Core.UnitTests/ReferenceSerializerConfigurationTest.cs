@@ -428,7 +428,7 @@ namespace Etherna.Scrinium.Core
             loggerMock.Verify(l => l.Log(
                     LogLevel.Warning,
                     It.Is<EventId>(id => id.Name == nameof(Extensions.LoggerExtensions.ReferenceSerializerUnrecognizedSchemaId)),
-                    It.Is<It.IsAnyType>((state, _) => expectedMessageContents.All(
+                    It.Is<It.IsAnyType>((state, _) => state != null && expectedMessageContents.All(
                         content => state.ToString()!.Contains(content, StringComparison.Ordinal))),
                     It.IsAny<Exception>(),
                     It.IsAny<Func<It.IsAnyType, Exception?, string>>()),
