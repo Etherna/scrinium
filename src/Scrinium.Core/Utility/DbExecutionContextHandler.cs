@@ -17,12 +17,21 @@ using Etherna.Scrinium.Core.ExecContext.AsyncLocal;
 using Etherna.Scrinium.Core.Extensions;
 using Etherna.Scrinium.Core.Repositories;
 using System;
-using System.Collections;
-using System.Collections.Generic;
-using System.Linq;
 
 namespace Etherna.Scrinium.Core.Utility
 {
+    /// <summary>
+    /// Associates the current db operation to the async flow, for the scope of the handler:
+    /// the engine running it, the db context scope when it has one, and the repository
+    /// originating the models it materializes.
+    /// </summary>
+    /// <remarks>
+    /// The handlers resolve on a stack local to the async flow: the current one is the last
+    /// pushed by the flow itself, or inherited from the flow that forked it, never one pushed
+    /// by a sibling flow of the same execution context, like the parallel tasks of one HTTP
+    /// request sharing its items. A handler is visible from its creation to its disposal, and
+    /// never past the end of the async method that created it.
+    /// </remarks>
     public sealed class DbExecutionContextHandler : IDisposable
     {
         // Consts.
@@ -30,7 +39,7 @@ namespace Etherna.Scrinium.Core.Utility
 
         // Fields.
         private readonly IAsyncLocalContextHandler? asyncLocalContextHandler;
-        private readonly ICollection<DbExecutionContextHandler> requests;
+        private readonly FlowLocalStack<DbExecutionContextHandler> handlers;
 
         // Constructors and dispose.
         public DbExecutionContextHandler(
@@ -50,19 +59,18 @@ namespace Etherna.Scrinium.Core.Utility
 
             var executionContext = dbContextEngine.ExecutionContext;
 
-            if (executionContext.Items is null) //if an execution context doesn't exist, create it
+            /* If an execution context doesn't exist, create it: it registers the handlers stack,
+             * and hosts the other ambient state of the operation. */
+            if (executionContext.Items is null)
                 asyncLocalContextHandler = AsyncLocalContext.Instance.InitAsyncLocalContext();
 
-            requests = executionContext.GetOrAddItemsList<DbExecutionContextHandler>(HandlerKey);
-
-            lock (((ICollection)requests).SyncRoot)
-                requests.Add(this);
+            handlers = executionContext.GetOrAddFlowLocalStack<DbExecutionContextHandler>(HandlerKey);
+            handlers.Push(this);
         }
 
         public void Dispose()
         {
-            lock (((ICollection)requests).SyncRoot)
-                requests.Remove(this);
+            handlers.Remove(this);
 
             asyncLocalContextHandler?.Dispose();
         }
@@ -103,13 +111,8 @@ namespace Etherna.Scrinium.Core.Utility
         {
             ArgumentNullException.ThrowIfNull(context);
 
-            var requests = context.TryGetItemsList<DbExecutionContextHandler>(HandlerKey);
-            if (requests is null)
-                return null;
-
-            //get the last with a stack system, for recursing calls between different dbContexts
-            lock (((ICollection)requests).SyncRoot)
-                return requests.Reverse().FirstOrDefault();
+            //the last pushed by the flow, for recursing calls between different db contexts
+            return context.TryGetFlowLocalStack<DbExecutionContextHandler>(HandlerKey)?.Top;
         }
     }
 }

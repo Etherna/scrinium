@@ -13,10 +13,10 @@
 // If not, see <https://www.gnu.org/licenses/>.
 
 using Etherna.MongoDB.Driver;
+using Etherna.Scrinium.Core.ExecContext;
 using Etherna.Scrinium.Core.ExecContext.AsyncLocal;
 using Etherna.Scrinium.Core.Extensions;
 using System;
-using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 
@@ -30,6 +30,9 @@ namespace Etherna.Scrinium.Core.Utility
     /// bookkeeping of their in memory effects: applied at the commit, or undone at the abort.
     /// </summary>
     /// <remarks>
+    /// The handlers resolve on a stack local to the async flow, like the db execution context
+    /// handlers: the handled session enlists the operations of the flow, and of the flows it
+    /// forks inside the scope, never the ones of a sibling flow of the same execution context.
     /// Database sessions don't support concurrent operations: keep operations sequential
     /// inside the handler scope.
     /// </remarks>
@@ -42,7 +45,7 @@ namespace Etherna.Scrinium.Core.Utility
         private readonly List<Action> abortActions = [];
         private readonly IAsyncLocalContextHandler? asyncLocalContextHandler;
         private readonly List<Action> commitActions = [];
-        private readonly ICollection<DbSessionHandler> requests;
+        private readonly FlowLocalStack<DbSessionHandler> handlers;
 
         // Constructors and dispose.
         public DbSessionHandler(
@@ -57,16 +60,13 @@ namespace Etherna.Scrinium.Core.Utility
             if (executionContext.Items is null) //if an execution context doesn't exist, create it
                 asyncLocalContextHandler = AsyncLocalContext.Instance.InitAsyncLocalContext();
 
-            requests = executionContext.GetOrAddItemsList<DbSessionHandler>(HandlerKey);
-
-            lock (((ICollection)requests).SyncRoot)
-                requests.Add(this);
+            handlers = executionContext.GetOrAddFlowLocalStack<DbSessionHandler>(HandlerKey);
+            handlers.Push(this);
         }
 
         public void Dispose()
         {
-            lock (((ICollection)requests).SyncRoot)
-                requests.Remove(this);
+            handlers.Remove(this);
 
             asyncLocalContextHandler?.Dispose();
         }
@@ -149,18 +149,11 @@ namespace Etherna.Scrinium.Core.Utility
         {
             ArgumentNullException.ThrowIfNull(dbContextEngine);
 
-            var requests = dbContextEngine.ExecutionContext.TryGetItemsList<DbSessionHandler>(HandlerKey);
-            if (requests is null)
-                return null;
-
-            /* Get the last handler of the same engine with a stack system, for nesting
-             * sessions between different db contexts. Sessions are per connection: handlers
-             * of other engines don't apply. */
-            lock (((ICollection)requests).SyncRoot)
-                return requests
-                    .Where(handler => handler.DbContextEngine == dbContextEngine)
-                    .Reverse()
-                    .FirstOrDefault();
+            /* Get the last handler of the same engine pushed by the flow, for nesting sessions
+             * between different db contexts. Sessions are per connection: handlers of other
+             * engines don't apply. */
+            return dbContextEngine.ExecutionContext.TryGetFlowLocalStack<DbSessionHandler>(HandlerKey)?
+                .Items.FirstOrDefault(handler => handler.DbContextEngine == dbContextEngine);
         }
     }
 }

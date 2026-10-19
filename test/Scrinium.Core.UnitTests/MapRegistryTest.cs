@@ -1272,6 +1272,7 @@ namespace Etherna.Scrinium.Core
                     LogLevel.Warning,
                     It.Is<EventId>(id => id.Name == nameof(Extensions.LoggerExtensions.MapRegistryFoundNotPropagatedReferencePath)),
                     It.Is<It.IsAnyType>((state, _) =>
+                        state != null &&
                         state.ToString()!.Contains(nameof(DictionaryChildHostModel), StringComparison.Ordinal) &&
                         state.ToString()!.Contains(nameof(DictionaryChildHostModel.LabeledChildren), StringComparison.Ordinal)),
                     It.IsAny<Exception>(),
