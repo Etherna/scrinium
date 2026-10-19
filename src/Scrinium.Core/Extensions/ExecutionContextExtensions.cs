@@ -26,15 +26,45 @@ namespace Etherna.Scrinium.Core.Extensions
     /// The items dictionary is not thread safe, and parallel flows can share it (e.g. parallel
     /// tasks inside one HTTP request all share the request items). Every library access to the
     /// dictionary locks on the dictionary instance itself, so that a concurrent first claim of
-    /// a key, or a read concurrent with it, can't corrupt the dictionary.
+    /// a key, or a read concurrent with it, can't corrupt the dictionary. The lists are shared
+    /// by every flow of the context; a <see cref="FlowLocalStack{T}"/> shares its registration
+    /// only, keeping its state local to each flow. The keys live in the items of the host (the
+    /// <c>HttpContext.Items</c> of a request): an item of another type under a key of the
+    /// library is a registration by another component, reported as such instead of cast.
     /// </remarks>
     internal static class ExecutionContextExtensions
     {
+        /// <summary>
+        /// Get the flow local stack registered on the context with the given key, atomically
+        /// creating and registering it when not present. Every flow of the context resolves the
+        /// same stack, whose state is local to each flow.
+        /// </summary>
+        /// <exception cref="ExecutionContextNotFoundException">Context items not initialized</exception>
+        /// <exception cref="InvalidOperationException">The key holds an item of another type</exception>
+        public static FlowLocalStack<T> GetOrAddFlowLocalStack<T>(this IExecutionContext context, string key)
+            where T : class
+        {
+            ArgumentNullException.ThrowIfNull(context);
+
+            var items = context.Items ?? throw new ExecutionContextNotFoundException();
+            lock (items)
+            {
+                if (items.TryGetValue(key, out var stackObject))
+                    return stackObject as FlowLocalStack<T> ??
+                        throw ForeignItemException(key, stackObject, $"the flow local stack of {typeof(T).Name}");
+
+                FlowLocalStack<T> stack = new();
+                items.Add(key, stack);
+                return stack;
+            }
+        }
+
         /// <summary>
         /// Get the ambient state list registered on the context with the given key,
         /// atomically creating and registering it when not present.
         /// </summary>
         /// <exception cref="ExecutionContextNotFoundException">Context items not initialized</exception>
+        /// <exception cref="InvalidOperationException">The key holds an item of another type</exception>
         public static ICollection<T> GetOrAddItemsList<T>(this IExecutionContext context, string key)
         {
             ArgumentNullException.ThrowIfNull(context);
@@ -43,7 +73,8 @@ namespace Etherna.Scrinium.Core.Extensions
             lock (items)
             {
                 if (items.TryGetValue(key, out var listObject))
-                    return (ICollection<T>)listObject!;
+                    return listObject as ICollection<T> ??
+                        throw ForeignItemException(key, listObject, $"the ambient list of {typeof(T).Name}");
 
                 List<T> list = [];
                 items.Add(key, list);
@@ -52,9 +83,33 @@ namespace Etherna.Scrinium.Core.Extensions
         }
 
         /// <summary>
+        /// Try to get the flow local stack registered on the context with the given key.
+        /// Null when the context is not initialized, or the key is not registered.
+        /// </summary>
+        /// <exception cref="InvalidOperationException">The key holds an item of another type</exception>
+        public static FlowLocalStack<T>? TryGetFlowLocalStack<T>(this IExecutionContext context, string key)
+            where T : class
+        {
+            ArgumentNullException.ThrowIfNull(context);
+
+            var items = context.Items;
+            if (items is null)
+                return null;
+
+            lock (items)
+            {
+                if (!items.TryGetValue(key, out var stackObject))
+                    return null;
+                return stackObject as FlowLocalStack<T> ??
+                    throw ForeignItemException(key, stackObject, $"the flow local stack of {typeof(T).Name}");
+            }
+        }
+
+        /// <summary>
         /// Try to get the ambient state list registered on the context with the given key.
         /// Null when the context is not initialized, or the key is not registered.
         /// </summary>
+        /// <exception cref="InvalidOperationException">The key holds an item of another type</exception>
         public static ICollection<T>? TryGetItemsList<T>(this IExecutionContext context, string key)
         {
             ArgumentNullException.ThrowIfNull(context);
@@ -64,7 +119,16 @@ namespace Etherna.Scrinium.Core.Extensions
                 return null;
 
             lock (items)
-                return items.TryGetValue(key, out var listObject) ? (ICollection<T>)listObject! : null;
+            {
+                if (!items.TryGetValue(key, out var listObject))
+                    return null;
+                return listObject as ICollection<T> ??
+                    throw ForeignItemException(key, listObject, $"the ambient list of {typeof(T).Name}");
+            }
         }
+
+        // Helpers.
+        private static InvalidOperationException ForeignItemException(string key, object? item, string expected) =>
+            new($"The execution context item '{key}' holds {(item is null ? "null" : $"a {item.GetType().Name}")} instead of {expected}");
     }
 }

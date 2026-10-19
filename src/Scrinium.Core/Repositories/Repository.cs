@@ -323,31 +323,19 @@ namespace Etherna.Scrinium.Core.Repositories
         public virtual async Task<IAsyncCursor<TProjection>> FindAsync<TProjection>(
             FilterDefinition<TModel> filter,
             FindOptions<TModel, TProjection>? options = null,
-            CancellationToken cancellationToken = default)
-        {
-            // Create an explicit db execution context. It needs to survive until cursor is alive.
-            var dbExecContextHandler = new DbExecutionContextHandler(DbContext, this);
-
-            try
+            CancellationToken cancellationToken = default) =>
+            await AccessToCollectionAsync(async collection =>
             {
-                return await AccessToCollectionAsync(async collection =>
-                {
-                    var resultCursor = await collection.FindAsync(filter, options, cancellationToken).ConfigureAwait(false);
-                    var wrappedCursor = new AsyncCursorWrapper<TProjection>(resultCursor, dbExecContextHandler);
+                /* The first batch deserializes inside this access; the following ones in the
+                 * flow consuming the cursor, where the wrapper re-establishes the db execution
+                 * context of the repository around each fetch. */
+                var resultCursor = await collection.FindAsync(filter, options, cancellationToken).ConfigureAwait(false);
+                var wrappedCursor = new AsyncCursorWrapper<TProjection>(resultCursor, DbContext, this);
 
-                    logger.RepositoryQueriedCollection(Name, DbContext.Engine.Options.DbName);
+                logger.RepositoryQueriedCollection(Name, DbContext.Engine.Options.DbName);
 
-                    return wrappedCursor;
-                }, false).ConfigureAwait(false);
-            }
-            catch
-            {
-                /* The cursor wrapper owns the handler and disposes it with the cursor:
-                 * when the access fails before producing the wrapper, release it here. */
-                dbExecContextHandler.Dispose();
-                throw;
-            }
-        }
+                return wrappedCursor;
+            }).ConfigureAwait(false);
 
         public virtual Task<MissingOriginReferencesReport> FindMissingOriginReferencesAsync(
             CancellationToken cancellationToken = default) =>

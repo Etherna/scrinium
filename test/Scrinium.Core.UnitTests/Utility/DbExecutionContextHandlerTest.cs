@@ -13,8 +13,8 @@
 // If not, see <https://www.gnu.org/licenses/>.
 
 using Etherna.Scrinium.Core.ExecContext.AsyncLocal;
+using Etherna.Scrinium.Core.Repositories;
 using Moq;
-using System.Collections;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -39,16 +39,26 @@ namespace Etherna.Scrinium.Core.Utility
 
         // Tests.
         [Fact]
-        public async Task ConcurrentFirstHandlersOnSharedContextRegisterAtomically()
+        public async Task ConcurrentFirstHandlersOnSharedContextResolveEachInItsFlow()
         {
-            /* Parallel flows sharing one execution context can construct their first handler
-             * of the key concurrently: the bookkeeping list claim on the shared (not thread
-             * safe) items dictionary must be atomic. */
+            /* Parallel flows sharing one execution context (the items of an HTTP request, or
+             * an async local context initialized before forking) can construct their first
+             * handler concurrently: the stack claim on the shared (not thread safe) items
+             * dictionary must be atomic, and each flow must resolve the handler it pushed,
+             * never the one of a sibling flow. */
             const int flowsCount = 4;
             const int attempts = 1000;
 
-            //materialize the mocked engine before the parallel flows access it
-            var engine = engineMock.Object;
+            //materialize the mocked engines before the parallel flows access them
+            var engines = Enumerable.Range(0, flowsCount)
+                .Select(_ =>
+                {
+                    var flowEngineMock = new Mock<IDbContextEngine>();
+                    flowEngineMock.Setup(e => e.ExecutionContext)
+                        .Returns(AsyncLocalContext.Instance);
+                    return flowEngineMock.Object;
+                })
+                .ToArray();
 
             for (int i = 0; i < attempts; i++)
             {
@@ -58,24 +68,18 @@ namespace Etherna.Scrinium.Core.Utility
 
                 // Action.
                 //the spawned tasks inherit the context initialized by the test flow
-                var handlers = await Task.WhenAll(
-                    Enumerable.Range(0, flowsCount)
-                        .Select(_ => Task.Run(() =>
-                        {
-                            barrier.SignalAndWait();
-                            return new DbExecutionContextHandler(engine);
-                        }))
-                        .ToArray());
+                var resolvedEngines = await Task.WhenAll(
+                    engines.Select(engine => Task.Run(() =>
+                    {
+                        barrier.SignalAndWait();
+                        using (new DbExecutionContextHandler(engine))
+                            return DbExecutionContextHandler.TryGetCurrentDbContextEngine(AsyncLocalContext.Instance);
+                    })));
 
                 // Assert.
-                //all handlers registered into the single bookkeeping list of the context
-                var items = AsyncLocalContext.Instance.Items!;
-                var requests = (ICollection)Assert.Single(items).Value!;
-                Assert.Equal(flowsCount, requests.Count);
-
-                Assert.Same(engine, DbExecutionContextHandler.TryGetCurrentDbContextEngine(AsyncLocalContext.Instance));
-                foreach (var handler in handlers)
-                    handler.Dispose();
+                //a single stack registered into the shared items, each flow resolving its own handler
+                Assert.Single(AsyncLocalContext.Instance.Items!);
+                Assert.Equal(engines, resolvedEngines);
                 Assert.Null(DbExecutionContextHandler.TryGetCurrentDbContextEngine(AsyncLocalContext.Instance));
             }
         }
@@ -120,6 +124,46 @@ namespace Etherna.Scrinium.Core.Utility
             }
 
             Assert.Null(DbExecutionContextHandler.TryGetCurrentDbContextEngine(AsyncLocalContext.Instance));
+        }
+
+        [Fact]
+        public async Task SiblingFlowRepositoryLessHandlerDoesNotShadowTheFlowOwnRepository()
+        {
+            /* The scenario of a request running repository reads in parallel: a flow
+             * deserializing inside the handler of its repository, while a sibling flow of the
+             * same request pushed a handler without repository after it. The flow must keep
+             * resolving its own repository. */
+
+            // Setup.
+            using var contextHandler = AsyncLocalContext.Instance.InitAsyncLocalContext();
+            var engine = engineMock.Object;
+            var repository = new Mock<IRepository>().Object;
+            var readingFlowPushed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            var siblingFlowPushed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+
+            // Action.
+            var readingFlow = Task.Run(async () =>
+            {
+                using (new DbExecutionContextHandler(engine, repository))
+                {
+                    readingFlowPushed.SetResult();
+                    await siblingFlowPushed.Task;
+                    return DbExecutionContextHandler.TryGetCurrentRepository(AsyncLocalContext.Instance);
+                }
+            });
+            var siblingFlow = Task.Run(async () =>
+            {
+                await readingFlowPushed.Task;
+                using (new DbExecutionContextHandler(engine))
+                {
+                    siblingFlowPushed.SetResult();
+                    await readingFlow;
+                }
+            });
+            await siblingFlow;
+
+            // Assert.
+            Assert.Same(repository, await readingFlow);
         }
     }
 }

@@ -14,47 +14,52 @@
 
 using Etherna.MongoDB.Driver;
 using Etherna.Scrinium.Core.Utility;
-using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 
 namespace Etherna.Scrinium.Core.Repositories
 {
-    internal sealed class AsyncCursorWrapper<TProjection> : IAsyncCursor<TProjection>
+    /// <summary>
+    /// Wraps the cursor of a repository query, re-establishing the db execution context of the
+    /// repository around each batch fetch: the batches after the first deserialize inside the
+    /// flow consuming the cursor, after the query method returned, where its own db execution
+    /// context is gone.
+    /// </summary>
+    internal sealed class AsyncCursorWrapper<TProjection>(
+        IAsyncCursor<TProjection> cursor,
+        IDbContext dbContext,
+        IRepository repository)
+        : IAsyncCursor<TProjection>
     {
         // Fields.
-        private readonly IAsyncCursor<TProjection> cursor;
-        private readonly DbExecutionContextHandler dbExecutionContextHandler;
         private bool disposed;
 
         // Constructor and dispose.
-        public AsyncCursorWrapper(
-            IAsyncCursor<TProjection> cursor,
-            DbExecutionContextHandler dbExecutionContextHandler)
-        {
-            this.cursor = cursor;
-            this.dbExecutionContextHandler = dbExecutionContextHandler;
-        }
-
         public void Dispose()
         {
             if (disposed) return;
 
             // Dispose managed resources.
             cursor.Dispose();
-            dbExecutionContextHandler.Dispose();
 
             disposed = true;
-            GC.SuppressFinalize(this);
         }
 
         // Properties.
         public IEnumerable<TProjection> Current => cursor.Current;
 
         // Methods.
-        public bool MoveNext(CancellationToken cancellationToken = default) => cursor.MoveNext(cancellationToken);
+        public bool MoveNext(CancellationToken cancellationToken = default)
+        {
+            using var dbExecContextHandler = new DbExecutionContextHandler(dbContext, repository);
+            return cursor.MoveNext(cancellationToken);
+        }
 
-        public Task<bool> MoveNextAsync(CancellationToken cancellationToken = default) => cursor.MoveNextAsync(cancellationToken);
+        public async Task<bool> MoveNextAsync(CancellationToken cancellationToken = default)
+        {
+            using var dbExecContextHandler = new DbExecutionContextHandler(dbContext, repository);
+            return await cursor.MoveNextAsync(cancellationToken).ConfigureAwait(false);
+        }
     }
 }
