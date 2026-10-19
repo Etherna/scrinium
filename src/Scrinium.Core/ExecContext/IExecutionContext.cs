@@ -22,8 +22,10 @@ namespace Etherna.Scrinium.Core.ExecContext
     /// </summary>
     /// <remarks>
     /// An execution context serves a single logical flow (an HTTP request, a job, a startup
-    /// operation): the ambient state kept in <see cref="Items"/> resolves by nesting inside
-    /// one flow. Parallel flows must each initialize their own context (e.g. with
+    /// operation), and the flows it forks share its <see cref="Items"/>. The db execution
+    /// context and session handlers keep their state local to each async flow on top of the
+    /// shared items; the other ambient state kept there resolves by nesting inside one flow,
+    /// so parallel flows relying on it must each initialize their own context (e.g. with
     /// <see cref="AsyncLocal.IAsyncLocalContext.InitAsyncLocalContext"/>), instead of
     /// sharing one.
     /// </remarks>

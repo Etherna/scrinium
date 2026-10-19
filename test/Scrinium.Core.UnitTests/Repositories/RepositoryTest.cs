@@ -105,37 +105,6 @@ namespace Etherna.Scrinium.Core.Repositories
 
         // Tests.
         [Fact]
-        public async Task AccessToCollectionDisposesTheAmbientHandlerWhenTheAccessedOperationSucceeds()
-        {
-            // Setup.
-            var repository = BuildRepository();
-
-            // Action.
-            await repository.AccessToCollectionAsync(_ => Task.FromResult(0));
-
-            // Assert.
-            Assert.Empty(GetAmbientDbExecContextHandlers());
-        }
-
-        [Fact]
-        public async Task AccessToCollectionDisposesTheAmbientHandlerWhenTheAccessedOperationThrows()
-        {
-            /* A leaked handler would stay registered in the flow items and become the
-             * ambient one again once the handlers above it complete, resolving the wrong
-             * db context, repository and serializer registry for the rest of the flow. */
-
-            // Setup.
-            var repository = BuildRepository();
-
-            // Action.
-            await Assert.ThrowsAsync<InvalidOperationException>(() =>
-                repository.AccessToCollectionAsync<int>(_ => throw new InvalidOperationException()));
-
-            // Assert.
-            Assert.Empty(GetAmbientDbExecContextHandlers());
-        }
-
-        [Fact]
         public async Task DefinedIndexesBuildAnAutomaticIndexForEachReferenceIdPath()
         {
             // Setup.
@@ -225,56 +194,19 @@ namespace Etherna.Scrinium.Core.Repositories
         }
 
         [Fact]
-        public async Task FindDisposesTheAmbientHandlerWhenTheCollectionAccessThrows()
+        public async Task FindCursorResolvesTheRepositoryWhileMovingNext()
         {
-            // Setup.
-            collectionMock.Setup(c => c.FindAsync(
-                    It.IsAny<FilterDefinition<FakeModel>>(),
-                    It.IsAny<FindOptions<FakeModel, FakeModel>>(),
-                    It.IsAny<CancellationToken>()))
-                .ThrowsAsync(new InvalidOperationException());
-            var repository = BuildRepository();
-
-            // Action.
-            await Assert.ThrowsAsync<InvalidOperationException>(() =>
-                repository.FindAsync<FakeModel>(Builders<FakeModel>.Filter.Empty));
-
-            // Assert.
-            Assert.Empty(GetAmbientDbExecContextHandlers());
-        }
-
-        [Fact]
-        public async Task FindKeepsTheAmbientHandlerUntilTheCursorIsDisposed()
-        {
-            // Setup.
-            collectionMock.Setup(c => c.FindAsync(
-                    It.IsAny<FilterDefinition<FakeModel>>(),
-                    It.IsAny<FindOptions<FakeModel, FakeModel>>(),
-                    It.IsAny<CancellationToken>()))
-                .ReturnsAsync(new Mock<IAsyncCursor<FakeModel>>().Object);
-            var repository = BuildRepository();
-
-            // Action.
-            var cursor = await repository.FindAsync<FakeModel>(Builders<FakeModel>.Filter.Empty);
-
-            // Assert.
-            //the handler serves the cursor consumption, and releases with its disposal
-            Assert.Single(GetAmbientDbExecContextHandlers());
-            cursor.Dispose();
-            Assert.Empty(GetAmbientDbExecContextHandlers());
-        }
-
-        [Fact]
-        public async Task TryFindOneDisposesTheAmbientHandlerOnAMissingId()
-        {
-            /* A miss is ordinary control flow: the collection access throws
-             * ScriniumEntityNotFoundException, and TryFindOneAsync turns it into a null
-             * result. The ambient handler must release also on this path. */
+            /* The batches after the first deserialize inside the flow consuming the cursor,
+             * after FindAsync returned and its db execution context ended with it: the cursor
+             * re-establishes the db context and repository of the query around each fetch. */
 
             // Setup.
+            IRepository? movingNextRepository = null;
             var cursorMock = new Mock<IAsyncCursor<FakeModel>>();
             cursorMock.Setup(c => c.MoveNextAsync(It.IsAny<CancellationToken>()))
-                .ReturnsAsync(false);
+                .Callback(() => movingNextRepository =
+                    DbExecutionContextHandler.TryGetCurrentRepository(executionContextMock.Object))
+                .ReturnsAsync(true);
             collectionMock.Setup(c => c.FindAsync(
                     It.IsAny<FilterDefinition<FakeModel>>(),
                     It.IsAny<FindOptions<FakeModel, FakeModel>>(),
@@ -283,11 +215,14 @@ namespace Etherna.Scrinium.Core.Repositories
             var repository = BuildRepository();
 
             // Action.
-            var result = await repository.TryFindOneAsync("missingId");
+            using var cursor = await repository.FindAsync<FakeModel>(Builders<FakeModel>.Filter.Empty);
+            //the db execution context of the query doesn't outlive it
+            Assert.Null(DbExecutionContextHandler.TryGetCurrentRepository(executionContextMock.Object));
+            await cursor.MoveNextAsync();
 
             // Assert.
-            Assert.Null(result);
-            Assert.Empty(GetAmbientDbExecContextHandlers());
+            Assert.Same(repository, movingNextRepository);
+            Assert.Null(DbExecutionContextHandler.TryGetCurrentRepository(executionContextMock.Object));
         }
 
         [Fact]
@@ -611,11 +546,6 @@ namespace Etherna.Scrinium.Core.Repositories
                 .ReturnsAsync((FakeModel)null!);
             return updates;
         }
-
-        private IEnumerable<DbExecutionContextHandler> GetAmbientDbExecContextHandlers() =>
-            executionContextItems.Values
-                .OfType<IEnumerable<DbExecutionContextHandler>>()
-                .SelectMany(handlers => handlers);
 
         private static IMemberMap ReferenceIdMemberMap(params BsonMemberMap[] elementPath)
         {

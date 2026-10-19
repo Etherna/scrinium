@@ -73,17 +73,20 @@ namespace Etherna.Scrinium.Core.Utility
         }
 
         [Fact]
-        public async Task ConcurrentFirstHandlersOnSharedContextRegisterAtomically()
+        public async Task ConcurrentFirstHandlersOnSharedContextResolveEachInItsFlow()
         {
             /* Parallel flows sharing one execution context can construct their first handler
-             * of the key concurrently: the bookkeeping list claim on the shared (not thread
-             * safe) items dictionary must be atomic. */
+             * concurrently: the stack claim on the shared (not thread safe) items dictionary
+             * must be atomic, and each flow must resolve the session it handles, never the one
+             * of a sibling flow. */
             const int flowsCount = 4;
             const int attempts = 1000;
 
-            //materialize the mocked engine and session before the parallel flows access them
+            //materialize the mocked engine and sessions before the parallel flows access them
             var engine = engineMock.Object;
-            var session = sessionMock.Object;
+            var sessions = Enumerable.Range(0, flowsCount)
+                .Select(_ => new Mock<IClientSessionHandle>().Object)
+                .ToArray();
 
             for (int i = 0; i < attempts; i++)
             {
@@ -93,19 +96,16 @@ namespace Etherna.Scrinium.Core.Utility
 
                 // Action.
                 //the spawned tasks inherit the context initialized by the test flow
-                var handlers = await Task.WhenAll(
-                    Enumerable.Range(0, flowsCount)
-                        .Select(_ => Task.Run(() =>
-                        {
-                            barrier.SignalAndWait();
-                            return new DbSessionHandler(engine, session);
-                        }))
-                        .ToArray());
+                var resolvedSessions = await Task.WhenAll(
+                    sessions.Select(session => Task.Run(() =>
+                    {
+                        barrier.SignalAndWait();
+                        using (new DbSessionHandler(engine, session))
+                            return DbSessionHandler.TryGetCurrentSession(engine);
+                    })));
 
                 // Assert.
-                Assert.Same(session, DbSessionHandler.TryGetCurrentSession(engine));
-                foreach (var handler in handlers)
-                    handler.Dispose();
+                Assert.Equal(sessions, resolvedSessions);
                 Assert.Null(DbSessionHandler.TryGetCurrentSession(engine));
             }
         }
