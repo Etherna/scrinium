@@ -32,6 +32,10 @@ namespace Etherna.Scrinium.Core.Migration
         public IReadOnlyCollection<DocumentMigrationError> DocumentErrors { get; private set; } = [];
         public Exception? Exception { get; private set; }
         /// <summary>
+        /// True when the scan ran whole and every document processed without errors.
+        /// </summary>
+        public bool IsSucceeded { get; private set; }
+        /// <summary>
         /// Number of documents processed without errors. Failing documents count
         /// on <see cref="TotDocumentErrors"/> instead.
         /// </summary>
@@ -41,7 +45,6 @@ namespace Etherna.Scrinium.Core.Migration
         /// plus the failing ones.
         /// </summary>
         public long ProcessedDocuments => MigratedDocuments + TotDocumentErrors;
-        public bool Succeded { get; private set; }
         public long TotDocumentErrors { get; private set; }
 
         // Methods.
@@ -55,7 +58,7 @@ namespace Etherna.Scrinium.Core.Migration
                 DocumentErrors = documentErrors ?? [],
                 Exception = e,
                 MigratedDocuments = migratedDocuments,
-                Succeded = false,
+                IsSucceeded = false,
                 TotDocumentErrors = totDocumentErrors
             };
 
@@ -63,7 +66,7 @@ namespace Etherna.Scrinium.Core.Migration
             new()
             {
                 MigratedDocuments = migratedDocuments,
-                Succeded = true
+                IsSucceeded = true
             };
     }
 }

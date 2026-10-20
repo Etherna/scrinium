@@ -17,7 +17,9 @@ using Etherna.MongoDB.Bson.Serialization.Serializers;
 using Etherna.Scrinium.Core.Domain.Models;
 using Etherna.Scrinium.Core.Domain.Models.DbMigrationOpAgg;
 using Etherna.Scrinium.Core.Serialization;
+using Etherna.Scrinium.Core.Serialization.Serializers;
 using System;
+using System.Collections.Generic;
 
 namespace Etherna.Scrinium.Core.Domain.ModelMaps
 {
@@ -26,7 +28,7 @@ namespace Etherna.Scrinium.Core.Domain.ModelMaps
         public void Register(IDbContextEngine dbContextEngine)
         {
             dbContextEngine.MapRegistry.AddModelMap<BuildNewIndexesMigrationLog>("555eed70-62e2-4d85-ac47-75bae10eefa9");
-            dbContextEngine.MapRegistry.AddModelMap<DbMigrationOperation>("afdb63c9-791b-41f8-8216-556e233df0de",
+            dbContextEngine.MapRegistry.AddModelMap<DbMigrationOperation>("9576a398-3a70-42e1-9beb-491df95bde19",
                 mm =>
                 {
                     mm.AutoMap();
@@ -34,7 +36,20 @@ namespace Etherna.Scrinium.Core.Domain.ModelMaps
                     // Set dates representation.
                     mm.GetMemberMap(m => m.CompletedDateTime).SetSerializer(
                         new NullableSerializer<DateTimeOffset>(new DateTimeOffsetSerializer(BsonType.DateTime)));
-                });
+                })
+                /* The schema of the operations written until 0.25.7, whose logs spell the
+                 * succeeded state "Succeded": the same members, kept as a secondary schema so
+                 * the rewrite of the deprecated schemas migrates those operations like any
+                 * other document. Dropped in 1.0.0, with the deprecated schema id element. */
+                .AddSecondarySchema("afdb63c9-791b-41f8-8216-556e233df0de",
+                    mm =>
+                    {
+                        mm.AutoMap();
+
+                        // Set dates representation.
+                        mm.GetMemberMap(m => m.CompletedDateTime).SetSerializer(
+                            new NullableSerializer<DateTimeOffset>(new DateTimeOffsetSerializer(BsonType.DateTime)));
+                    });
             dbContextEngine.MapRegistry.AddModelMap<DeleteOldIndexesMigrationLog>("ac9d8011-6247-4365-b8ca-ac8401f838a1");
             dbContextEngine.MapRegistry.AddModelMap<DocumentMigrationError>("15b8f6c8-8e94-4849-a3ce-4f0eb2cbb556");
             dbContextEngine.MapRegistry.AddModelMap<DocumentMigrationLog>("d2b49514-464e-4b28-8b38-ad2d0cc69d3e");
@@ -46,6 +61,17 @@ namespace Etherna.Scrinium.Core.Domain.ModelMaps
                     // Set dates representation.
                     mm.GetMemberMap(m => m.CreationDateTime).SetSerializer(
                         new DateTimeOffsetSerializer(BsonType.DateTime));
+
+                    /* The logs of the operations on the secondary schema above spell the
+                     * succeeded state "Succeded": read it under both names, write the current
+                     * one, until the rewrite of the deprecated schemas has migrated them.
+                     * Dropped in 1.0.0, with that schema. */
+                    mm.GetMemberMap(m => m.State).SetSerializer(
+                        new LegacyNamesEnumSerializer<MigrationLogBase.ExecutionState>(
+                            new Dictionary<string, MigrationLogBase.ExecutionState>
+                            {
+                                ["Succeded"] = MigrationLogBase.ExecutionState.Succeeded
+                            }));
                 });
             
             //obsolete

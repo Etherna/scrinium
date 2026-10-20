@@ -22,7 +22,7 @@ namespace Etherna.Scrinium.Core.Domain.Models.DbMigrationOpAgg
         public enum ExecutionState
         {
             Executing,
-            Succeded,
+            Succeeded,
             Skipped,
             Failed
         }

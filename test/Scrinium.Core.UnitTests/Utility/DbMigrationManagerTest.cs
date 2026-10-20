@@ -145,7 +145,7 @@ namespace Etherna.Scrinium.Core.Utility
             repositoryMock.Verify(r => r.BuildNewIndexesAsync(It.IsAny<CancellationToken>()), Times.Never());
             docMigrationMock.Verify(m => m.MigrateAsync(It.IsAny<int>(), It.IsAny<Func<long, Task>?>(), true, false, It.IsAny<int>(), It.IsAny<CancellationToken>()), Times.Once());
             Assert.DoesNotContain(dryRunOp.Logs, log => log is DeleteOldIndexesMigrationLog or BuildNewIndexesMigrationLog);
-            Assert.Contains(dryRunOp.Logs, log => log is DocumentMigrationLog { State: MigrationLogBase.ExecutionState.Succeded, TotMigratedDocs: 3 });
+            Assert.Contains(dryRunOp.Logs, log => log is DocumentMigrationLog { State: MigrationLogBase.ExecutionState.Succeeded, TotMigratedDocs: 3 });
         }
 
         [Fact]
@@ -359,7 +359,7 @@ namespace Etherna.Scrinium.Core.Utility
             //the ended log replaces the rolling one: the operation keeps a single documents log
             Assert.Equal(DbMigrationOperation.Status.Completed, dbMigrationOp.CurrentStatus);
             var documentLog = Assert.IsType<DocumentMigrationLog>(Assert.Single(dbMigrationOp.Logs));
-            Assert.Equal(MigrationLogBase.ExecutionState.Succeded, documentLog.State);
+            Assert.Equal(MigrationLogBase.ExecutionState.Succeeded, documentLog.State);
             Assert.Equal(1500, documentLog.TotMigratedDocs);
         }
 

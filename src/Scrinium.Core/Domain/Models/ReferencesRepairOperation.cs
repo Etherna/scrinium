@@ -123,7 +123,7 @@ namespace Etherna.Scrinium.Core.Domain.Models
             long deletedDocumentsCount) =>
             ReplacePathState(
                 elementPath,
-                ReferencesRepairPathState.ExecutionState.Succeded,
+                ReferencesRepairPathState.ExecutionState.Succeeded,
                 missingOriginIdsCount,
                 updatedDocumentsCount,
                 deletedDocumentsCount);

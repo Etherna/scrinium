@@ -92,7 +92,7 @@ namespace Etherna.Scrinium.Core.Utility
 
                                     dbMigrationOp.AddLog(new DeleteOldIndexesMigrationLog(
                                         repository.Name,
-                                        MigrationLogBase.ExecutionState.Succeded));
+                                        MigrationLogBase.ExecutionState.Succeeded));
                                 }
                                 catch (Exception e)
                                 {
@@ -140,7 +140,7 @@ namespace Etherna.Scrinium.Core.Utility
                                 dbContext.Engine.Options.MigrationEvictEveryTotDocuments,
                                 lockLostCancellation).ConfigureAwait(false);
 
-                            if (!result.Succeded)
+                            if (!result.IsSucceeded)
                                 errors.Add(new ScriniumDbMigrationException(
                                     result.TotDocumentErrors > 0
                                         ? $"Documents migration failed on \"{docMigration.SourceRepository.Name}\" repository with {result.TotDocumentErrors} document errors"
@@ -149,8 +149,8 @@ namespace Etherna.Scrinium.Core.Utility
                             //ended document migration log, replacing the rolling progress one
                             dbMigrationOp.AddDocumentMigrationLog(new DocumentMigrationLog(
                                 docMigration.SourceRepository.Name,
-                                result.Succeded
-                                    ? MigrationLogBase.ExecutionState.Succeded
+                                result.IsSucceeded
+                                    ? MigrationLogBase.ExecutionState.Succeeded
                                     : MigrationLogBase.ExecutionState.Failed,
                                 result.MigratedDocuments,
                                 result.DocumentErrors,
@@ -176,7 +176,7 @@ namespace Etherna.Scrinium.Core.Utility
 
                                     dbMigrationOp.AddLog(new BuildNewIndexesMigrationLog(
                                         repository.Name,
-                                        MigrationLogBase.ExecutionState.Succeded));
+                                        MigrationLogBase.ExecutionState.Succeeded));
                                 }
                                 catch (Exception e)
                                 {
