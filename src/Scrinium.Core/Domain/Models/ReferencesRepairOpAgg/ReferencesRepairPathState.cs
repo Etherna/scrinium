@@ -31,7 +31,7 @@ namespace Etherna.Scrinium.Core.Domain.Models.ReferencesRepairOpAgg
         {
             Pending,
             Executing,
-            Succeded,
+            Succeeded,
             Skipped,
             Failed
         }

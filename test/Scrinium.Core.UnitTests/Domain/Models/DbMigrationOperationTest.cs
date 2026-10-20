@@ -39,7 +39,7 @@ namespace Etherna.Scrinium.Core.Domain.Models
         {
             // Setup.
             dbMigrationOp.AddLog(new DeleteOldIndexesMigrationLog(
-                "modelsA", MigrationLogBase.ExecutionState.Succeded));
+                "modelsA", MigrationLogBase.ExecutionState.Succeeded));
             dbMigrationOp.AddDocumentMigrationLog(new DocumentMigrationLog(
                 "modelsA", MigrationLogBase.ExecutionState.Executing, 500));
             dbMigrationOp.AddDocumentMigrationLog(new DocumentMigrationLog(
@@ -47,7 +47,7 @@ namespace Etherna.Scrinium.Core.Domain.Models
 
             // Action.
             dbMigrationOp.AddDocumentMigrationLog(new DocumentMigrationLog(
-                "modelsA", MigrationLogBase.ExecutionState.Succeded, 750));
+                "modelsA", MigrationLogBase.ExecutionState.Succeeded, 750));
 
             // Assert.
             //only the executing progress log of the same collection is replaced
@@ -55,7 +55,7 @@ namespace Etherna.Scrinium.Core.Domain.Models
             Assert.Contains(dbMigrationOp.Logs, log => log is DocumentMigrationLog
             {
                 CollectionName: "modelsA",
-                State: MigrationLogBase.ExecutionState.Succeded,
+                State: MigrationLogBase.ExecutionState.Succeeded,
                 TotMigratedDocs: 750
             });
             Assert.Contains(dbMigrationOp.Logs, log => log is DocumentMigrationLog

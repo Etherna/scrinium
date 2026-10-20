@@ -707,7 +707,7 @@ code {
   color: #fbbf24;
 }
 
-.log-entry.succeded .log-state {
+.log-entry.succeeded .log-state {
   color: #4ade80;
 }
 

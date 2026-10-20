@@ -89,6 +89,12 @@ namespace Etherna.Scrinium.Core
             var modelMap = modelMapMock.Object;
             mapRegistryMock.Setup(r => r.TryGetModelMap(It.IsAny<Type>(), out modelMap))
                 .Returns(true);
+            /* The internal operation maps chain a secondary schema on the builder their
+             * registration returns: the registry mock has to hand one back. */
+            mapRegistryMock.Setup(r => r.AddModelMap(It.IsAny<string>(), It.IsAny<Action<BsonClassMap<DbMigrationOperation>>>()))
+                .Returns(new Mock<IModelMapBuilder<DbMigrationOperation>>().Object);
+            mapRegistryMock.Setup(r => r.AddModelMap(It.IsAny<string>(), It.IsAny<Action<BsonClassMap<ReferencesRepairOperation>>>()))
+                .Returns(new Mock<IModelMapBuilder<ReferencesRepairOperation>>().Object);
             dependenciesMock.Setup(d => d.MapRegistry)
                 .Returns(mapRegistryMock.Object);
             proxyGeneratorMock.Setup(p => p.PurgeProxyType(It.IsAny<Type>()))

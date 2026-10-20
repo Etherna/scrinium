@@ -667,7 +667,7 @@
 
     function repairStateBadgeClass(state) {
         switch (state) {
-            case 'Succeded': return 'idle';
+            case 'Succeeded': return 'idle';
             case 'Failed': return 'locked';
             case 'Skipped': return 'cancelled';
             case 'Executing': return 'running';
