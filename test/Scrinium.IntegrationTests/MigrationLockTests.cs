@@ -16,7 +16,10 @@ using Etherna.MongoDB.Bson;
 using Etherna.MongoDB.Driver;
 using Etherna.MongoDB.Driver.Linq;
 using Etherna.Scrinium.Core.Domain.Models;
+using Etherna.Scrinium.Core.Domain.Models.DbMigrationOpAgg;
+using Etherna.Scrinium.Core.Domain.Models.ReferencesRepairOpAgg;
 using Etherna.Scrinium.Core.ExecContext.AsyncLocal;
+using Etherna.Scrinium.Core.Options;
 using Etherna.Scrinium.Core.Utility;
 using Etherna.Scrinium.IntegrationTests.Fixtures;
 using Microsoft.Extensions.DependencyInjection;
@@ -75,6 +78,7 @@ namespace Etherna.Scrinium.IntegrationTests
             using var contextHandler = AsyncLocalContext.Instance.InitAsyncLocalContext();
             await DeleteLockDocumentAsync();
             await DeleteMigrationOperationsAsync();
+            await DeleteReferencesRepairOperationsAsync();
 
             serviceScope.Dispose();
         }
@@ -320,6 +324,9 @@ namespace Etherna.Scrinium.IntegrationTests
 
             var runningOp = new DbMigrationOperation(migrationsDbContext.Engine);
             runningOp.TaskStarted("dead-task");
+            //the dead owner was scanning a collection, after an index step it had completed
+            runningOp.AddLog(new DeleteOldIndexesMigrationLog("notes", MigrationLogBase.ExecutionState.Succeeded));
+            runningOp.AddDocumentMigrationLog(new DocumentMigrationLog("notes", MigrationLogBase.ExecutionState.Executing, 500));
             await migrationsDbContext.DbOperations.CreateAsync(runningOp);
 
             // Action.
@@ -337,6 +344,59 @@ namespace Etherna.Scrinium.IntegrationTests
             Assert.Contains(restartedOp.Id, sweptOp.FailureReason, StringComparison.Ordinal);
             Assert.Contains("stopped renewing", sweptOp.FailureReason, StringComparison.Ordinal);
             Assert.NotNull(sweptOp.CompletedDateTime);
+            //the same update closed the executing log as interrupted, keeping its counter
+            var sweptLogs = sweptOp.Logs.ToArray();
+            Assert.Equal(MigrationLogBase.ExecutionState.Succeeded, sweptLogs[0].State);
+            var sweptDocumentLog = Assert.IsType<DocumentMigrationLog>(sweptLogs[1]);
+            Assert.Equal(MigrationLogBase.ExecutionState.Interrupted, sweptDocumentLog.State);
+            Assert.Equal(500, sweptDocumentLog.TotMigratedDocs);
+
+            //cleanup: execute the restarted operation, releasing the claim
+            await migrationsDbContext.ExecuteMigrationAsync(restartedOp.Id);
+        }
+
+        [Fact]
+        public async Task OrphanedRunningReferencesRepairClosesFailedWithItsPathsInterrupted()
+        {
+            /* The sweep closes every kind: a repair orphaned by a dead owner closes failed with
+             * the path it was repairing interrupted, in the same server side update. */
+
+            // Setup.
+            using var contextHandler = AsyncLocalContext.Instance.InitAsyncLocalContext();
+            migrationsDbContext.DocumentMigrations = [];
+            await DeleteMigrationOperationsAsync();
+
+            var runningRepairOp = new ReferencesRepairOperation(
+                migrationsDbContext.Engine,
+                "notes",
+                new Dictionary<string, OriginDeleteMode>
+                {
+                    ["Author"] = OriginDeleteMode.RemoveReference,
+                    ["Editor"] = OriginDeleteMode.RemoveReference
+                });
+            runningRepairOp.TaskStarted("dead-task");
+            runningRepairOp.ReportPathsStarted();
+            runningRepairOp.ReportPathEnded("Author", 1, 1, 0);
+            runningRepairOp.ReportPathProgress("Editor", 3, 2, 0);
+            await migrationsDbContext.DbOperations.CreateAsync(runningRepairOp);
+
+            // Action.
+            var restartedOp = await migrationsDbContext.TryStartMigrationAsync();
+
+            // Assert.
+            Assert.NotNull(restartedOp);
+            using var verifyScope = fixture.ServiceProvider.CreateScope();
+            var verifyDbContext = verifyScope.ServiceProvider.GetRequiredService<IMigrationsDbContext>();
+            var sweptOp = await verifyDbContext.DbOperations.QueryElementsAsync(elements =>
+                elements.OfType<ReferencesRepairOperation>()
+                        .Where(op => op.Id == runningRepairOp.Id)
+                        .FirstAsync());
+            Assert.Equal(ReferencesRepairOperation.Status.Failed, sweptOp.CurrentStatus);
+            var sweptPaths = sweptOp.PathStates.ToArray();
+            Assert.Equal(ReferencesRepairPathState.ExecutionState.Succeeded, sweptPaths[0].State);
+            Assert.Equal(ReferencesRepairPathState.ExecutionState.Interrupted, sweptPaths[1].State);
+            Assert.Equal(3, sweptPaths[1].MissingOriginIdsCount);
+            Assert.Equal(2, sweptPaths[1].UpdatedDocumentsCount);
 
             //cleanup: execute the restarted operation, releasing the claim
             await migrationsDbContext.ExecuteMigrationAsync(restartedOp.Id);
@@ -464,6 +524,11 @@ namespace Etherna.Scrinium.IntegrationTests
         private Task DeleteMigrationOperationsAsync() =>
             migrationsDbContext.DbOperations.DeleteManyAsync(
                 Builders<OperationBase>.Filter.OfType<DbMigrationOperation>(op =>
+                    op.DbContextName == migrationsDbContext.Engine.Identifier));
+
+        private Task DeleteReferencesRepairOperationsAsync() =>
+            migrationsDbContext.DbOperations.DeleteManyAsync(
+                Builders<OperationBase>.Filter.OfType<ReferencesRepairOperation>(op =>
                     op.DbContextName == migrationsDbContext.Engine.Identifier));
 
         private Task DropLockCollectionAsync() =>

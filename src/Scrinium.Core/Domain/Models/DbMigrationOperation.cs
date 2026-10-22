@@ -15,6 +15,7 @@
 using Etherna.Scrinium.Core.Domain.Models.DbMigrationOpAgg;
 using System;
 using System.Collections.Generic;
+using System.Linq;
 
 namespace Etherna.Scrinium.Core.Domain.Models
 {
@@ -77,6 +78,11 @@ namespace Etherna.Scrinium.Core.Domain.Models
         /// </summary>
         public virtual bool IsOpen => CurrentStatus is Status.New or Status.Running;
         /// <summary>
+        /// True while the operation is started and not closed: its task is executing it, or
+        /// died while executing it.
+        /// </summary>
+        public virtual bool IsRunning => CurrentStatus == Status.Running;
+        /// <summary>
         /// If true, a documents migration of this operation aborts at its first failing document,
         /// instead of skipping it and processing every other document.
         /// </summary>
@@ -120,6 +126,7 @@ namespace Etherna.Scrinium.Core.Domain.Models
 
             CompletedDateTime = DateTimeOffset.UtcNow;
             CurrentStatus = Status.Cancelled;
+            InterruptExecutingLogs();
         }
 
         public virtual void TaskCompleted()
@@ -140,6 +147,7 @@ namespace Etherna.Scrinium.Core.Domain.Models
             CompletedDateTime = DateTimeOffset.UtcNow;
             CurrentStatus = Status.Failed;
             FailureReason = reason;
+            InterruptExecutingLogs();
         }
 
         public virtual void TaskStarted(string? taskId = null)
@@ -155,5 +163,14 @@ namespace Etherna.Scrinium.Core.Domain.Models
         //a denied transition names the operation and the status denying it: it is what the task runner reports
         private InvalidOperationException DeniedTransition(string transition) =>
             new($"Can't {transition} the migration operation {Id}: its status is {CurrentStatus}");
+
+        /* An operation closing while a step executes can't leave its log saying so: the log
+         * closes interrupted, keeping its collection and counters, so the history tells which
+         * step was running, and how far it got, when the operation stopped. */
+        private void InterruptExecutingLogs()
+        {
+            foreach (var log in _logs.Where(log => log.State == MigrationLogBase.ExecutionState.Executing))
+                log.Interrupt();
+        }
     }
 }

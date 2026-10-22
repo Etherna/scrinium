@@ -24,7 +24,12 @@ namespace Etherna.Scrinium.Core.Domain.Models.DbMigrationOpAgg
             Executing,
             Succeeded,
             Skipped,
-            Failed
+            Failed,
+            /// <summary>
+            /// The operation closed while the step was executing: what the log reports is
+            /// what the step did until the stop, not its end.
+            /// </summary>
+            Interrupted
         }
 
         // Constructors.
@@ -38,5 +43,18 @@ namespace Etherna.Scrinium.Core.Domain.Models.DbMigrationOpAgg
         // Properties.
         public virtual ExecutionState State { get; protected set; }
         public virtual DateTimeOffset CreationDateTime { get; protected set; }
+
+        // Methods.
+        /// <summary>
+        /// Close an executing log as interrupted: the operation closed while its step was
+        /// executing, so the log keeps what the step reported until the stop, as its end.
+        /// </summary>
+        internal void Interrupt()
+        {
+            if (State != ExecutionState.Executing)
+                throw new InvalidOperationException($"Can't interrupt a migration log whose state is {State}");
+
+            State = ExecutionState.Interrupted;
+        }
     }
 }

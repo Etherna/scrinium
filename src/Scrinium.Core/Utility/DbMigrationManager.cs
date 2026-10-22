@@ -61,7 +61,7 @@ namespace Etherna.Scrinium.Core.Utility
             var dbMigrationOp = (DbMigrationOperation)await dbContext.DbOperations.FindOneAsync(dbMigrationOpId).ConfigureAwait(false);
 
             List<Exception> errors = [];
-            var executed = await DbOperationLifecycle.TryExecuteAsync(
+            var execution = await DbOperationLifecycle.TryExecuteAsync(
                 dbContext,
                 dbMigrationOpId,
                 dbMigrationOp,
@@ -215,11 +215,12 @@ namespace Etherna.Scrinium.Core.Utility
                 logger).ConfigureAwait(false);
 
             // Report errors.
-            if (!executed)
+            if (execution != DbOperationExecution.Executed)
             {
                 if (throwOnErrors)
-                    throw new ScriniumDbMigrationException(
-                        $"Error migrating {dbContext.Engine.Identifier} dbContext: operation {dbMigrationOpId} doesn't own the db context lock anymore");
+                    throw new ScriniumDbMigrationException(execution == DbOperationExecution.AlreadyRunning
+                        ? $"Error migrating {dbContext.Engine.Identifier} dbContext: operation {dbMigrationOpId} was already running, re-executed after the worker executing it died"
+                        : $"Error migrating {dbContext.Engine.Identifier} dbContext: operation {dbMigrationOpId} doesn't own the db context lock anymore");
                 return;
             }
 

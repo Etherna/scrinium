@@ -33,6 +33,12 @@ namespace Etherna.Scrinium.Core.Domain.Models
         /// </summary>
         bool IsOpen { get; }
 
+        /// <summary>
+        /// True while the operation is started and not closed: its task is executing it, or
+        /// died while executing it.
+        /// </summary>
+        bool IsRunning { get; }
+
         void TaskCancelled();
         void TaskCompleted();
 

@@ -64,7 +64,7 @@ namespace Etherna.Scrinium.Core.Utility
 
             Exception? error = null;
             string? failureReason = null;
-            var executed = await DbOperationLifecycle.TryExecuteAsync(
+            var execution = await DbOperationLifecycle.TryExecuteAsync(
                 dbContext,
                 repairOpId,
                 repairOp,
@@ -138,11 +138,12 @@ namespace Etherna.Scrinium.Core.Utility
                 },
                 logger).ConfigureAwait(false);
 
-            if (!executed)
+            if (execution != DbOperationExecution.Executed)
             {
                 if (throwOnErrors)
-                    throw new ScriniumReferencesRepairException(
-                        $"Error repairing references of {dbContext.Engine.Identifier} dbContext: operation {repairOpId} doesn't own the db context lock anymore");
+                    throw new ScriniumReferencesRepairException(execution == DbOperationExecution.AlreadyRunning
+                        ? $"Error repairing references of {dbContext.Engine.Identifier} dbContext: operation {repairOpId} was already running, re-executed after the worker executing it died"
+                        : $"Error repairing references of {dbContext.Engine.Identifier} dbContext: operation {repairOpId} doesn't own the db context lock anymore");
                 return;
             }
 

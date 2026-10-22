@@ -407,6 +407,12 @@ namespace Etherna.Scrinium.Core.Extensions
                 new EventId(58, nameof(DbOperationDeniedStartCleanupFailed)),
                 "Db operation {DbOperationId} of DbContext {DbName} didn't claim the db context lock, and couldn't be deleted: it closes with the orphaned operations at the next start");
 
+        private static readonly Action<ILogger, string, string, Exception> _dbOperationFailedOnReExecution =
+            LoggerMessage.Define<string, string>(
+                LogLevel.Warning,
+                new EventId(83, nameof(DbOperationFailedOnReExecution)),
+                "Db operation {DbOperationId} of DbContext {DbName} closed failed: it was already running when its execution resumed the lock claim, re-executed after the worker executing it died");
+
         private static readonly Action<ILogger, string, string, Exception> _dbOperationStartCleanupFailed =
             LoggerMessage.Define<string, string>(
                 LogLevel.Warning,
@@ -623,6 +629,9 @@ namespace Etherna.Scrinium.Core.Extensions
 
         public static void DbOperationDeniedStartCleanupFailed(this ILogger logger, string dbOperationId, string dbName, Exception exception) =>
             _dbOperationDeniedStartCleanupFailed(logger, dbOperationId, dbName, exception);
+
+        public static void DbOperationFailedOnReExecution(this ILogger logger, string dbOperationId, string dbName) =>
+            _dbOperationFailedOnReExecution(logger, dbOperationId, dbName, null!);
 
         public static void DbOperationStartCleanupFailed(this ILogger logger, string dbOperationId, string dbName, Exception exception) =>
             _dbOperationStartCleanupFailed(logger, dbOperationId, dbName, exception);

@@ -175,6 +175,38 @@ namespace Etherna.Scrinium.Core.Utility
         }
 
         [Fact]
+        public async Task ExecuteMigrationClosesAnAlreadyRunningOperationFailedWithoutThrowing()
+        {
+            /* The task runner re-executes the job of a worker that died mid migration: the
+             * operation is still running when the claim resumes. Nothing of that run resumes,
+             * and a denied start thrown to the runner would only be retried: the operation
+             * closes failed, its executing logs interrupted, and the job completes. */
+
+            // Setup.
+            dbMigrationOp.TaskStarted("dead-task");
+            dbMigrationOp.AddDocumentMigrationLog(new DocumentMigrationLog(
+                "fakeModels", MigrationLogBase.ExecutionState.Executing, 500));
+            var docMigrationMock = new Mock<DocumentMigration>();
+            dbContextMock.Setup(c => c.DocumentMigrationList).Returns([docMigrationMock.Object]);
+
+            // Action.
+            await dbMigrationManager.ExecuteDbContextMigrationAsync(dbContextMock.Object, "opId", "retry-task");
+
+            // Assert.
+            Assert.Equal(DbMigrationOperation.Status.Failed, dbMigrationOp.CurrentStatus);
+            Assert.Equal(DbOperationLifecycle.ReExecutionFailureReason, dbMigrationOp.FailureReason);
+            Assert.Equal("dead-task", dbMigrationOp.TaskId);
+            var documentLog = Assert.IsType<DocumentMigrationLog>(Assert.Single(dbMigrationOp.Logs));
+            Assert.Equal(MigrationLogBase.ExecutionState.Interrupted, documentLog.State);
+            Assert.Equal(500, documentLog.TotMigratedDocs);
+            docMigrationMock.Verify(
+                m => m.MigrateAsync(It.IsAny<int>(), It.IsAny<Func<long, Task>?>(), It.IsAny<bool>(), It.IsAny<bool>(), It.IsAny<int>(), It.IsAny<CancellationToken>()),
+                Times.Never());
+            dbContextMock.Verify(c => c.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once());
+            dbContextLockLeaseMock.Verify(l => l.DisposeAsync(), Times.Once());
+        }
+
+        [Fact]
         public async Task ExecuteMigrationClosesFailedWhenTheLeaseIsLostMidMigration()
         {
             /* A lost lease cancels the migration steps, but the operation state must still
@@ -530,6 +562,22 @@ namespace Etherna.Scrinium.Core.Utility
             Assert.DoesNotContain(dbMigrationOp.Logs, log => log is BuildNewIndexesMigrationLog { Repository: "readOnlyModels" });
             Assert.Contains(dbMigrationOp.Logs, log => log is DeleteOldIndexesMigrationLog { Repository: "writableModels" });
             Assert.Contains(dbMigrationOp.Logs, log => log is BuildNewIndexesMigrationLog { Repository: "writableModels" });
+        }
+
+        [Fact]
+        public async Task ExecuteMigrationThrowsOnAnAlreadyRunningOperationWhenRequired()
+        {
+            // Setup.
+            dbMigrationOp.TaskStarted("dead-task");
+
+            // Action.
+            var migrationException = await Assert.ThrowsAsync<ScriniumDbMigrationException>(() =>
+                dbMigrationManager.ExecuteDbContextMigrationAsync(dbContextMock.Object, "opId", throwOnErrors: true));
+
+            // Assert.
+            //the re-execution is told from a claim not resumed: the lock was owned, the run wasn't
+            Assert.Equal(DbMigrationOperation.Status.Failed, dbMigrationOp.CurrentStatus);
+            Assert.Contains("already running", migrationException.Message, StringComparison.Ordinal);
         }
 
         [Fact]
