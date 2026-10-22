@@ -108,6 +108,7 @@ namespace Etherna.Scrinium.Core.Utility
 
             // Assert.
             Assert.Equal(DbMigrationOperation.Status.Failed, dryRunOp.CurrentStatus);
+            Assert.Contains("\"fakeModels\" repository with 2 document errors", dryRunOp.FailureReason, StringComparison.Ordinal);
             var aggregateException = Assert.IsType<AggregateException>(migrationException.InnerException);
             Assert.Contains("2 document errors", Assert.Single(aggregateException.InnerExceptions).Message, StringComparison.Ordinal);
             var documentLog = Assert.IsType<DocumentMigrationLog>(Assert.Single(dryRunOp.Logs));
@@ -205,9 +206,69 @@ namespace Etherna.Scrinium.Core.Utility
 
             // Assert.
             Assert.Equal(DbMigrationOperation.Status.Failed, dbMigrationOp.CurrentStatus);
+            //the lease is the cause: the operation names it before what the cancelled scan reported
+            Assert.StartsWith(DbOperationLifecycle.LostLeaseFailureReason, dbMigrationOp.FailureReason, StringComparison.Ordinal);
+            Assert.Contains("OperationCanceledException", dbMigrationOp.FailureReason, StringComparison.Ordinal);
+            Assert.NotNull(dbMigrationOp.CompletedDateTime);
             dbContextMock.Verify(
                 c => c.SaveChangesAsync(It.Is<CancellationToken>(t => !t.IsCancellationRequested)),
                 Times.AtLeastOnce());
+        }
+
+        [Fact]
+        public async Task ExecuteMigrationCollectsEveryStepFailureIntoTheReason()
+        {
+            /* The steps are independent: a failing one reports and the next ones run, so the
+             * operation closes with the whole picture, the reason reading one line per failure
+             * in step order. */
+
+            // Setup.
+            var scanException = new TimeoutException("The cursor timed out");
+            var repositoryMock = new Mock<IRepository>();
+            repositoryMock.Setup(r => r.Name).Returns("fakeModels");
+            repositoryMock.Setup(r => r.DeleteOldIndexesAsync(It.IsAny<CancellationToken>()))
+                .ThrowsAsync(new InvalidOperationException("Index deletion denied"));
+            repositoryMock.Setup(r => r.BuildNewIndexesAsync(It.IsAny<CancellationToken>()))
+                .ThrowsAsync(new InvalidOperationException("Index build denied"));
+            repositoryRegistryMock.Setup(r => r.Repositories).Returns([repositoryMock.Object]);
+
+            var otherRepositoryMock = new Mock<IRepository>();
+            otherRepositoryMock.Setup(r => r.Name).Returns("otherModels");
+            var failingDocMigrationMock = new Mock<DocumentMigration>();
+            failingDocMigrationMock.Setup(m => m.SourceRepository).Returns(repositoryMock.Object);
+            failingDocMigrationMock.Setup(m => m.MigrateAsync(It.IsAny<int>(), It.IsAny<Func<long, Task>?>(), It.IsAny<bool>(), It.IsAny<bool>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(MigrationResult.Failed(10, scanException));
+            var followingDocMigrationMock = new Mock<DocumentMigration>();
+            followingDocMigrationMock.Setup(m => m.SourceRepository).Returns(otherRepositoryMock.Object);
+            followingDocMigrationMock.Setup(m => m.MigrateAsync(It.IsAny<int>(), It.IsAny<Func<long, Task>?>(), It.IsAny<bool>(), It.IsAny<bool>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(MigrationResult.Succeeded(3));
+            dbContextMock.Setup(c => c.DocumentMigrationList).Returns([failingDocMigrationMock.Object, followingDocMigrationMock.Object]);
+
+            // Action.
+            var migrationException = await Assert.ThrowsAsync<ScriniumDbMigrationException>(() =>
+                dbMigrationManager.ExecuteDbContextMigrationAsync(dbContextMock.Object, "opId", throwOnErrors: true));
+
+            // Assert.
+            Assert.Equal(DbMigrationOperation.Status.Failed, dbMigrationOp.CurrentStatus);
+            Assert.Equal(
+                "Old indexes deletion failed on \"fakeModels\" repository: InvalidOperationException: Index deletion denied\n" +
+                "Documents migration failed on \"fakeModels\" repository: TimeoutException: The cursor timed out\n" +
+                "New indexes build failed on \"fakeModels\" repository: InvalidOperationException: Index build denied",
+                dbMigrationOp.FailureReason);
+
+            //every step ran and reported its own state, the ones after a failure included
+            Assert.Contains(dbMigrationOp.Logs, log => log is DeleteOldIndexesMigrationLog { State: MigrationLogBase.ExecutionState.Failed });
+            Assert.Contains(dbMigrationOp.Logs, log => log is DocumentMigrationLog { CollectionName: "fakeModels", State: MigrationLogBase.ExecutionState.Failed });
+            Assert.Contains(dbMigrationOp.Logs, log => log is DocumentMigrationLog { CollectionName: "otherModels", State: MigrationLogBase.ExecutionState.Succeeded });
+            Assert.Contains(dbMigrationOp.Logs, log => log is BuildNewIndexesMigrationLog { State: MigrationLogBase.ExecutionState.Failed });
+            followingDocMigrationMock.Verify(m => m.MigrateAsync(It.IsAny<int>(), It.IsAny<Func<long, Task>?>(), It.IsAny<bool>(), It.IsAny<bool>(), It.IsAny<int>(), It.IsAny<CancellationToken>()), Times.Once());
+            repositoryMock.Verify(r => r.BuildNewIndexesAsync(It.IsAny<CancellationToken>()), Times.Once());
+
+            //the thrown exception aggregates the same failures, in the same order
+            var aggregateException = Assert.IsType<AggregateException>(migrationException.InnerException);
+            Assert.Equal(3, aggregateException.InnerExceptions.Count);
+            Assert.All(aggregateException.InnerExceptions, e => Assert.IsType<ScriniumDbMigrationException>(e));
+            Assert.Same(scanException, aggregateException.InnerExceptions[1].InnerException);
         }
 
         [Fact]
@@ -224,13 +285,36 @@ namespace Etherna.Scrinium.Core.Utility
         }
 
         [Fact]
+        public async Task ExecuteMigrationFailsOnIndexBuildError()
+        {
+            // Setup.
+            var repositoryMock = new Mock<IRepository>();
+            repositoryMock.Setup(r => r.Name).Returns("fakeModels");
+            repositoryMock.Setup(r => r.BuildNewIndexesAsync(It.IsAny<CancellationToken>()))
+                .ThrowsAsync(new InvalidOperationException("Index build denied"));
+            repositoryRegistryMock.Setup(r => r.Repositories).Returns([repositoryMock.Object]);
+
+            // Action.
+            await dbMigrationManager.ExecuteDbContextMigrationAsync(dbContextMock.Object, "opId");
+
+            // Assert.
+            //the deletion step of the same repository succeeded on its own: the build step is the failing one
+            Assert.Equal(DbMigrationOperation.Status.Failed, dbMigrationOp.CurrentStatus);
+            Assert.Contains(dbMigrationOp.Logs, log => log is DeleteOldIndexesMigrationLog { State: MigrationLogBase.ExecutionState.Succeeded });
+            Assert.Contains(dbMigrationOp.Logs, log => log is BuildNewIndexesMigrationLog { State: MigrationLogBase.ExecutionState.Failed });
+            Assert.Equal(
+                "New indexes build failed on \"fakeModels\" repository: InvalidOperationException: Index build denied",
+                dbMigrationOp.FailureReason);
+        }
+
+        [Fact]
         public async Task ExecuteMigrationFailsOnStepError()
         {
             // Setup.
             var repositoryMock = new Mock<IRepository>();
             repositoryMock.Setup(r => r.Name).Returns("fakeModels");
             repositoryMock.Setup(r => r.DeleteOldIndexesAsync(It.IsAny<CancellationToken>()))
-                .ThrowsAsync(new InvalidOperationException());
+                .ThrowsAsync(new InvalidOperationException("Index deletion denied"));
             repositoryRegistryMock.Setup(r => r.Repositories).Returns([repositoryMock.Object]);
 
             // Action.
@@ -239,6 +323,10 @@ namespace Etherna.Scrinium.Core.Utility
             // Assert.
             Assert.Equal(DbMigrationOperation.Status.Failed, dbMigrationOp.CurrentStatus);
             Assert.Contains(dbMigrationOp.Logs, log => log is DeleteOldIndexesMigrationLog { State: MigrationLogBase.ExecutionState.Failed });
+            //the reason names the step and the exception that failed it
+            Assert.Equal(
+                "Old indexes deletion failed on \"fakeModels\" repository: InvalidOperationException: Index deletion denied",
+                dbMigrationOp.FailureReason);
         }
 
         [Fact]
@@ -254,9 +342,63 @@ namespace Etherna.Scrinium.Core.Utility
             await dbMigrationManager.ExecuteDbContextMigrationAsync(dbContextMock.Object, "opId");
 
             // Assert.
-            //the operation doesn't stay on running status, and the failure is persisted
+            //the operation doesn't stay on running status, and the failure is persisted with its cause
             Assert.Equal(DbMigrationOperation.Status.Failed, dbMigrationOp.CurrentStatus);
+            Assert.Equal("InvalidOperationException: Unhandled migration exception", dbMigrationOp.FailureReason);
             dbContextMock.Verify(c => c.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.AtLeastOnce());
+        }
+
+        [Fact]
+        public async Task ExecuteMigrationRecordsTheExceptionAbortingADocumentsScan()
+        {
+            /* The incident this guards: a dry run scanning for eleven hours closed failed with
+             * nothing explaining it, since the exception of the migration result was dropped
+             * on the way to the operation and to the log. */
+
+            // Setup.
+            var scanException = new TimeoutException("The cursor timed out");
+            var repositoryMock = new Mock<IRepository>();
+            repositoryMock.Setup(r => r.Name).Returns("fakeModels");
+            var docMigrationMock = new Mock<DocumentMigration>();
+            docMigrationMock.Setup(m => m.SourceRepository).Returns(repositoryMock.Object);
+            docMigrationMock.Setup(m => m.MigrateAsync(It.IsAny<int>(), It.IsAny<Func<long, Task>?>(), It.IsAny<bool>(), It.IsAny<bool>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(MigrationResult.Failed(10, scanException));
+            dbContextMock.Setup(c => c.DocumentMigrationList).Returns([docMigrationMock.Object]);
+
+            // Action.
+            var migrationException = await Assert.ThrowsAsync<ScriniumDbMigrationException>(() =>
+                dbMigrationManager.ExecuteDbContextMigrationAsync(dbContextMock.Object, "opId", throwOnErrors: true));
+
+            // Assert.
+            //the operation reads the cause, and the exception thrown and logged carries it inner
+            Assert.Equal(DbMigrationOperation.Status.Failed, dbMigrationOp.CurrentStatus);
+            Assert.Equal(
+                "Documents migration failed on \"fakeModels\" repository: TimeoutException: The cursor timed out",
+                dbMigrationOp.FailureReason);
+            var aggregateException = Assert.IsType<AggregateException>(migrationException.InnerException);
+            Assert.Same(scanException, Assert.Single(aggregateException.InnerExceptions).InnerException);
+        }
+
+        [Fact]
+        public async Task ExecuteMigrationRecordsTheUnhandledExceptionOfItsLifecycle()
+        {
+            /* An exception escaping the body (here the save of the started operation) closes
+             * the operation failed and reaches the task runner: the operation records it too,
+             * since the job history is not where an operator reads what happened. */
+
+            // Setup.
+            dbContextMock.SetupSequence(c => c.SaveChangesAsync(It.IsAny<CancellationToken>()))
+                .ThrowsAsync(new TimeoutException("The save timed out"))
+                .Returns(Task.CompletedTask);
+
+            // Action.
+            await Assert.ThrowsAsync<TimeoutException>(() =>
+                dbMigrationManager.ExecuteDbContextMigrationAsync(dbContextMock.Object, "opId"));
+
+            // Assert.
+            Assert.Equal(DbMigrationOperation.Status.Failed, dbMigrationOp.CurrentStatus);
+            Assert.Equal("TimeoutException: The save timed out", dbMigrationOp.FailureReason);
+            Assert.NotNull(dbMigrationOp.CompletedDateTime);
         }
 
         [Fact]

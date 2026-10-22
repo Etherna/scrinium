@@ -63,6 +63,7 @@ namespace Etherna.Scrinium.Core.Utility
             var repairOp = (ReferencesRepairOperation)await dbContext.DbOperations.FindOneAsync(repairOpId).ConfigureAwait(false);
 
             Exception? error = null;
+            string? failureReason = null;
             var executed = await DbOperationLifecycle.TryExecuteAsync(
                 dbContext,
                 repairOpId,
@@ -126,13 +127,14 @@ namespace Etherna.Scrinium.Core.Utility
                          * path, so what didn't complete stays as it was. Every path still
                          * running records the error that stopped it. */
                         error = e;
+                        failureReason = $"{e.GetType().Name}: {e.Message}";
 
-                        repairOp.FailOpenPaths($"{e.GetType().Name}: {e.Message}");
+                        repairOp.FailOpenPaths(failureReason);
 
                         await dbContext.SaveChangesAsync(CancellationToken.None).ConfigureAwait(false);
                     }
 
-                    return error is null;
+                    return failureReason;
                 },
                 logger).ConfigureAwait(false);
 

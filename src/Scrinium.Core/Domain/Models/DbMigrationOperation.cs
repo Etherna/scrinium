@@ -49,8 +49,19 @@ namespace Etherna.Scrinium.Core.Domain.Models
         protected DbMigrationOperation() { }
 
         // Properties.
+        /// <summary>
+        /// The instant the operation closed, whatever its terminal status: completed, failed
+        /// or cancelled. Null while it is open, and on the failed and cancelled operations
+        /// closed by a version stamping it on the completed ones only.
+        /// </summary>
         public virtual DateTimeOffset? CompletedDateTime { get; protected set; }
         public virtual Status CurrentStatus { get; protected set; }
+        /// <summary>
+        /// Why the operation failed, when it did: the exception aborting a documents scan or
+        /// an index step, the unhandled exception of the execution, the lost lock lease, or
+        /// the orphan sweep of a later start. Null on every other status.
+        /// </summary>
+        public virtual string? FailureReason { get; protected set; }
         /// <summary>
         /// If true, this operation also rewrites the documents left on a deprecated schema:
         /// the ones whose stored schema id isn't the active one of their concrete type, the
@@ -105,35 +116,44 @@ namespace Etherna.Scrinium.Core.Domain.Models
         public virtual void TaskCancelled()
         {
             if (CurrentStatus is Status.Completed or Status.Failed)
-                throw new InvalidOperationException();
+                throw DeniedTransition("cancel");
 
+            CompletedDateTime = DateTimeOffset.UtcNow;
             CurrentStatus = Status.Cancelled;
         }
 
         public virtual void TaskCompleted()
         {
             if (CurrentStatus != Status.Running)
-                throw new InvalidOperationException();
+                throw DeniedTransition("complete");
 
             CompletedDateTime = DateTimeOffset.UtcNow;
             CurrentStatus = Status.Completed;
         }
 
-        public virtual void TaskFailed()
+        public virtual void TaskFailed(string reason)
         {
+            ArgumentException.ThrowIfNullOrWhiteSpace(reason);
             if (CurrentStatus is Status.Completed or Status.Cancelled)
-                throw new InvalidOperationException();
+                throw DeniedTransition("fail");
 
+            CompletedDateTime = DateTimeOffset.UtcNow;
             CurrentStatus = Status.Failed;
+            FailureReason = reason;
         }
 
         public virtual void TaskStarted(string? taskId = null)
         {
             if (CurrentStatus != Status.New)
-                throw new InvalidOperationException();
+                throw DeniedTransition("start");
 
             CurrentStatus = Status.Running;
             TaskId = taskId;
         }
+
+        // Helpers.
+        //a denied transition names the operation and the status denying it: it is what the task runner reports
+        private InvalidOperationException DeniedTransition(string transition) =>
+            new($"Can't {transition} the migration operation {Id}: its status is {CurrentStatus}");
     }
 }
