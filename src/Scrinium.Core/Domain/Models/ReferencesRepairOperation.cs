@@ -86,6 +86,11 @@ namespace Etherna.Scrinium.Core.Domain.Models
         /// repair in progress, whether or not its owner is still alive.
         /// </summary>
         public virtual bool IsOpen => CurrentStatus is Status.New or Status.Running;
+        /// <summary>
+        /// True while the operation is started and not closed: its task is executing it, or
+        /// died while executing it.
+        /// </summary>
+        public virtual bool IsRunning => CurrentStatus == Status.Running;
 
         /// <summary>
         /// What the operation does to each reference element path it was started with, and how
@@ -184,6 +189,7 @@ namespace Etherna.Scrinium.Core.Domain.Models
 
             CompletedDateTime = DateTimeOffset.UtcNow;
             CurrentStatus = Status.Cancelled;
+            InterruptExecutingPaths();
         }
 
         public virtual void TaskCompleted()
@@ -204,6 +210,7 @@ namespace Etherna.Scrinium.Core.Domain.Models
             CompletedDateTime = DateTimeOffset.UtcNow;
             CurrentStatus = Status.Failed;
             FailureReason = reason;
+            InterruptExecutingPaths();
         }
 
         public virtual void TaskStarted(string? taskId = null)
@@ -219,6 +226,15 @@ namespace Etherna.Scrinium.Core.Domain.Models
         //a denied transition names the operation and the status denying it: it is what the task runner reports
         private InvalidOperationException DeniedTransition(string transition) =>
             new($"Can't {transition} the references repair operation {Id}: its status is {CurrentStatus}");
+
+        /* An operation closing while a path repairs can't leave its state saying so: the path
+         * closes interrupted, keeping what it reported, while the paths never reached stay
+         * pending, as the plan never started them. */
+        private void InterruptExecutingPaths()
+        {
+            foreach (var pathState in _pathStates.Where(pathState => pathState.State == ReferencesRepairPathState.ExecutionState.Executing))
+                pathState.Interrupt();
+        }
 
         /* A path state is written once: advancing one replaces it in place, keeping the order
          * the operation was started with — the plan reads the same, whatever stage it is at. */

@@ -623,6 +623,8 @@
 
         var body = document.createElement('tbody');
         operation.pathStates.forEach(function (pathState) {
+            //a closed operation can't still be repairing a path: it reads as interrupted
+            var state = pathState.state === 'Executing' && isClosed(operation) ? 'Interrupted' : pathState.state;
             var row = document.createElement('tr');
 
             var pathCell = document.createElement('td');
@@ -638,8 +640,8 @@
 
             var stateCell = document.createElement('td');
             var stateBadge = document.createElement('span');
-            stateBadge.className = 'status-badge ' + repairStateBadgeClass(pathState.state);
-            stateBadge.textContent = pathState.state;
+            stateBadge.className = 'status-badge ' + repairStateBadgeClass(state);
+            stateBadge.textContent = state;
             stateCell.appendChild(stateBadge);
             if (pathState.errorMessage) {
                 var error = document.createElement('div');
@@ -671,8 +673,14 @@
             case 'Failed': return 'locked';
             case 'Skipped': return 'cancelled';
             case 'Executing': return 'running';
+            case 'Interrupted': return 'interrupted';
             default: return '';
         }
+    }
+
+    //an operation neither queued nor running is closed, whatever closed it
+    function isClosed(operation) {
+        return operation.status !== 'New' && operation.status !== 'Running';
     }
 
     function refreshStatus() {
@@ -775,7 +783,7 @@
 
         var logList = document.createElement('ol');
         logList.className = 'log-list';
-        renderLogs(logList, operation.logs, true);
+        renderLogs(logList, operation, true);
         container.appendChild(logList);
     }
 
@@ -859,11 +867,14 @@
         container.appendChild(older);
     }
 
-    function renderLogs(list, logs, scrollToBottom) {
+    function renderLogs(list, operation, scrollToBottom) {
         list.innerHTML = '';
-        logs.forEach(function (log) {
+        operation.logs.forEach(function (log) {
+            /* A closed operation can't still be executing a step: the operations closed by the
+             * versions before 0.25.8 keep such a log, and it reads as interrupted. */
+            var logState = log.state === 'Executing' && isClosed(operation) ? 'Interrupted' : log.state;
             var entry = document.createElement('li');
-            entry.className = 'log-entry ' + log.state.toLowerCase();
+            entry.className = 'log-entry ' + logState.toLowerCase();
 
             var time = document.createElement('time');
             time.textContent = formatTime(log.creationDateTime);
@@ -871,7 +882,7 @@
 
             var state = document.createElement('span');
             state.className = 'log-state';
-            state.textContent = log.state.toUpperCase();
+            state.textContent = logState.toUpperCase();
             entry.appendChild(state);
 
             var description = document.createElement('span');
@@ -1011,7 +1022,7 @@
         } else {
             var logList = document.createElement('ol');
             logList.className = 'log-list';
-            renderLogs(logList, operation.logs, false);
+            renderLogs(logList, operation, false);
             entry.appendChild(logList);
         }
 

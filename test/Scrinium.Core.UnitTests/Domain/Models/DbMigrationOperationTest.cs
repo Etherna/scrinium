@@ -106,6 +106,22 @@ namespace Etherna.Scrinium.Core.Domain.Models
         }
 
         [Fact]
+        public void TaskCancelledInterruptsTheExecutingLogs()
+        {
+            // Setup.
+            dbMigrationOp.AddDocumentMigrationLog(new DocumentMigrationLog(
+                "models", MigrationLogBase.ExecutionState.Executing, 500));
+
+            // Action.
+            dbMigrationOp.TaskCancelled();
+
+            // Assert.
+            var documentLog = Assert.IsType<DocumentMigrationLog>(Assert.Single(dbMigrationOp.Logs));
+            Assert.Equal(MigrationLogBase.ExecutionState.Interrupted, documentLog.State);
+            Assert.Equal(500, documentLog.TotMigratedDocs);
+        }
+
+        [Fact]
         public void TaskCancelledStampsTheClosingInstant()
         {
             // Action.
@@ -116,6 +132,46 @@ namespace Etherna.Scrinium.Core.Domain.Models
             Assert.Equal(DbMigrationOperation.Status.Cancelled, dbMigrationOp.CurrentStatus);
             Assert.NotNull(dbMigrationOp.CompletedDateTime);
             Assert.Null(dbMigrationOp.FailureReason);
+        }
+
+        [Fact]
+        public void TaskFailedInterruptsTheExecutingLogsKeepingTheirCounters()
+        {
+            /* The incident this guards: an operation closed failed with its rolling progress
+             * log still executing, reading as a scan in progress under a failed badge, with no
+             * way to tell how far it got. */
+
+            // Setup.
+            dbMigrationOp.TaskStarted("task");
+            dbMigrationOp.AddLog(new DeleteOldIndexesMigrationLog(
+                "modelsA", MigrationLogBase.ExecutionState.Succeeded));
+            dbMigrationOp.AddDocumentMigrationLog(new DocumentMigrationLog(
+                "modelsA",
+                MigrationLogBase.ExecutionState.Executing,
+                207629500,
+                [new DocumentMigrationError("doc1", "FormatException: bad value")],
+                1));
+            dbMigrationOp.AddLog(new BuildNewIndexesMigrationLog(
+                "modelsB", MigrationLogBase.ExecutionState.Executing));
+
+            // Action.
+            dbMigrationOp.TaskFailed("TimeoutException: the cursor timed out");
+
+            // Assert.
+            var logs = dbMigrationOp.Logs.ToArray();
+            Assert.Equal(3, logs.Length);
+            //the ended logs stay as they are
+            Assert.Equal(MigrationLogBase.ExecutionState.Succeeded, logs[0].State);
+            //the executing ones close interrupted, with what they reported until the stop
+            var documentLog = Assert.IsType<DocumentMigrationLog>(logs[1]);
+            Assert.Equal(MigrationLogBase.ExecutionState.Interrupted, documentLog.State);
+            Assert.Equal("modelsA", documentLog.CollectionName);
+            Assert.Equal(207629500, documentLog.TotMigratedDocs);
+            Assert.Equal(1, documentLog.TotErrorDocs);
+            Assert.Single(documentLog.Errors);
+            var buildLog = Assert.IsType<BuildNewIndexesMigrationLog>(logs[2]);
+            Assert.Equal(MigrationLogBase.ExecutionState.Interrupted, buildLog.State);
+            Assert.Equal("modelsB", buildLog.Repository);
         }
 
         [Fact]

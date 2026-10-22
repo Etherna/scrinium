@@ -555,6 +555,12 @@ code {
   font-style: italic;
 }
 
+/* A path the operation was repairing when it closed: what it reports is partial. */
+.status-badge.interrupted {
+  background-color: var(--warning-bg);
+  color: var(--warning);
+}
+
 .status-badge.read-only {
   background-color: var(--info-bg);
   color: var(--info);
@@ -713,6 +719,10 @@ code {
 
 .log-entry.failed .log-state {
   color: #f87171;
+}
+
+.log-entry.interrupted .log-state {
+  color: #fb923c;
 }
 
 .log-entry.skipped .log-state {

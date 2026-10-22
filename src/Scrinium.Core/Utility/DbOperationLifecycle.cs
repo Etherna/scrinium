@@ -12,8 +12,11 @@
 // You should have received a copy of the GNU Lesser General Public License along with Scrinium.
 // If not, see <https://www.gnu.org/licenses/>.
 
+using Etherna.MongoDB.Bson;
 using Etherna.MongoDB.Driver;
 using Etherna.Scrinium.Core.Domain.Models;
+using Etherna.Scrinium.Core.Domain.Models.DbMigrationOpAgg;
+using Etherna.Scrinium.Core.Domain.Models.ReferencesRepairOpAgg;
 using Etherna.Scrinium.Core.Extensions;
 using Microsoft.Extensions.Logging;
 using System;
@@ -33,6 +36,8 @@ namespace Etherna.Scrinium.Core.Utility
         // Consts.
         internal const string LostLeaseFailureReason =
             "The db context lock lease was lost while the operation was running";
+        internal const string ReExecutionFailureReason =
+            "The operation was still running when its execution resumed the db context lock claim: re-executed after the worker executing it died";
 
         /// <summary>
         /// Claim the db context lock with a new operation as owner, and hand it over to the
@@ -131,6 +136,11 @@ namespace Etherna.Scrinium.Core.Utility
                 Builders<OperationBase>.Update
                     .Set(op => ((DbMigrationOperation)op).CurrentStatus, DbMigrationOperation.Status.Cancelled)
                     .Set(op => ((DbMigrationOperation)op).CompletedDateTime, closingDateTime)).ConfigureAwait(false);
+            /* The executing logs and path states of a swept operation close interrupted in the
+             * same update, through an array filter on their state: the swept document reads
+             * consistently, whatever the dead owner was doing. The element and state names are
+             * the stored ones: the execution states are stored as strings, by the enum
+             * representation convention registered with the library. */
             closedOperations += await CloseAsync(
                 Builders<OperationBase>.Filter.OfType<DbMigrationOperation>(op =>
                     op.DbContextName == dbContext.Engine.Identifier &&
@@ -139,7 +149,19 @@ namespace Etherna.Scrinium.Core.Utility
                 Builders<OperationBase>.Update
                     .Set(op => ((DbMigrationOperation)op).CurrentStatus, DbMigrationOperation.Status.Failed)
                     .Set(op => ((DbMigrationOperation)op).CompletedDateTime, closingDateTime)
-                    .Set(op => ((DbMigrationOperation)op).FailureReason, orphanFailureReason)).ConfigureAwait(false);
+                    .Set(op => ((DbMigrationOperation)op).FailureReason, orphanFailureReason)
+                    .Set(
+                        $"{nameof(DbMigrationOperation.Logs)}.$[executingLog].{nameof(MigrationLogBase.State)}",
+                        nameof(MigrationLogBase.ExecutionState.Interrupted)),
+                new UpdateOptions
+                {
+                    ArrayFilters =
+                    [
+                        new BsonDocumentArrayFilterDefinition<BsonDocument>(new BsonDocument(
+                            $"executingLog.{nameof(MigrationLogBase.State)}",
+                            nameof(MigrationLogBase.ExecutionState.Executing)))
+                    ]
+                }).ConfigureAwait(false);
             closedOperations += await CloseAsync(
                 Builders<OperationBase>.Filter.OfType<ReferencesRepairOperation>(op =>
                     op.DbContextName == dbContext.Engine.Identifier &&
@@ -156,22 +178,39 @@ namespace Etherna.Scrinium.Core.Utility
                 Builders<OperationBase>.Update
                     .Set(op => ((ReferencesRepairOperation)op).CurrentStatus, ReferencesRepairOperation.Status.Failed)
                     .Set(op => ((ReferencesRepairOperation)op).CompletedDateTime, closingDateTime)
-                    .Set(op => ((ReferencesRepairOperation)op).FailureReason, orphanFailureReason)).ConfigureAwait(false);
+                    .Set(op => ((ReferencesRepairOperation)op).FailureReason, orphanFailureReason)
+                    .Set(
+                        $"{nameof(ReferencesRepairOperation.PathStates)}.$[executingPath].{nameof(ReferencesRepairPathState.State)}",
+                        nameof(ReferencesRepairPathState.ExecutionState.Interrupted)),
+                new UpdateOptions
+                {
+                    ArrayFilters =
+                    [
+                        new BsonDocumentArrayFilterDefinition<BsonDocument>(new BsonDocument(
+                            $"executingPath.{nameof(ReferencesRepairPathState.State)}",
+                            nameof(ReferencesRepairPathState.ExecutionState.Executing)))
+                    ]
+                }).ConfigureAwait(false);
 
             if (closedOperations > 0)
                 logger.DbOperationClosedOrphanedOperations(closedOperations, dbContext.Engine.Options.DbName);
 
             async Task<long> CloseAsync(
                 FilterDefinition<OperationBase> filter,
-                UpdateDefinition<OperationBase> update) =>
-                (await dbContext.DbOperations.UpdateManyAsync(filter, update).ConfigureAwait(false)).ModifiedCount;
+                UpdateDefinition<OperationBase> update,
+                UpdateOptions? options = null) =>
+                (await dbContext.DbOperations.UpdateManyAsync(filter, update, options).ConfigureAwait(false)).ModifiedCount;
         }
 
         /// <summary>
         /// Execute an operation under the db context lock claimed by its start, closing it
         /// completed or failed. An execution unable to resume that claim doesn't own the lock
         /// anymore — another owner took it over after the lease expiration, or the claim has
-        /// been released — so it closes the operation cancelled without doing anything.
+        /// been released — so it closes the operation cancelled without doing anything. An
+        /// execution finding the operation already running is the task runner re-executing
+        /// the job of a worker that died with the operation in progress: nothing of that run
+        /// resumes, so it closes the operation failed, its executing logs interrupted, without
+        /// doing anything and without failing the job.
         /// </summary>
         /// <param name="dbContext">The db context of the operation</param>
         /// <param name="operationId">The id the start claimed the db context lock with: the
@@ -183,8 +222,8 @@ namespace Etherna.Scrinium.Core.Utility
         /// returning null when the operation completed without errors, or the reason failing
         /// it, recorded on the operation</param>
         /// <param name="logger">The db context logger</param>
-        /// <returns>True when the body ran, false when the claim couldn't be resumed</returns>
-        public static async Task<bool> TryExecuteAsync<TOperation>(
+        /// <returns>Whether the body ran, or why it didn't</returns>
+        public static async Task<DbOperationExecution> TryExecuteAsync<TOperation>(
             IDbContext dbContext,
             string operationId,
             TOperation operation,
@@ -211,11 +250,26 @@ namespace Etherna.Scrinium.Core.Utility
 
                 logger.DbOperationCancelledWithoutLockClaim(operationId, dbContext.Engine.Options.DbName);
 
-                return false;
+                return DbOperationExecution.ClaimNotResumed;
             }
 
             try
             {
+                /* The task runner re-executes the job of a worker that died with the operation
+                 * in progress (its invisibility timeout re-queues what the dead worker had
+                 * fetched): the operation is still running when the claim resumes. Nothing of
+                 * that run resumes, so the operation closes failed, and the job completes
+                 * instead of failing on the denied start, which the runner would only retry. */
+                if (operation.IsRunning)
+                {
+                    operation.TaskFailed(ReExecutionFailureReason);
+                    await dbContext.SaveChangesAsync().ConfigureAwait(false);
+
+                    logger.DbOperationFailedOnReExecution(operationId, dbContext.Engine.Options.DbName);
+
+                    return DbOperationExecution.AlreadyRunning;
+                }
+
                 string? failureReason;
                 try
                 {
@@ -259,7 +313,7 @@ namespace Etherna.Scrinium.Core.Utility
                     await ownedLockLease.DisposeAsync().ConfigureAwait(false);
             }
 
-            return true;
+            return DbOperationExecution.Executed;
         }
     }
 }
