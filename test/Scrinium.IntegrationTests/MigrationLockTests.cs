@@ -330,9 +330,13 @@ namespace Etherna.Scrinium.IntegrationTests
             Assert.NotNull(restartedOp);
             using var verifyScope = fixture.ServiceProvider.CreateScope();
             var verifyDbContext = verifyScope.ServiceProvider.GetRequiredService<IMigrationsDbContext>();
-            Assert.Equal(
-                DbMigrationOperation.Status.Failed,
-                (await verifyDbContext.GetMigrationAsync(runningOp.Id)).CurrentStatus);
+            var sweptOp = await verifyDbContext.GetMigrationAsync(runningOp.Id);
+            Assert.Equal(DbMigrationOperation.Status.Failed, sweptOp.CurrentStatus);
+            //the swept operation says what closed it, and when: nothing else of its owner survives
+            Assert.NotNull(sweptOp.FailureReason);
+            Assert.Contains(restartedOp.Id, sweptOp.FailureReason, StringComparison.Ordinal);
+            Assert.Contains("stopped renewing", sweptOp.FailureReason, StringComparison.Ordinal);
+            Assert.NotNull(sweptOp.CompletedDateTime);
 
             //cleanup: execute the restarted operation, releasing the claim
             await migrationsDbContext.ExecuteMigrationAsync(restartedOp.Id);

@@ -30,6 +30,10 @@ namespace Etherna.Scrinium.Core.Utility
     /// </summary>
     internal static class DbOperationLifecycle
     {
+        // Consts.
+        internal const string LostLeaseFailureReason =
+            "The db context lock lease was lost while the operation was running";
+
         /// <summary>
         /// Claim the db context lock with a new operation as owner, and hand it over to the
         /// background task. The claim is atomic on the server: with concurrent starts from any
@@ -110,41 +114,49 @@ namespace Etherna.Scrinium.Core.Utility
             ILogger logger)
         {
             /* Server side updates tolerate the operations deleted meanwhile by concurrent
-             * losing starts. */
+             * losing starts. The swept operations close with their instant and, the running
+             * ones, with the sweep as their failure reason: the document is all an operator
+             * reads of an operation whose owner died. */
             var closedOperations = 0L;
+            var closingDateTime = DateTimeOffset.UtcNow;
+            var orphanFailureReason =
+                $"Closed as orphaned by the start of operation {startingOperationId}: " +
+                "its owner stopped renewing the db context lock lease";
 
             closedOperations += await CloseAsync(
                 Builders<OperationBase>.Filter.OfType<DbMigrationOperation>(op =>
                     op.DbContextName == dbContext.Engine.Identifier &&
                     op.Id != startingOperationId &&
                     op.CurrentStatus == DbMigrationOperation.Status.New),
-                Builders<OperationBase>.Update.Set(
-                    op => ((DbMigrationOperation)op).CurrentStatus,
-                    DbMigrationOperation.Status.Cancelled)).ConfigureAwait(false);
+                Builders<OperationBase>.Update
+                    .Set(op => ((DbMigrationOperation)op).CurrentStatus, DbMigrationOperation.Status.Cancelled)
+                    .Set(op => ((DbMigrationOperation)op).CompletedDateTime, closingDateTime)).ConfigureAwait(false);
             closedOperations += await CloseAsync(
                 Builders<OperationBase>.Filter.OfType<DbMigrationOperation>(op =>
                     op.DbContextName == dbContext.Engine.Identifier &&
                     op.Id != startingOperationId &&
                     op.CurrentStatus == DbMigrationOperation.Status.Running),
-                Builders<OperationBase>.Update.Set(
-                    op => ((DbMigrationOperation)op).CurrentStatus,
-                    DbMigrationOperation.Status.Failed)).ConfigureAwait(false);
+                Builders<OperationBase>.Update
+                    .Set(op => ((DbMigrationOperation)op).CurrentStatus, DbMigrationOperation.Status.Failed)
+                    .Set(op => ((DbMigrationOperation)op).CompletedDateTime, closingDateTime)
+                    .Set(op => ((DbMigrationOperation)op).FailureReason, orphanFailureReason)).ConfigureAwait(false);
             closedOperations += await CloseAsync(
                 Builders<OperationBase>.Filter.OfType<ReferencesRepairOperation>(op =>
                     op.DbContextName == dbContext.Engine.Identifier &&
                     op.Id != startingOperationId &&
                     op.CurrentStatus == ReferencesRepairOperation.Status.New),
-                Builders<OperationBase>.Update.Set(
-                    op => ((ReferencesRepairOperation)op).CurrentStatus,
-                    ReferencesRepairOperation.Status.Cancelled)).ConfigureAwait(false);
+                Builders<OperationBase>.Update
+                    .Set(op => ((ReferencesRepairOperation)op).CurrentStatus, ReferencesRepairOperation.Status.Cancelled)
+                    .Set(op => ((ReferencesRepairOperation)op).CompletedDateTime, closingDateTime)).ConfigureAwait(false);
             closedOperations += await CloseAsync(
                 Builders<OperationBase>.Filter.OfType<ReferencesRepairOperation>(op =>
                     op.DbContextName == dbContext.Engine.Identifier &&
                     op.Id != startingOperationId &&
                     op.CurrentStatus == ReferencesRepairOperation.Status.Running),
-                Builders<OperationBase>.Update.Set(
-                    op => ((ReferencesRepairOperation)op).CurrentStatus,
-                    ReferencesRepairOperation.Status.Failed)).ConfigureAwait(false);
+                Builders<OperationBase>.Update
+                    .Set(op => ((ReferencesRepairOperation)op).CurrentStatus, ReferencesRepairOperation.Status.Failed)
+                    .Set(op => ((ReferencesRepairOperation)op).CompletedDateTime, closingDateTime)
+                    .Set(op => ((ReferencesRepairOperation)op).FailureReason, orphanFailureReason)).ConfigureAwait(false);
 
             if (closedOperations > 0)
                 logger.DbOperationClosedOrphanedOperations(closedOperations, dbContext.Engine.Options.DbName);
@@ -168,7 +180,8 @@ namespace Etherna.Scrinium.Core.Utility
         /// <param name="taskId">The id of the background task executing it</param>
         /// <param name="executeAsync">The work of the operation, receiving the token cancelled
         /// when the lock lease is lost — the exclusive window is not guaranteed anymore — and
-        /// returning whether the operation completed without errors</param>
+        /// returning null when the operation completed without errors, or the reason failing
+        /// it, recorded on the operation</param>
         /// <param name="logger">The db context logger</param>
         /// <returns>True when the body ran, false when the claim couldn't be resumed</returns>
         public static async Task<bool> TryExecuteAsync<TOperation>(
@@ -176,7 +189,7 @@ namespace Etherna.Scrinium.Core.Utility
             string operationId,
             TOperation operation,
             string? taskId,
-            Func<CancellationToken, Task<bool>> executeAsync,
+            Func<CancellationToken, Task<string?>> executeAsync,
             ILogger logger)
             where TOperation : OperationBase, IRunnableOperation
         {
@@ -203,7 +216,7 @@ namespace Etherna.Scrinium.Core.Utility
 
             try
             {
-                var succeded = false;
+                string? failureReason;
                 try
                 {
                     operation.TaskStarted(taskId);
@@ -212,21 +225,29 @@ namespace Etherna.Scrinium.Core.Utility
                     /* A lost lease cancels the running work: the exclusive window is not
                      * guaranteed anymore. The operation state keeps saving without the token,
                      * to close failed. */
-                    succeded = await executeAsync(lockLease.LeaseLostToken).ConfigureAwait(false);
+                    failureReason = await executeAsync(lockLease.LeaseLostToken).ConfigureAwait(false);
                 }
-                catch (Exception)
+                catch (Exception e)
                 {
                     /* An unhandled exception can't leave the operation on running status, or
-                     * no new operation could ever start on the db context. */
-                    operation.TaskFailed();
+                     * no new operation could ever start on the db context. The operation
+                     * records it: the exception itself reaches the task runner alone. */
+                    operation.TaskFailed($"{e.GetType().Name}: {e.Message}");
                     await dbContext.SaveChangesAsync().ConfigureAwait(false);
                     throw;
                 }
 
-                if (succeded)
+                /* The body reports a lost lease as the cancellation it observed: the lease is
+                 * the cause, so the operation records it first, with what the body reported. */
+                if (lockLease.LeaseLostToken.IsCancellationRequested)
+                    failureReason = failureReason is null
+                        ? LostLeaseFailureReason
+                        : $"{LostLeaseFailureReason}: {failureReason}";
+
+                if (failureReason is null)
                     operation.TaskCompleted();
                 else
-                    operation.TaskFailed();
+                    operation.TaskFailed(failureReason);
 
                 await dbContext.SaveChangesAsync().ConfigureAwait(false);
             }

@@ -543,7 +543,9 @@ namespace Etherna.Scrinium.AspNetCore.UI.Areas.Scrinium.Pages
             status = operation.CurrentStatus.ToString(),
             //the ObjectId id embeds the creation instant
             creationDateTime = ObjectId.TryParse(operation.Id, out var objectId) ? new DateTimeOffset(objectId.CreationTime) : (DateTimeOffset?)null,
+            //the closing instant of every terminal status, and why a failed operation failed
             completedDateTime = operation.CompletedDateTime,
+            failureReason = operation.FailureReason,
             logs = operation.Logs.Select(log => new
             {
                 state = log.State.ToString(),
@@ -573,7 +575,9 @@ namespace Etherna.Scrinium.AspNetCore.UI.Areas.Scrinium.Pages
             status = operation.CurrentStatus.ToString(),
             //the ObjectId id embeds the creation instant
             creationDateTime = ObjectId.TryParse(operation.Id, out var objectId) ? new DateTimeOffset(objectId.CreationTime) : (DateTimeOffset?)null,
+            //the closing instant of every terminal status, and why a failed operation failed
             completedDateTime = operation.CompletedDateTime,
+            failureReason = operation.FailureReason,
             //the plan of the operation, readable from the moment it opens
             pathStates = operation.PathStates.Select(pathState => new
             {

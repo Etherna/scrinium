@@ -992,14 +992,18 @@
 
         var dates = document.createElement('span');
         dates.className = 'history-dates';
-        //a cancelled operation never executed: it has no completion instant to render
-        dates.textContent = 'started ' + formatDateTime(operation.creationDateTime) +
-            (operation.completedDateTime
-                ? ' — completed ' + formatDateTime(operation.completedDateTime)
-                : (operation.status === 'Cancelled' ? ' — cancelled before executing' : ''));
+        dates.textContent = 'started ' + formatDateTime(operation.creationDateTime) + closingLabel(operation);
         summary.appendChild(dates);
 
         entry.appendChild(summary);
+
+        if (operation.failureReason) {
+            var failure = document.createElement('p');
+            failure.className = 'operation-failure';
+            //the reason quotes the exception that failed the operation: never innerHTML
+            failure.textContent = operation.failureReason;
+            entry.appendChild(failure);
+        }
 
         //each kind expands into what it records: the migration logs, the repaired paths
         if (operation.kind === 'ReferencesRepair') {
@@ -1012,6 +1016,26 @@
         }
 
         return entry;
+    }
+
+    /* How an operation closed, with its closing instant: stamped on every terminal status
+     * since 0.25.8, on the completed ones only by the previous versions, whose failed and
+     * cancelled operations render without it. */
+    function closingLabel(operation) {
+        switch (operation.status) {
+            case 'Completed':
+                return ' — completed ' + formatDateTime(operation.completedDateTime);
+            case 'Failed':
+                return operation.completedDateTime
+                    ? ' — failed ' + formatDateTime(operation.completedDateTime)
+                    : ' — failed';
+            case 'Cancelled':
+                return operation.completedDateTime
+                    ? ' — cancelled ' + formatDateTime(operation.completedDateTime)
+                    : ' — cancelled before executing';
+            default:
+                return '';
+        }
     }
 
     function historyBadgeClass(status) {

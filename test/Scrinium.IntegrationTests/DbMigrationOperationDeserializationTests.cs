@@ -121,6 +121,57 @@ namespace Etherna.Scrinium.IntegrationTests
             Assert.Equal(42, documentLog.TotMigratedDocs);
         }
 
+        // "9576a398-3a70-42e1-9beb-491df95bde19" - 0.25.8, failed with its reason and closing instant
+        [Fact]
+        public void DeserializeFailedOperationWrittenBy0258()
+        {
+            // Setup.
+            const string sourceDocument =
+                """
+                {
+                    "_id" : ObjectId("62c0f7e5a0b1c2d3e4f50006"),
+                    "_s" : "9576a398-3a70-42e1-9beb-491df95bde19",
+                    "_t" : "DbMigrationOperation",
+                    "DbContextName" : "MigrationsDbContext",
+                    "CompletedDateTime" : ISODate("2026-10-20T01:37:17.000+0000"),
+                    "CurrentStatus" : "Failed",
+                    "FailureReason" : "Documents migration failed on \"chunks\" repository: OperationCanceledException: The operation was canceled.",
+                    "IsDeprecatedSchemaRewriteEnabled" : true,
+                    "IsDryRun" : true,
+                    "IsStopAtFirstErrorEnabled" : true,
+                    "Logs" : [
+                        {
+                            "_s" : "d2b49514-464e-4b28-8b38-ad2d0cc69d3e",
+                            "_t" : "DocumentMigrationLog",
+                            "State" : "Failed",
+                            "CreationDateTime" : ISODate("2026-10-20T01:37:17.000+0000"),
+                            "CollectionName" : "chunks",
+                            "Errors" : [],
+                            "TotErrorDocs" : NumberLong(0),
+                            "TotMigratedDocs" : NumberLong(207629500)
+                        }
+                    ],
+                    "TaskId" : "6ad6247db54d54243003b014"
+                }
+                """;
+
+            // Action.
+            var operation = DeserializeOperation<DbMigrationOperation>(sourceDocument);
+
+            // Assert.
+            Assert.Equal("62c0f7e5a0b1c2d3e4f50006", operation.Id);
+            Assert.Equal(new DateTimeOffset(2026, 10, 20, 01, 37, 17, TimeSpan.Zero), operation.CompletedDateTime);
+            Assert.Equal(DbMigrationOperation.Status.Failed, operation.CurrentStatus);
+            Assert.Equal(
+                "Documents migration failed on \"chunks\" repository: OperationCanceledException: The operation was canceled.",
+                operation.FailureReason);
+            Assert.True(operation.IsDeprecatedSchemaRewriteEnabled);
+
+            var documentLog = Assert.IsType<DocumentMigrationLog>(Assert.Single(operation.Logs));
+            Assert.Equal(MigrationLogBase.ExecutionState.Failed, documentLog.State);
+            Assert.Equal(207629500, documentLog.TotMigratedDocs);
+        }
+
         // "afdb63c9-791b-41f8-8216-556e233df0de" - 0.25.0, the schema deprecated on 0.25.8: legacy spelling of the succeeded state
         [Fact]
         public void DeserializeOperationWrittenBy0250()

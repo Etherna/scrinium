@@ -28,7 +28,8 @@ namespace Etherna.Scrinium.Core.Utility
     public interface IReferencesRepairManager : IDbContextEngineInitializable
     {
         /// <summary>
-        /// Execute the repair of an operation started before, closing it completed or failed.
+        /// Execute the repair of an operation started before, closing it completed, or failed
+        /// with the reason recorded on it (<see cref="ReferencesRepairOperation.FailureReason"/>).
         /// </summary>
         /// <param name="dbContext">The db context of the operation</param>
         /// <param name="repairOpId">The operation id</param>

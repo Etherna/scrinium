@@ -794,6 +794,15 @@ code {
   width: calc(100% - 1.5rem);
 }
 
+/* Why a failed operation failed: one line per error, as the operation records them. */
+.operation-failure {
+  color: var(--danger);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.75rem;
+  margin: 0.4rem 0 0.2rem;
+  white-space: pre-wrap;
+}
+
 .history-dates {
   color: var(--text-muted);
   font-size: 0.85rem;

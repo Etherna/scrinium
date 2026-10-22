@@ -31,6 +31,8 @@ namespace Etherna.Scrinium.Core.Utility
         /// lease renewed and releasing it at completion, unless an outer flow (e.g. seeding)
         /// already holds a lease; an operation whose claim doesn't resume (its lock has been
         /// taken over by another owner, or released) closes cancelled without migrating.
+        /// A failed operation records why (<see cref="DbMigrationOperation.FailureReason"/>),
+        /// whatever closed it, and every closed operation its closing instant.
         /// </summary>
         /// <param name="dbContext">The db context to migrate</param>
         /// <param name="dbMigrationOpId">Id of the migration operation to execute</param>

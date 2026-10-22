@@ -14,6 +14,7 @@
 
 using Etherna.Scrinium.Core.Domain.Models.DbMigrationOpAgg;
 using Moq;
+using System;
 using System.Linq;
 using Xunit;
 
@@ -102,6 +103,52 @@ namespace Etherna.Scrinium.Core.Domain.Models
 
             // Assert.
             Assert.Equal(2, dbMigrationOp.Logs.Count());
+        }
+
+        [Fact]
+        public void TaskCancelledStampsTheClosingInstant()
+        {
+            // Action.
+            dbMigrationOp.TaskCancelled();
+
+            // Assert.
+            //the closing instant belongs to every terminal status, not to the completed one alone
+            Assert.Equal(DbMigrationOperation.Status.Cancelled, dbMigrationOp.CurrentStatus);
+            Assert.NotNull(dbMigrationOp.CompletedDateTime);
+            Assert.Null(dbMigrationOp.FailureReason);
+        }
+
+        [Fact]
+        public void TaskFailedRecordsTheReasonAndTheClosingInstant()
+        {
+            // Setup.
+            dbMigrationOp.TaskStarted("task");
+
+            // Action.
+            dbMigrationOp.TaskFailed("TimeoutException: the cursor timed out");
+
+            // Assert.
+            Assert.Equal(DbMigrationOperation.Status.Failed, dbMigrationOp.CurrentStatus);
+            Assert.Equal("TimeoutException: the cursor timed out", dbMigrationOp.FailureReason);
+            Assert.NotNull(dbMigrationOp.CompletedDateTime);
+        }
+
+        [Fact]
+        public void TaskStartedDeniesARunningOperationNamingItsStatus()
+        {
+            /* The task runner re-executing the job of a dead worker is the caller meeting this
+             * denial: what it records has to say which operation, and why. */
+
+            // Setup.
+            dbMigrationOp.TaskStarted("task");
+
+            // Action.
+            var exception = Assert.Throws<InvalidOperationException>(() => dbMigrationOp.TaskStarted("retry"));
+
+            // Assert.
+            Assert.Contains("start the migration operation", exception.Message, StringComparison.Ordinal);
+            Assert.Contains("status is Running", exception.Message, StringComparison.Ordinal);
+            Assert.Equal("task", dbMigrationOp.TaskId);
         }
     }
 }

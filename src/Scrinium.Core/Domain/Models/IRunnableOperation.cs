@@ -35,7 +35,14 @@ namespace Etherna.Scrinium.Core.Domain.Models
 
         void TaskCancelled();
         void TaskCompleted();
-        void TaskFailed();
+
+        /// <summary>
+        /// Close the operation failed, recording why: every closing path names its cause,
+        /// since the operation document is what an operator reads afterwards.
+        /// </summary>
+        /// <param name="reason">What failed the operation, as an operator reads it</param>
+        void TaskFailed(string reason);
+
         void TaskStarted(string? taskId = null);
     }
 }

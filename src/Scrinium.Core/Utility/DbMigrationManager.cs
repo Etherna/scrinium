@@ -12,7 +12,6 @@
 // You should have received a copy of the GNU Lesser General Public License along with Scrinium.
 // If not, see <https://www.gnu.org/licenses/>.
 
-using Etherna.MongoDB.Driver;
 using Etherna.MongoDB.Driver.Linq;
 using Etherna.Scrinium.Core.Domain.Models;
 using Etherna.Scrinium.Core.Domain.Models.DbMigrationOpAgg;
@@ -96,7 +95,9 @@ namespace Etherna.Scrinium.Core.Utility
                                 }
                                 catch (Exception e)
                                 {
-                                    errors.Add(e);
+                                    //the step failure keeps its step: the reason names it, the cause travels inner
+                                    errors.Add(new ScriniumDbMigrationException(
+                                        $"Old indexes deletion failed on \"{repository.Name}\" repository", e));
 
                                     dbMigrationOp.AddLog(new DeleteOldIndexesMigrationLog(
                                         repository.Name,
@@ -141,10 +142,16 @@ namespace Etherna.Scrinium.Core.Utility
                                 lockLostCancellation).ConfigureAwait(false);
 
                             if (!result.IsSucceeded)
-                                errors.Add(new ScriniumDbMigrationException(
-                                    result.TotDocumentErrors > 0
-                                        ? $"Documents migration failed on \"{docMigration.SourceRepository.Name}\" repository with {result.TotDocumentErrors} document errors"
-                                        : $"Documents migration failed on \"{docMigration.SourceRepository.Name}\" repository"));
+                            {
+                                var failureMessage = result.TotDocumentErrors > 0
+                                    ? $"Documents migration failed on \"{docMigration.SourceRepository.Name}\" repository with {result.TotDocumentErrors} document errors"
+                                    : $"Documents migration failed on \"{docMigration.SourceRepository.Name}\" repository";
+
+                                //the exception aborting the scan is the root cause: it travels inner, into the log and the reason
+                                errors.Add(result.Exception is null
+                                    ? new ScriniumDbMigrationException(failureMessage)
+                                    : new ScriniumDbMigrationException(failureMessage, result.Exception));
+                            }
 
                             //ended document migration log, replacing the rolling progress one
                             dbMigrationOp.AddDocumentMigrationLog(new DocumentMigrationLog(
@@ -180,7 +187,9 @@ namespace Etherna.Scrinium.Core.Utility
                                 }
                                 catch (Exception e)
                                 {
-                                    errors.Add(e);
+                                    //the step failure keeps its step: the reason names it, the cause travels inner
+                                    errors.Add(new ScriniumDbMigrationException(
+                                        $"New indexes build failed on \"{repository.Name}\" repository", e));
 
                                     dbMigrationOp.AddLog(new BuildNewIndexesMigrationLog(
                                         repository.Name,
@@ -198,7 +207,10 @@ namespace Etherna.Scrinium.Core.Utility
                         errors.Add(e);
                     }
 
-                    return errors.Count == 0;
+                    //the operation records every error, one line each: the aggregate exception below is for the caller
+                    return errors.Count == 0
+                        ? null
+                        : string.Join('\n', errors.Select(DescribeFailure));
                 },
                 logger).ConfigureAwait(false);
 
@@ -299,5 +311,15 @@ namespace Etherna.Scrinium.Core.Utility
             return started ? migrateOp : null;
         }
 
+        // Helpers.
+        /* A migration exception of this manager carries its context in the message, with the
+         * cause inner: the reason reads as the operator needs it, context first, then the type
+         * and message of the exception that failed the step. */
+        private static string DescribeFailure(Exception e) => e switch
+        {
+            ScriniumDbMigrationException { InnerException: { } cause } => $"{e.Message}: {DescribeFailure(cause)}",
+            ScriniumDbMigrationException => e.Message,
+            _ => $"{e.GetType().Name}: {e.Message}"
+        };
     }
 }
