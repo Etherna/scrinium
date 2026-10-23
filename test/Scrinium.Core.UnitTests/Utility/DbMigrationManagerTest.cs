@@ -207,6 +207,88 @@ namespace Etherna.Scrinium.Core.Utility
         }
 
         [Fact]
+        public async Task ExecuteMigrationClosesCancelledWhenAnAbortIsRequestedMidMigration()
+        {
+            /* The request lands on the stored operation, usually from another process: the
+             * execution reads it at its polling interval, trips the token of the running steps
+             * and closes the operation cancelled once they stopped, whatever they reported. */
+
+            // Setup.
+            var abortRequestedDateTime = new DateTimeOffset(2026, 10, 20, 16, 00, 00, TimeSpan.Zero);
+            //no request before the start, the request at the first poll
+            dbOperationsMock.SetupSequence(r => r.AccessToCollectionAsync(
+                    It.IsAny<Func<IMongoCollection<OperationBase>, Task<DateTimeOffset?>>>(), It.IsAny<bool>()))
+                .ReturnsAsync((DateTimeOffset?)null)
+                .ReturnsAsync(abortRequestedDateTime);
+
+            var scanToken = CancellationToken.None;
+            var repositoryMock = new Mock<IRepository>();
+            repositoryMock.Setup(r => r.Name).Returns("fakeModels");
+            repositoryRegistryMock.Setup(r => r.Repositories).Returns([repositoryMock.Object]);
+            var docMigrationMock = new Mock<DocumentMigration>();
+            docMigrationMock.Setup(m => m.SourceRepository).Returns(repositoryMock.Object);
+            docMigrationMock.Setup(m => m.MigrateAsync(It.IsAny<int>(), It.IsAny<Func<long, Task>?>(), It.IsAny<bool>(), It.IsAny<bool>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+                .Returns<int, Func<long, Task>?, bool, bool, int, CancellationToken>(async (_, _, _, _, _, cancellationToken) =>
+                {
+                    /* A long scan, stopping at its next document once its token is cancelled;
+                     * bounded, so a token never cancelled fails the test instead of hanging it. */
+                    scanToken = cancellationToken;
+                    var stopped = new TaskCompletionSource();
+                    using var stopRegistration = cancellationToken.Register(() => stopped.TrySetResult());
+                    await Task.WhenAny(stopped.Task, Task.Delay(TimeSpan.FromSeconds(10)));
+                    return MigrationResult.Failed(500, new OperationCanceledException(cancellationToken));
+                });
+            dbContextMock.Setup(c => c.DocumentMigrationList).Returns([docMigrationMock.Object]);
+
+            // Action.
+            await dbMigrationManager.ExecuteDbContextMigrationAsync(dbContextMock.Object, "opId");
+
+            // Assert.
+            Assert.True(scanToken.IsCancellationRequested);
+            Assert.Equal(DbMigrationOperation.Status.Cancelled, dbMigrationOp.CurrentStatus);
+            Assert.Equal(abortRequestedDateTime, dbMigrationOp.AbortRequestedDateTime);
+            Assert.Null(dbMigrationOp.FailureReason);
+            //the operation stopped at the scan: its log closes interrupted with what it processed, the steps after it never start
+            var logs = dbMigrationOp.Logs.ToArray();
+            Assert.Equal(2, logs.Length);
+            Assert.Equal(MigrationLogBase.ExecutionState.Succeeded, Assert.IsType<DeleteOldIndexesMigrationLog>(logs[0]).State);
+            var documentLog = Assert.IsType<DocumentMigrationLog>(logs[1]);
+            Assert.Equal(MigrationLogBase.ExecutionState.Interrupted, documentLog.State);
+            Assert.Equal(500, documentLog.TotMigratedDocs);
+            repositoryMock.Verify(r => r.BuildNewIndexesAsync(It.IsAny<CancellationToken>()), Times.Never());
+            dbContextLockLeaseMock.Verify(l => l.DisposeAsync(), Times.Once());
+        }
+
+        [Fact]
+        public async Task ExecuteMigrationClosesCancelledWithoutRunningWhenTheAbortPrecedesTheStart()
+        {
+            /* An operation can be aborted while it waits for its task (an idle or stalled
+             * worker): the execution finds the request when it resumes the claim, and closes
+             * the operation cancelled without running anything. */
+
+            // Setup.
+            var abortRequestedDateTime = new DateTimeOffset(2026, 10, 20, 16, 00, 00, TimeSpan.Zero);
+            dbOperationsMock.Setup(r => r.AccessToCollectionAsync(
+                    It.IsAny<Func<IMongoCollection<OperationBase>, Task<DateTimeOffset?>>>(), It.IsAny<bool>()))
+                .ReturnsAsync(abortRequestedDateTime);
+            var docMigrationMock = new Mock<DocumentMigration>();
+            dbContextMock.Setup(c => c.DocumentMigrationList).Returns([docMigrationMock.Object]);
+
+            // Action.
+            await dbMigrationManager.ExecuteDbContextMigrationAsync(dbContextMock.Object, "opId", "taskId");
+
+            // Assert.
+            Assert.Equal(DbMigrationOperation.Status.Cancelled, dbMigrationOp.CurrentStatus);
+            Assert.Equal(abortRequestedDateTime, dbMigrationOp.AbortRequestedDateTime);
+            //never started: no task recorded, no step run
+            Assert.Null(dbMigrationOp.TaskId);
+            docMigrationMock.Verify(
+                m => m.MigrateAsync(It.IsAny<int>(), It.IsAny<Func<long, Task>?>(), It.IsAny<bool>(), It.IsAny<bool>(), It.IsAny<int>(), It.IsAny<CancellationToken>()),
+                Times.Never());
+            dbContextLockLeaseMock.Verify(l => l.DisposeAsync(), Times.Once());
+        }
+
+        [Fact]
         public async Task ExecuteMigrationClosesFailedWhenTheLeaseIsLostMidMigration()
         {
             /* A lost lease cancels the migration steps, but the operation state must still
@@ -434,31 +516,65 @@ namespace Etherna.Scrinium.Core.Utility
         }
 
         [Fact]
-        public async Task ExecuteMigrationForwardsLostLeaseCancellation()
+        public async Task ExecuteMigrationStopsAtTheStepObservingTheLostLease()
         {
+            /* A lost lease cancels the running step through its token, and ends the operation
+             * there: the following steps never start, since nothing guarantees the exclusive
+             * window anymore. The step cancelled closes interrupted, not failed. */
+
             // Setup.
             using var leaseLostTokenSource = new CancellationTokenSource();
             dbContextLockLeaseMock.Setup(l => l.LeaseLostToken).Returns(leaseLostTokenSource.Token);
 
             var repositoryMock = new Mock<IRepository>();
             repositoryMock.Setup(r => r.Name).Returns("fakeModels");
+            repositoryMock.Setup(r => r.DeleteOldIndexesAsync(It.IsAny<CancellationToken>()))
+                .Returns<CancellationToken>(cancellationToken =>
+                {
+                    //the lease is taken over while the old indexes delete: the step observes its token
+                    leaseLostTokenSource.Cancel();
+                    cancellationToken.ThrowIfCancellationRequested();
+                    return Task.CompletedTask;
+                });
             repositoryRegistryMock.Setup(r => r.Repositories).Returns([repositoryMock.Object]);
             var docMigrationMock = new Mock<DocumentMigration>();
             docMigrationMock.Setup(m => m.SourceRepository).Returns(repositoryMock.Object);
-            docMigrationMock.Setup(m => m.MigrateAsync(It.IsAny<int>(), It.IsAny<Func<long, Task>?>(), It.IsAny<bool>(), It.IsAny<bool>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
-                .ReturnsAsync(MigrationResult.Succeeded(1));
             dbContextMock.Setup(c => c.DocumentMigrationList).Returns([docMigrationMock.Object]);
 
             // Action.
             await dbMigrationManager.ExecuteDbContextMigrationAsync(dbContextMock.Object, "opId");
 
             // Assert.
-            //every step observes the lease lost token, aborting work run without exclusivity
+            Assert.Equal(DbMigrationOperation.Status.Failed, dbMigrationOp.CurrentStatus);
+            Assert.StartsWith(DbOperationLifecycle.LostLeaseFailureReason, dbMigrationOp.FailureReason, StringComparison.Ordinal);
+            Assert.Contains("Old indexes deletion interrupted on \"fakeModels\" repository", dbMigrationOp.FailureReason, StringComparison.Ordinal);
+            //the cancelled step is the last one logged, interrupted, and the following ones never ran
+            var deleteLog = Assert.IsType<DeleteOldIndexesMigrationLog>(Assert.Single(dbMigrationOp.Logs));
+            Assert.Equal(MigrationLogBase.ExecutionState.Interrupted, deleteLog.State);
             docMigrationMock.Verify(
-                m => m.MigrateAsync(It.IsAny<int>(), It.IsAny<Func<long, Task>?>(), It.IsAny<bool>(), It.IsAny<bool>(), It.IsAny<int>(), leaseLostTokenSource.Token),
-                Times.Once());
-            repositoryMock.Verify(r => r.DeleteOldIndexesAsync(leaseLostTokenSource.Token), Times.Once());
-            repositoryMock.Verify(r => r.BuildNewIndexesAsync(leaseLostTokenSource.Token), Times.Once());
+                m => m.MigrateAsync(It.IsAny<int>(), It.IsAny<Func<long, Task>?>(), It.IsAny<bool>(), It.IsAny<bool>(), It.IsAny<int>(), It.IsAny<CancellationToken>()),
+                Times.Never());
+            repositoryMock.Verify(r => r.BuildNewIndexesAsync(It.IsAny<CancellationToken>()), Times.Never());
+        }
+
+        [Fact]
+        public async Task ExecuteMigrationKeepsOneLogPerIndexStep()
+        {
+            // Setup.
+            var repositoryMock = new Mock<IRepository>();
+            repositoryMock.Setup(r => r.Name).Returns("fakeModels");
+            repositoryRegistryMock.Setup(r => r.Repositories).Returns([repositoryMock.Object]);
+
+            // Action.
+            await dbMigrationManager.ExecuteDbContextMigrationAsync(dbContextMock.Object, "opId");
+
+            // Assert.
+            //each index step opens executing and ends by replacing that log: two logs for two steps
+            Assert.Equal(DbMigrationOperation.Status.Completed, dbMigrationOp.CurrentStatus);
+            var logs = dbMigrationOp.Logs.ToArray();
+            Assert.Equal(2, logs.Length);
+            Assert.Equal(MigrationLogBase.ExecutionState.Succeeded, Assert.IsType<DeleteOldIndexesMigrationLog>(logs[0]).State);
+            Assert.Equal(MigrationLogBase.ExecutionState.Succeeded, Assert.IsType<BuildNewIndexesMigrationLog>(logs[1]).State);
         }
 
         [Fact]
@@ -562,6 +678,24 @@ namespace Etherna.Scrinium.Core.Utility
             Assert.DoesNotContain(dbMigrationOp.Logs, log => log is BuildNewIndexesMigrationLog { Repository: "readOnlyModels" });
             Assert.Contains(dbMigrationOp.Logs, log => log is DeleteOldIndexesMigrationLog { Repository: "writableModels" });
             Assert.Contains(dbMigrationOp.Logs, log => log is BuildNewIndexesMigrationLog { Repository: "writableModels" });
+        }
+
+        [Fact]
+        public async Task ExecuteMigrationThrowsOnAnAbortedOperationWhenRequired()
+        {
+            // Setup.
+            dbOperationsMock.Setup(r => r.AccessToCollectionAsync(
+                    It.IsAny<Func<IMongoCollection<OperationBase>, Task<DateTimeOffset?>>>(), It.IsAny<bool>()))
+                .ReturnsAsync(new DateTimeOffset(2026, 10, 20, 16, 00, 00, TimeSpan.Zero));
+
+            // Action.
+            var migrationException = await Assert.ThrowsAsync<ScriniumDbMigrationException>(() =>
+                dbMigrationManager.ExecuteDbContextMigrationAsync(dbContextMock.Object, "opId", throwOnErrors: true));
+
+            // Assert.
+            //the abort is told from a claim not resumed and from a failure: the caller asked to stop
+            Assert.Equal(DbMigrationOperation.Status.Cancelled, dbMigrationOp.CurrentStatus);
+            Assert.Contains("aborted", migrationException.Message, StringComparison.Ordinal);
         }
 
         [Fact]

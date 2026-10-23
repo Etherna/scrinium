@@ -603,6 +603,12 @@ code {
   color: #fff;
 }
 
+/* The abort of a running operation: a control that stops work, told apart from the starts. */
+.btn.danger {
+  background-color: var(--danger);
+  border-color: var(--danger);
+}
+
 .btn:disabled {
   background-color: var(--neutral-bg);
   border-color: var(--border);
@@ -660,6 +666,10 @@ code {
   color: var(--text-muted);
   font-size: 0.85rem;
   margin: 0 0 0.5rem;
+}
+
+.abort-requested {
+  color: var(--warning);
 }
 
 .spinner {

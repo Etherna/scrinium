@@ -19,9 +19,11 @@ using Etherna.Scrinium.Core.Domain.Models;
 using Etherna.Scrinium.Core.Domain.Models.DbMigrationOpAgg;
 using Etherna.Scrinium.Core.Domain.Models.ReferencesRepairOpAgg;
 using Etherna.Scrinium.Core.ExecContext.AsyncLocal;
+using Etherna.Scrinium.Core.Migration;
 using Etherna.Scrinium.Core.Options;
 using Etherna.Scrinium.Core.Utility;
 using Etherna.Scrinium.IntegrationTests.Fixtures;
+using Etherna.Scrinium.IntegrationTests.Models;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using System;
@@ -84,6 +86,114 @@ namespace Etherna.Scrinium.IntegrationTests
         }
 
         // Tests.
+        [Fact]
+        public async Task AbortRequestOnAQueuedOperationClosesItWithoutRunning()
+        {
+            /* The operation waits for its task (an idle or stalled worker): the request is
+             * recorded on the queued operation, and its execution closes it cancelled without
+             * running anything. */
+
+            // Setup.
+            using var contextHandler = AsyncLocalContext.Instance.InitAsyncLocalContext();
+            await DeleteMigrationOperationsAsync();
+            await migrationsDbContext.Notes.CreateAsync(new Note("queued"));
+
+            var processedDocuments = 0;
+            migrationsDbContext.DocumentMigrations =
+            [
+                new DocumentMigration<Note, string>(migrationsDbContext.Notes, _ =>
+                {
+                    processedDocuments++;
+                    return Task.CompletedTask;
+                })
+            ];
+            var queuedOp = await migrationsDbContext.TryStartMigrationAsync();
+            Assert.NotNull(queuedOp);
+
+            // Action.
+            var requested = await migrationsDbContext.TryAbortMigrationAsync(queuedOp.Id);
+            await migrationsDbContext.ExecuteMigrationAsync(queuedOp.Id);
+
+            // Assert.
+            Assert.True(requested);
+            Assert.Equal(0, processedDocuments);
+            using var verifyScope = fixture.ServiceProvider.CreateScope();
+            var verifyDbContext = verifyScope.ServiceProvider.GetRequiredService<IMigrationsDbContext>();
+            var abortedOp = await verifyDbContext.GetMigrationAsync(queuedOp.Id);
+            Assert.Equal(DbMigrationOperation.Status.Cancelled, abortedOp.CurrentStatus);
+            Assert.NotNull(abortedOp.AbortRequestedDateTime);
+            Assert.Empty(abortedOp.Logs);
+            //the execution released the claim, as every execution does at its end
+            Assert.False(await migrationsDbContext.Engine.DbContextLock.IsLockedAsync());
+        }
+
+        [Fact]
+        public async Task AbortRequestStopsARunningMigrationAtItsNextSafePoint()
+        {
+            /* The request comes from another scope, like a dashboard request does, while the
+             * execution scans: the execution observes it at its polling interval, stops at the
+             * next document and closes the operation cancelled, releasing the lock only then. */
+
+            // Setup.
+            using var contextHandler = AsyncLocalContext.Instance.InitAsyncLocalContext();
+            await DeleteMigrationOperationsAsync();
+            await migrationsDbContext.Notes.DeleteManyAsync(Builders<Note>.Filter.Empty);
+            for (var i = 0; i < 60; i++)
+                await migrationsDbContext.Notes.CreateAsync(new Note($"note {i}"));
+
+            var startedOp = await migrationsDbContext.TryStartMigrationAsync(dryRun: true);
+            Assert.NotNull(startedOp);
+
+            //the execution on a scope of its own, like the task runner's: a slow scan, signalling its first document
+            var firstDocumentProcessed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            var processedDocuments = 0;
+            var executionTask = Task.Run(async () =>
+            {
+                using var executionContextHandler = AsyncLocalContext.Instance.InitAsyncLocalContext();
+                using var executionScope = fixture.ServiceProvider.CreateScope();
+                var executionDbContext = executionScope.ServiceProvider.GetRequiredService<IMigrationsDbContext>();
+                executionDbContext.DocumentMigrations =
+                [
+                    new DocumentMigration<Note, string>(executionDbContext.Notes, async _ =>
+                    {
+                        Interlocked.Increment(ref processedDocuments);
+                        firstDocumentProcessed.TrySetResult();
+                        await Task.Delay(TimeSpan.FromMilliseconds(150));
+                    })
+                ];
+                await executionDbContext.ExecuteMigrationAsync(startedOp.Id);
+            });
+            await firstDocumentProcessed.Task.WaitAsync(TestTimeout);
+
+            // Action.
+            using var requestScope = fixture.ServiceProvider.CreateScope();
+            var requestDbContext = requestScope.ServiceProvider.GetRequiredService<IMigrationsDbContext>();
+            var requested = await requestDbContext.TryAbortMigrationAsync(startedOp.Id);
+            var requestedAgain = await requestDbContext.TryAbortMigrationAsync(startedOp.Id);
+            var lockedAfterRequest = await migrationsDbContext.Engine.DbContextLock.IsLockedAsync();
+            await executionTask.WaitAsync(TestTimeout);
+
+            // Assert.
+            //a request is recorded once, and the lock holds until the body has actually stopped
+            Assert.True(requested);
+            Assert.False(requestedAgain);
+            Assert.True(lockedAfterRequest);
+            Assert.False(await migrationsDbContext.Engine.DbContextLock.IsLockedAsync());
+            //the scan stopped at a document boundary, before its end
+            Assert.InRange(processedDocuments, 1, 59);
+            using var verifyScope = fixture.ServiceProvider.CreateScope();
+            var verifyDbContext = verifyScope.ServiceProvider.GetRequiredService<IMigrationsDbContext>();
+            var abortedOp = await verifyDbContext.GetMigrationAsync(startedOp.Id);
+            Assert.Equal(DbMigrationOperation.Status.Cancelled, abortedOp.CurrentStatus);
+            Assert.NotNull(abortedOp.AbortRequestedDateTime);
+            var documentLog = Assert.Single(abortedOp.Logs.OfType<DocumentMigrationLog>());
+            //the scan closed interrupted, not failed by its documents, with what it processed
+            Assert.Equal(MigrationLogBase.ExecutionState.Interrupted, documentLog.State);
+            Assert.InRange(documentLog.TotMigratedDocs, 1, 59);
+            //a closed operation takes no request
+            Assert.False(await requestDbContext.TryAbortMigrationAsync(startedOp.Id));
+        }
+
         [Fact]
         public async Task AlreadySeededDbContextClaimsNoLock()
         {

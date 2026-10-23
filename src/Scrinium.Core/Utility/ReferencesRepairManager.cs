@@ -12,6 +12,7 @@
 // You should have received a copy of the GNU Lesser General Public License along with Scrinium.
 // If not, see <https://www.gnu.org/licenses/>.
 
+using Etherna.MongoDB.Driver;
 using Etherna.MongoDB.Driver.Linq;
 using Etherna.Scrinium.Core.Domain.Models;
 using Etherna.Scrinium.Core.Exceptions;
@@ -125,11 +126,15 @@ namespace Etherna.Scrinium.Core.Utility
                     {
                         /* The repair fails whole: it reads the collection references path by
                          * path, so what didn't complete stays as it was. Every path still
-                         * running records the error that stopped it. */
+                         * running records the error that stopped it, unless the token cancelled
+                         * the repair (the lost lease, or an abort): the paths then stay as they
+                         * are, interrupted by the transition closing the operation, and the
+                         * token says why. */
                         error = e;
                         failureReason = $"{e.GetType().Name}: {e.Message}";
 
-                        repairOp.FailOpenPaths(failureReason);
+                        if (!lockLostCancellation.IsCancellationRequested)
+                            repairOp.FailOpenPaths(failureReason);
 
                         await dbContext.SaveChangesAsync(CancellationToken.None).ConfigureAwait(false);
                     }
@@ -138,12 +143,22 @@ namespace Etherna.Scrinium.Core.Utility
                 },
                 logger).ConfigureAwait(false);
 
-            if (execution != DbOperationExecution.Executed)
+            if (execution is DbOperationExecution.ClaimNotResumed or DbOperationExecution.AlreadyRunning)
             {
                 if (throwOnErrors)
                     throw new ScriniumReferencesRepairException(execution == DbOperationExecution.AlreadyRunning
                         ? $"Error repairing references of {dbContext.Engine.Identifier} dbContext: operation {repairOpId} was already running, re-executed after the worker executing it died"
                         : $"Error repairing references of {dbContext.Engine.Identifier} dbContext: operation {repairOpId} doesn't own the db context lock anymore");
+                return;
+            }
+
+            /* An aborted operation stopped on request: what its cancelled steps reported is
+             * not a failure of the operation, so nothing of it logs as one. */
+            if (execution == DbOperationExecution.Aborted)
+            {
+                if (throwOnErrors)
+                    throw new ScriniumReferencesRepairException(
+                        $"Error repairing references of {dbContext.Engine.Identifier} dbContext: operation {repairOpId} was aborted on request");
                 return;
             }
 
@@ -199,6 +214,31 @@ namespace Etherna.Scrinium.Core.Utility
                         .Where(op => op.CurrentStatus == ReferencesRepairOperation.Status.New ||
                                      op.CurrentStatus == ReferencesRepairOperation.Status.Running)
                         .FirstOrDefaultAsync()).ConfigureAwait(false);
+        }
+
+        public async Task<bool> TryAbortReferencesRepairAsync(IDbContext dbContext, string repairOpId)
+        {
+            ArgumentNullException.ThrowIfNull(dbContext);
+            ArgumentNullException.ThrowIfNull(repairOpId);
+
+            // A read-only db context runs no repair: nothing to abort.
+            if (dbContext.Engine.Options.IsReadOnly)
+                return false;
+
+            var requestDateTime = DateTimeOffset.UtcNow;
+            return await DbOperationLifecycle.TryRequestAbortAsync(
+                dbContext,
+                repairOpId,
+                Builders<OperationBase>.Filter.OfType<ReferencesRepairOperation>(op =>
+                    op.Id == repairOpId &&
+                    op.DbContextName == dbContext.Engine.Identifier &&
+                    (op.CurrentStatus == ReferencesRepairOperation.Status.New ||
+                     op.CurrentStatus == ReferencesRepairOperation.Status.Running) &&
+                    op.AbortRequestedDateTime == null),
+                Builders<OperationBase>.Update.Set(
+                    op => ((ReferencesRepairOperation)op).AbortRequestedDateTime,
+                    requestDateTime),
+                logger).ConfigureAwait(false);
         }
 
         public async Task<ReferencesRepairOperation?> TryStartReferencesRepairAsync(

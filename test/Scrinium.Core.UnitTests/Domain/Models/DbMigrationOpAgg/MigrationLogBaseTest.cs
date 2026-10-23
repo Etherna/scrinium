@@ -20,6 +20,34 @@ namespace Etherna.Scrinium.Core.Domain.Models.DbMigrationOpAgg
     public class MigrationLogBaseTest
     {
         [Fact]
+        public void CloseEndsAnExecutingLogInPlace()
+        {
+            // Setup.
+            var log = new BuildNewIndexesMigrationLog("models", MigrationLogBase.ExecutionState.Executing);
+            var creationDateTime = log.CreationDateTime;
+
+            // Action.
+            log.Close(MigrationLogBase.ExecutionState.Failed);
+
+            // Assert.
+            //the same entry ends: a step logs once
+            Assert.Equal(MigrationLogBase.ExecutionState.Failed, log.State);
+            Assert.Equal(creationDateTime, log.CreationDateTime);
+            Assert.Equal("models", log.Repository);
+        }
+
+        [Fact]
+        public void CloseDeniesTheExecutingStateAsAnEnd()
+        {
+            // Setup.
+            var log = new BuildNewIndexesMigrationLog("models", MigrationLogBase.ExecutionState.Executing);
+
+            // Action & assert.
+            Assert.Throws<ArgumentOutOfRangeException>(() => log.Close(MigrationLogBase.ExecutionState.Executing));
+            Assert.Equal(MigrationLogBase.ExecutionState.Executing, log.State);
+        }
+
+        [Fact]
         public void InterruptClosesAnExecutingLogKeepingWhatItReported()
         {
             // Setup.

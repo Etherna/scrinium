@@ -466,6 +466,54 @@ namespace Etherna.Scrinium.AspNetCore.UI.Areas.Scrinium.Pages
             });
         }
 
+        /// <summary>
+        /// Request the abort of the operation running on a db context, a migration or a
+        /// references repair alike. The request is persisted on the operation: its execution,
+        /// usually in another process, observes it and stops at its next safe point, closing
+        /// the operation cancelled with the logs of what it did until then. Nothing is rolled
+        /// back, and the db context lock releases when the body has actually stopped, so the
+        /// next start is allowed exactly when the exclusive window really ended.
+        /// </summary>
+        public async Task<IActionResult> OnPostAbortOperationAsync(string identifier, string operationId)
+        {
+            InitializePage();
+
+            var dbContext = DbContexts.FirstOrDefault(dbc => dbc.Engine.Identifier == identifier);
+            if (dbContext is null)
+                return NotFound();
+
+            /* The page renders the control on the operation it shows running: the open one of
+             * the db context, whose lock lease is alive. The request doesn't have to come from
+             * the control, so the operation is verified again here; a read-only db context
+             * reports no operation state, and has nothing to abort. */
+            if (dbContext.Engine.Options.IsReadOnly)
+                return BadRequest(new
+                {
+                    requested = false,
+                    error = $"The db context \"{identifier}\" is read-only."
+                });
+
+            var openOperation = (OperationBase?)await dbContext.IsMigrationRunningAsync().ConfigureAwait(false)
+                ?? await dbContext.IsReferencesRepairRunningAsync().ConfigureAwait(false);
+            if (openOperation is null ||
+                openOperation.Id != operationId ||
+                !await dbContext.Engine.DbContextLock.IsLockedAsync().ConfigureAwait(false))
+                return BadRequest(new
+                {
+                    requested = false,
+                    error = $"The operation \"{operationId}\" isn't running on \"{identifier}\"."
+                });
+
+            var requested = openOperation switch
+            {
+                DbMigrationOperation => await dbContext.TryAbortMigrationAsync(operationId).ConfigureAwait(false),
+                ReferencesRepairOperation => await dbContext.TryAbortReferencesRepairAsync(operationId).ConfigureAwait(false),
+                _ => false
+            };
+
+            return new JsonResult(new { requested });
+        }
+
         public async Task<IActionResult> OnPostStartMigrationAsync(
             string identifier,
             bool dryRun = false,
@@ -546,6 +594,8 @@ namespace Etherna.Scrinium.AspNetCore.UI.Areas.Scrinium.Pages
             //the closing instant of every terminal status, and why a failed operation failed
             completedDateTime = operation.CompletedDateTime,
             failureReason = operation.FailureReason,
+            //the abort request, when made: the running block says so, the history tells an abort from a cancelled start
+            abortRequestedDateTime = operation.AbortRequestedDateTime,
             logs = operation.Logs.Select(log => new
             {
                 state = log.State.ToString(),
@@ -556,6 +606,9 @@ namespace Etherna.Scrinium.AspNetCore.UI.Areas.Scrinium.Pages
                     DeleteOldIndexesMigrationLog deleteLog => $"Delete old indexes on \"{deleteLog.Repository}\"",
                     DocumentMigrationLog { TotErrorDocs: > 0 } docLog => $"Migrate documents on \"{docLog.CollectionName}\" ({docLog.TotMigratedDocs} docs, {docLog.TotErrorDocs} errors)",
                     DocumentMigrationLog docLog => $"Migrate documents on \"{docLog.CollectionName}\" ({docLog.TotMigratedDocs} docs)",
+#pragma warning disable CS0618 // Type or member is obsolete: the logs written by MongODM 0.24 are still read
+                    IndexMigrationLog indexLog => $"Migrate indexes on \"{indexLog.Repository}\"",
+#pragma warning restore CS0618 // Type or member is obsolete
                     _ => log.GetType().Name
                 },
                 errors = (log as DocumentMigrationLog)?.Errors.Select(error => new
@@ -578,6 +631,8 @@ namespace Etherna.Scrinium.AspNetCore.UI.Areas.Scrinium.Pages
             //the closing instant of every terminal status, and why a failed operation failed
             completedDateTime = operation.CompletedDateTime,
             failureReason = operation.FailureReason,
+            //the abort request, when made: the running block says so, the history tells an abort from a cancelled start
+            abortRequestedDateTime = operation.AbortRequestedDateTime,
             //the plan of the operation, readable from the moment it opens
             pathStates = operation.PathStates.Select(pathState => new
             {

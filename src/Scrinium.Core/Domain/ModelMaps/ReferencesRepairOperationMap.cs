@@ -33,6 +33,8 @@ namespace Etherna.Scrinium.Core.Domain.ModelMaps
                     mm.AutoMap();
 
                     // Set dates representation.
+                    mm.GetMemberMap(m => m.AbortRequestedDateTime).SetSerializer(
+                        new NullableSerializer<DateTimeOffset>(new DateTimeOffsetSerializer(BsonType.DateTime)));
                     mm.GetMemberMap(m => m.CompletedDateTime).SetSerializer(
                         new NullableSerializer<DateTimeOffset>(new DateTimeOffsetSerializer(BsonType.DateTime)));
                 })
@@ -46,6 +48,8 @@ namespace Etherna.Scrinium.Core.Domain.ModelMaps
                         mm.AutoMap();
 
                         // Set dates representation.
+                        mm.GetMemberMap(m => m.AbortRequestedDateTime).SetSerializer(
+                            new NullableSerializer<DateTimeOffset>(new DateTimeOffsetSerializer(BsonType.DateTime)));
                         mm.GetMemberMap(m => m.CompletedDateTime).SetSerializer(
                             new NullableSerializer<DateTimeOffset>(new DateTimeOffsetSerializer(BsonType.DateTime)));
                     });

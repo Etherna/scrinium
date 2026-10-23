@@ -40,6 +40,17 @@ namespace Etherna.Scrinium.Core.Utility
             "The operation was still running when its execution resumed the db context lock claim: re-executed after the worker executing it died";
 
         /// <summary>
+        /// The interval an execution re-reads its stored operation at, looking for an abort
+        /// request. Fixed and short: the lease renewals run at a fifth of the lease duration
+        /// (minutes, or hours on a long lease) and the progress callbacks every hundreds of
+        /// documents, so neither can serve the abort; one small read every few seconds costs
+        /// nothing, for the duration of the operation.
+        /// </summary>
+        internal static readonly TimeSpan AbortRequestPollingInterval = TimeSpan.FromSeconds(3);
+
+        private const string AbortRequestedDateTimeElementName = nameof(DbMigrationOperation.AbortRequestedDateTime);
+
+        /// <summary>
         /// Claim the db context lock with a new operation as owner, and hand it over to the
         /// background task. The claim is atomic on the server: with concurrent starts from any
         /// process a single operation wins, and the losers delete themselves.
@@ -210,7 +221,14 @@ namespace Etherna.Scrinium.Core.Utility
         /// execution finding the operation already running is the task runner re-executing
         /// the job of a worker that died with the operation in progress: nothing of that run
         /// resumes, so it closes the operation failed, its executing logs interrupted, without
-        /// doing anything and without failing the job.
+        /// doing anything and without failing the job. An
+        /// abort requested on the stored operation (<see cref="TryRequestAbortAsync"/>) is
+        /// observed at <see cref="AbortRequestPollingInterval"/>: it cancels the token of the
+        /// body, that stops at its next safe point, and closes the operation cancelled once the
+        /// body has stopped, so the lock releases exactly when the exclusive window ended; a
+        /// request preceding the start closes the operation without running anything. Under an
+        /// ambient lease (a seeding) the operation belongs to the outer flow, which the abort
+        /// doesn't address: the request stays unobserved.
         /// </summary>
         /// <param name="dbContext">The db context of the operation</param>
         /// <param name="operationId">The id the start claimed the db context lock with: the
@@ -218,11 +236,11 @@ namespace Etherna.Scrinium.Core.Utility
         /// <param name="operation">The operation to execute, already persisted by its start</param>
         /// <param name="taskId">The id of the background task executing it</param>
         /// <param name="executeAsync">The work of the operation, receiving the token cancelled
-        /// when the lock lease is lost — the exclusive window is not guaranteed anymore — and
-        /// returning null when the operation completed without errors, or the reason failing
-        /// it, recorded on the operation</param>
+        /// when the lock lease is lost — the exclusive window is not guaranteed anymore — or
+        /// when an abort is requested, and returning null when the operation completed without
+        /// errors, or the reason failing it, recorded on the operation</param>
         /// <param name="logger">The db context logger</param>
-        /// <returns>Whether the body ran, or why it didn't</returns>
+        /// <returns>Whether the body ran to its end, or why it didn't</returns>
         public static async Task<DbOperationExecution> TryExecuteAsync<TOperation>(
             IDbContext dbContext,
             string operationId,
@@ -270,16 +288,59 @@ namespace Etherna.Scrinium.Core.Utility
                     return DbOperationExecution.AlreadyRunning;
                 }
 
+                /* The abort requests are observed by an execution owning the lease alone: under
+                 * an ambient one the operation belongs to the outer flow (a seeding), which the
+                 * abort doesn't address. A request persisted while the operation waited for
+                 * its task closes it without running anything. */
+                var observesAbortRequests = ownedLockLease is not null;
+                if (observesAbortRequests)
+                {
+                    var earlyAbortRequest = await TryReadAbortRequestAsync(dbContext, operationId).ConfigureAwait(false);
+                    if (earlyAbortRequest is not null)
+                    {
+                        await CloseAbortedAsync(dbContext, operation, earlyAbortRequest.Value, logger).ConfigureAwait(false);
+                        return DbOperationExecution.Aborted;
+                    }
+                }
+
                 string? failureReason;
+                DateTimeOffset? observedAbortRequest = null;
                 try
                 {
                     operation.TaskStarted(taskId);
                     await dbContext.SaveChangesAsync().ConfigureAwait(false);
 
                     /* A lost lease cancels the running work: the exclusive window is not
-                     * guaranteed anymore. The operation state keeps saving without the token,
-                     * to close failed. */
-                    failureReason = await executeAsync(lockLease.LeaseLostToken).ConfigureAwait(false);
+                     * guaranteed anymore. An abort request cancels the same cooperative path,
+                     * through the token the observer trips when it reads the request. The
+                     * operation state keeps saving without the token, to close failed or
+                     * cancelled. */
+                    var abortTokenSource = new CancellationTokenSource();
+                    var observerStopTokenSource = new CancellationTokenSource();
+                    try
+                    {
+                        using var executionTokenSource = CancellationTokenSource.CreateLinkedTokenSource(
+                            lockLease.LeaseLostToken, abortTokenSource.Token);
+                        var observerTask = observesAbortRequests
+                            ? ObserveAbortRequestsAsync(dbContext, operationId, abortTokenSource, logger, observerStopTokenSource.Token)
+                            : Task.FromResult<DateTimeOffset?>(null);
+                        try
+                        {
+                            failureReason = await executeAsync(executionTokenSource.Token).ConfigureAwait(false);
+                        }
+                        finally
+                        {
+                            //the body ended, by itself or on the request: nothing to observe anymore
+                            await observerStopTokenSource.CancelAsync().ConfigureAwait(false);
+                            observedAbortRequest = await observerTask.ConfigureAwait(false);
+                        }
+                    }
+                    finally
+                    {
+                        //disposed once the observer using them has returned
+                        abortTokenSource.Dispose();
+                        observerStopTokenSource.Dispose();
+                    }
                 }
                 catch (Exception e)
                 {
@@ -289,6 +350,14 @@ namespace Etherna.Scrinium.Core.Utility
                     operation.TaskFailed($"{e.GetType().Name}: {e.Message}");
                     await dbContext.SaveChangesAsync().ConfigureAwait(false);
                     throw;
+                }
+
+                /* The request wins over the body result: a body stopped by the abort reports
+                 * the cancellation as a failure it didn't choose. */
+                if (observedAbortRequest is not null)
+                {
+                    await CloseAbortedAsync(dbContext, operation, observedAbortRequest.Value, logger).ConfigureAwait(false);
+                    return DbOperationExecution.Aborted;
                 }
 
                 /* The body reports a lost lease as the cancellation it observed: the lease is
@@ -314,6 +383,127 @@ namespace Etherna.Scrinium.Core.Utility
             }
 
             return DbOperationExecution.Executed;
+        }
+
+        /// <summary>
+        /// Persist the request to abort an open operation, atomically on the server. The
+        /// request lands on the operation document, where its execution observes it and stops
+        /// at its next safe point, closing the operation cancelled with the logs of what it did
+        /// until then: the dashboard process is rarely the worker executing the operation, and
+        /// the task runner offers no interruption of a running job, so nothing reaches the
+        /// task itself. Releasing the lock claim is not an abort: it would open the exclusive
+        /// window to a new start while the aborted body is still running.
+        /// </summary>
+        /// <param name="dbContext">The db context of the operation</param>
+        /// <param name="operationId">The operation to abort</param>
+        /// <param name="openOperationFilter">The operation to abort, as its kind selects it:
+        /// of this db context, still open, not yet asked to abort. The request matches
+        /// nothing else</param>
+        /// <param name="abortRequestUpdate">The update recording the request instant</param>
+        /// <param name="logger">The db context logger</param>
+        /// <returns>True when the request was recorded, false when the operation isn't open on
+        /// this db context, or its abort was already requested</returns>
+        public static async Task<bool> TryRequestAbortAsync(
+            IDbContext dbContext,
+            string operationId,
+            FilterDefinition<OperationBase> openOperationFilter,
+            UpdateDefinition<OperationBase> abortRequestUpdate,
+            ILogger logger)
+        {
+            /* The request arrives while the operation may hold the in-process exclusive
+             * access: it runs with the allowance of the operation state reads. */
+            using var exclusiveAccess = new ExclusiveAccessHandler(dbContext.Engine);
+
+            var result = await dbContext.DbOperations.UpdateManyAsync(
+                openOperationFilter, abortRequestUpdate).ConfigureAwait(false);
+            if (result.MatchedCount == 0)
+                return false;
+
+            logger.DbOperationAbortRequested(operationId, dbContext.Engine.Options.DbName);
+
+            return true;
+        }
+
+        // Helpers.
+        private static async Task CloseAbortedAsync<TOperation>(
+            IDbContext dbContext,
+            TOperation operation,
+            DateTimeOffset abortRequestedDateTime,
+            ILogger logger)
+            where TOperation : OperationBase, IRunnableOperation
+        {
+            //the operation in memory records the request it observed, as the stored one does
+            operation.ObserveAbortRequest(abortRequestedDateTime);
+            operation.TaskCancelled();
+            await dbContext.SaveChangesAsync().ConfigureAwait(false);
+
+            logger.DbOperationAborted(operation.Id, dbContext.Engine.Options.DbName, abortRequestedDateTime);
+        }
+
+        /* The observer runs beside the body, on a flow of its own forked from the execution:
+         * it polls the stored request and trips the abort token when it finds one, returning
+         * the request instant. Stopped when the body ends, it returns null. */
+        private static async Task<DateTimeOffset?> ObserveAbortRequestsAsync(
+            IDbContext dbContext,
+            string operationId,
+            CancellationTokenSource abortTokenSource,
+            ILogger logger,
+            CancellationToken stopToken)
+        {
+            try
+            {
+                while (true)
+                {
+                    await Task.Delay(AbortRequestPollingInterval, stopToken).ConfigureAwait(false);
+
+                    DateTimeOffset? abortRequestedDateTime;
+                    try
+                    {
+                        abortRequestedDateTime = await TryReadAbortRequestAsync(dbContext, operationId).ConfigureAwait(false);
+                    }
+                    catch (Exception e)
+                    {
+                        /* A failing poll delays the abort, it doesn't fail the operation: the
+                         * next poll retries, and a database lost for longer ends the lease. */
+                        logger.DbOperationAbortRequestPollFailed(operationId, dbContext.Engine.Options.DbName, e);
+                        continue;
+                    }
+
+                    if (abortRequestedDateTime is null)
+                        continue;
+
+                    await abortTokenSource.CancelAsync().ConfigureAwait(false);
+                    return abortRequestedDateTime;
+                }
+            }
+            catch (OperationCanceledException) when (stopToken.IsCancellationRequested)
+            {
+                //the body ended first
+                return null;
+            }
+        }
+
+        /* The request is read raw, where whoever asked it wrote it: a typed read through the
+         * db context would hand back the tracked instance of the executing flow, which another
+         * process never updates. It runs with the exclusive access allowance of the operation
+         * state reads, since the operation itself may hold the exclusive access. */
+        private static async Task<DateTimeOffset?> TryReadAbortRequestAsync(IDbContext dbContext, string operationId)
+        {
+            using var exclusiveAccess = new ExclusiveAccessHandler(dbContext.Engine);
+
+            return await dbContext.DbOperations.AccessToCollectionAsync<DateTimeOffset?>(async collection =>
+            {
+                var document = await collection
+                    .Find(Builders<OperationBase>.Filter.Eq(op => op.Id, operationId))
+                    .Project(Builders<OperationBase>.Projection.Include(AbortRequestedDateTimeElementName))
+                    .FirstOrDefaultAsync().ConfigureAwait(false);
+
+                return document is not null &&
+                       document.TryGetValue(AbortRequestedDateTimeElementName, out var value) &&
+                       value is BsonDateTime abortRequestedDateTime
+                    ? new DateTimeOffset(abortRequestedDateTime.ToUniversalTime())
+                    : null;
+            }).ConfigureAwait(false);
         }
     }
 }

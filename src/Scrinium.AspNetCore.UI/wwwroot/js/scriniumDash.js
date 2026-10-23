@@ -775,6 +775,30 @@
             (operation.stopAtFirstError ? ' — stops at the first failing document' : '');
         container.appendChild(meta);
 
+        /* The abort, for both kinds: once requested, the block says so until the status
+         * reports the operation closed; until then the control, as long as the operation runs. */
+        if (operation.abortRequestedDateTime) {
+            var abortNotice = document.createElement('p');
+            abortNotice.className = 'migration-live-meta abort-requested';
+            abortNotice.textContent = 'Abort requested at ' + formatDateTime(operation.abortRequestedDateTime) +
+                ': the operation stops at its next safe point.';
+            container.appendChild(abortNotice);
+        } else {
+            var abortButton = document.createElement('button');
+            abortButton.type = 'button';
+            abortButton.className = 'btn danger';
+            abortButton.dataset.role = 'abort';
+            abortButton.textContent = 'Abort';
+            abortButton.addEventListener('click', function () {
+                abortOperation(container.closest('.dbcontext-card'), operation, abortButton);
+            });
+            //the control takes the row of the notice it alternates with, spaced from the logs below like it
+            var abortRow = document.createElement('p');
+            abortRow.className = 'migration-live-meta';
+            abortRow.appendChild(abortButton);
+            container.appendChild(abortRow);
+        }
+
         //each kind reports what it records: the migration logs, the state of each repaired path
         if (operation.kind === 'ReferencesRepair') {
             container.appendChild(buildRepairPathsTable(operation));
@@ -785,6 +809,48 @@
         logList.className = 'log-list';
         renderLogs(logList, operation, true);
         container.appendChild(logList);
+    }
+
+    function abortOperation(card, operation, button) {
+        var message = 'Abort the ' + operationKindLabel(operation.kind).toLowerCase() + ' operation ' + operation.id +
+            ' on "' + card.dataset.identifier + '"?\n\n' +
+            'It stops at its next safe point and closes cancelled, with the logs of what it did until then. ' +
+            'Nothing is rolled back: the documents already rewritten stay rewritten, and an index build ' +
+            'already sent to the server completes there.\n\n' +
+            'The db context lock releases when the operation has actually stopped.';
+        if (!window.confirm(message))
+            return;
+
+        button.disabled = true;
+
+        fetch(baseUrl + '?handler=AbortOperation', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'RequestVerificationToken': antiforgeryToken
+            },
+            body: new URLSearchParams({
+                identifier: card.dataset.identifier,
+                operationId: operation.id
+            })
+        }).then(function (response) {
+            //a request rejected by the server reports its reason in the body, with an error status
+            return response.json().then(function (result) {
+                if (!response.ok && !result.error)
+                    throw new Error('HTTP ' + response.status);
+                return result;
+            });
+        }).then(function (result) {
+            if (result.error)
+                showFeedback(card, result.error);
+            else if (!result.requested)
+                showFeedback(card, 'Abort not requested: the operation closed, or its abort was already requested.');
+            refreshStatus();
+        }).catch(function () {
+            showFeedback(card, 'Abort request failed.');
+            button.disabled = false;
+            refreshStatus();
+        });
     }
 
     function toggleHistoryExpansion(card) {
@@ -869,7 +935,15 @@
 
     function renderLogs(list, operation, scrollToBottom) {
         list.innerHTML = '';
-        operation.logs.forEach(function (log) {
+        operation.logs.forEach(function (log, index) {
+            /* A step logs once, its ended log replacing the executing one. The operations written
+             * by the previous versions keep both for the index steps: an entry left executing, or
+             * interrupted by the close, followed by the ended entry of the same step is that
+             * step's start, rendered once by its end. */
+            if ((log.state === 'Executing' || log.state === 'Interrupted') &&
+                operation.logs.slice(index + 1).some(function (later) { return later.description === log.description; }))
+                return;
+
             /* A closed operation can't still be executing a step: the operations closed by the
              * versions before 0.25.8 keep such a log, and it reads as interrupted. */
             var logState = log.state === 'Executing' && isClosed(operation) ? 'Interrupted' : log.state;
@@ -1041,6 +1115,11 @@
                     ? ' — failed ' + formatDateTime(operation.completedDateTime)
                     : ' — failed';
             case 'Cancelled':
+                /* An aborted operation stopped on request, and tells when it was asked; a
+                 * cancelled one without a request never executed. */
+                if (operation.abortRequestedDateTime)
+                    return ' — aborted ' + formatDateTime(operation.completedDateTime) +
+                        ' on the request of ' + formatDateTime(operation.abortRequestedDateTime);
                 return operation.completedDateTime
                     ? ' — cancelled ' + formatDateTime(operation.completedDateTime)
                     : ' — cancelled before executing';
