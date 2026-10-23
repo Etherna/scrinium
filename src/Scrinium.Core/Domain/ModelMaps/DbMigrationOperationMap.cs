@@ -20,6 +20,7 @@ using Etherna.Scrinium.Core.Serialization;
 using Etherna.Scrinium.Core.Serialization.Serializers;
 using System;
 using System.Collections.Generic;
+using System.Threading.Tasks;
 
 namespace Etherna.Scrinium.Core.Domain.ModelMaps
 {
@@ -27,8 +28,8 @@ namespace Etherna.Scrinium.Core.Domain.ModelMaps
     {
         public void Register(IDbContextEngine dbContextEngine)
         {
-            dbContextEngine.MapRegistry.AddModelMap<BuildNewIndexesMigrationLog>("555eed70-62e2-4d85-ac47-75bae10eefa9");
-            dbContextEngine.MapRegistry.AddModelMap<DbMigrationOperation>("9576a398-3a70-42e1-9beb-491df95bde19",
+            dbContextEngine.MapRegistry.AddModelMap<BuildNewIndexesMigrationLog>("555eed70-62e2-4d85-ac47-75bae10eefa9"); //0.25.0
+            dbContextEngine.MapRegistry.AddModelMap<DbMigrationOperation>("9576a398-3a70-42e1-9beb-491df95bde19", //0.25.8
                 mm =>
                 {
                     mm.AutoMap();
@@ -42,8 +43,11 @@ namespace Etherna.Scrinium.Core.Domain.ModelMaps
                 /* The schema of the operations written until 0.25.7, whose logs spell the
                  * succeeded state "Succeded": the same members, kept as a secondary schema so
                  * the rewrite of the deprecated schemas migrates those operations like any
-                 * other document. Dropped in 1.0.0, with the deprecated schema id element. */
-                .AddSecondarySchema("afdb63c9-791b-41f8-8216-556e233df0de",
+                 * other document. The ones written by MongODM 0.24 carry index logs of an
+                 * obsolete type too: the fix replaces them with the current logs, so the
+                 * rewrite leaves none stored. Dropped in 1.0.0, with the deprecated schema id
+                 * element. */
+                .AddSecondarySchema("afdb63c9-791b-41f8-8216-556e233df0de", //0.22.0
                     mm =>
                     {
                         mm.AutoMap();
@@ -53,11 +57,16 @@ namespace Etherna.Scrinium.Core.Domain.ModelMaps
                             new NullableSerializer<DateTimeOffset>(new DateTimeOffsetSerializer(BsonType.DateTime)));
                         mm.GetMemberMap(m => m.CompletedDateTime).SetSerializer(
                             new NullableSerializer<DateTimeOffset>(new DateTimeOffsetSerializer(BsonType.DateTime)));
+                    },
+                    fixDeserializedModelFunc: (_, operation) =>
+                    {
+                        operation.ReplaceLegacyIndexLogs();
+                        return Task.FromResult(operation);
                     });
-            dbContextEngine.MapRegistry.AddModelMap<DeleteOldIndexesMigrationLog>("ac9d8011-6247-4365-b8ca-ac8401f838a1");
-            dbContextEngine.MapRegistry.AddModelMap<DocumentMigrationError>("15b8f6c8-8e94-4849-a3ce-4f0eb2cbb556");
-            dbContextEngine.MapRegistry.AddModelMap<DocumentMigrationLog>("d2b49514-464e-4b28-8b38-ad2d0cc69d3e");
-            dbContextEngine.MapRegistry.AddModelMap<MigrationLogBase>("1696c0c9-d615-44d9-ab9b-4e3618164185",
+            dbContextEngine.MapRegistry.AddModelMap<DeleteOldIndexesMigrationLog>("ac9d8011-6247-4365-b8ca-ac8401f838a1"); //0.25.0
+            dbContextEngine.MapRegistry.AddModelMap<DocumentMigrationError>("15b8f6c8-8e94-4849-a3ce-4f0eb2cbb556"); //0.25.0
+            dbContextEngine.MapRegistry.AddModelMap<DocumentMigrationLog>("d2b49514-464e-4b28-8b38-ad2d0cc69d3e"); //0.22.0
+            dbContextEngine.MapRegistry.AddModelMap<MigrationLogBase>("1696c0c9-d615-44d9-ab9b-4e3618164185", //0.22.0
                 mm =>
                 {
                     mm.AutoMap();
@@ -80,7 +89,7 @@ namespace Etherna.Scrinium.Core.Domain.ModelMaps
             
             //obsolete
 #pragma warning disable CS0618 // Type or member is obsolete
-            dbContextEngine.MapRegistry.AddModelMap<IndexMigrationLog>("24d65670-a3c3-443c-977a-51112df04e2a");
+            dbContextEngine.MapRegistry.AddModelMap<IndexMigrationLog>("24d65670-a3c3-443c-977a-51112df04e2a"); //0.22.0
 #pragma warning restore CS0618 // Type or member is obsolete
         }
     }

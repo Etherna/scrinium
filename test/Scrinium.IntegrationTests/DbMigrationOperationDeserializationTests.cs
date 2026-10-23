@@ -282,7 +282,7 @@ namespace Etherna.Scrinium.IntegrationTests
             Assert.Equal("9d2ad0b6", operation.TaskId);
 
             var logs = operation.Logs.ToArray();
-            Assert.Equal(2, logs.Length);
+            Assert.Equal(3, logs.Length);
 
             //the migration errors didn't exist yet: the log reads with none of them
             var documentLog = Assert.IsType<DocumentMigrationLog>(logs[0]);
@@ -293,12 +293,15 @@ namespace Etherna.Scrinium.IntegrationTests
             Assert.Equal(0, documentLog.TotErrorDocs);
             Assert.Equal(42, documentLog.TotMigratedDocs);
 
-#pragma warning disable CS0618 // Type or member is obsolete
-            var indexLog = Assert.IsType<IndexMigrationLog>(logs[1]);
-            Assert.Equal("notes", indexLog.Repository);
-#pragma warning restore CS0618 // Type or member is obsolete
-            Assert.Equal(new DateTimeOffset(2024, 06, 01, 10, 02, 00, TimeSpan.Zero), indexLog.CreationDateTime);
-            Assert.Equal(MigrationLogBase.ExecutionState.Succeeded, indexLog.State);
+            //the single index step of the time reads as the two steps it did, at its place, state and instant
+            var buildLog = Assert.IsType<BuildNewIndexesMigrationLog>(logs[1]);
+            Assert.Equal("notes", buildLog.Repository);
+            Assert.Equal(new DateTimeOffset(2024, 06, 01, 10, 02, 00, TimeSpan.Zero), buildLog.CreationDateTime);
+            Assert.Equal(MigrationLogBase.ExecutionState.Succeeded, buildLog.State);
+            var deleteLog = Assert.IsType<DeleteOldIndexesMigrationLog>(logs[2]);
+            Assert.Equal("notes", deleteLog.Repository);
+            Assert.Equal(new DateTimeOffset(2024, 06, 01, 10, 02, 00, TimeSpan.Zero), deleteLog.CreationDateTime);
+            Assert.Equal(MigrationLogBase.ExecutionState.Succeeded, deleteLog.State);
         }
 
         // "f2a7c1e4-63b9-4d08-9a35-7e0c4b8d1f62" - 0.25.7, the schema deprecated on 0.25.8: legacy spelling of the succeeded state

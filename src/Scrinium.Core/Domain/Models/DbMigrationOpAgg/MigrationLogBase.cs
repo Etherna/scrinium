@@ -34,8 +34,15 @@ namespace Etherna.Scrinium.Core.Domain.Models.DbMigrationOpAgg
 
         // Constructors.
         protected MigrationLogBase(ExecutionState state)
+            : this(state, DateTimeOffset.UtcNow)
+        { }
+        /// <summary>
+        /// A log dated at an instant of the past: the conversion of a stored log keeps the
+        /// instant it was written at.
+        /// </summary>
+        protected MigrationLogBase(ExecutionState state, DateTimeOffset creationDateTime)
         {
-            CreationDateTime = DateTimeOffset.UtcNow;
+            CreationDateTime = creationDateTime;
             State = state;
         }
         protected MigrationLogBase() { }
