@@ -563,6 +563,12 @@ namespace Etherna.Scrinium.Core
             }
         }
 
+        public Task<bool> TryAbortMigrationAsync(string dbMigrationOpId) =>
+            engine.DbMigrationManager.TryAbortDbContextMigrationAsync(this, dbMigrationOpId);
+
+        public Task<bool> TryAbortReferencesRepairAsync(string referencesRepairOpId) =>
+            engine.ReferencesRepairManager.TryAbortReferencesRepairAsync(this, referencesRepairOpId);
+
         public Task<IResourceLockLease?> TryAcquireResourceLockAsync(
             string resourceNamespace,
             string resourceId,

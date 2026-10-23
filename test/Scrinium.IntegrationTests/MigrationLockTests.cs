@@ -16,9 +16,14 @@ using Etherna.MongoDB.Bson;
 using Etherna.MongoDB.Driver;
 using Etherna.MongoDB.Driver.Linq;
 using Etherna.Scrinium.Core.Domain.Models;
+using Etherna.Scrinium.Core.Domain.Models.DbMigrationOpAgg;
+using Etherna.Scrinium.Core.Domain.Models.ReferencesRepairOpAgg;
 using Etherna.Scrinium.Core.ExecContext.AsyncLocal;
+using Etherna.Scrinium.Core.Migration;
+using Etherna.Scrinium.Core.Options;
 using Etherna.Scrinium.Core.Utility;
 using Etherna.Scrinium.IntegrationTests.Fixtures;
+using Etherna.Scrinium.IntegrationTests.Models;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using System;
@@ -75,11 +80,120 @@ namespace Etherna.Scrinium.IntegrationTests
             using var contextHandler = AsyncLocalContext.Instance.InitAsyncLocalContext();
             await DeleteLockDocumentAsync();
             await DeleteMigrationOperationsAsync();
+            await DeleteReferencesRepairOperationsAsync();
 
             serviceScope.Dispose();
         }
 
         // Tests.
+        [Fact]
+        public async Task AbortRequestOnAQueuedOperationClosesItWithoutRunning()
+        {
+            /* The operation waits for its task (an idle or stalled worker): the request is
+             * recorded on the queued operation, and its execution closes it cancelled without
+             * running anything. */
+
+            // Setup.
+            using var contextHandler = AsyncLocalContext.Instance.InitAsyncLocalContext();
+            await DeleteMigrationOperationsAsync();
+            await migrationsDbContext.Notes.CreateAsync(new Note("queued"));
+
+            var processedDocuments = 0;
+            migrationsDbContext.DocumentMigrations =
+            [
+                new DocumentMigration<Note, string>(migrationsDbContext.Notes, _ =>
+                {
+                    processedDocuments++;
+                    return Task.CompletedTask;
+                })
+            ];
+            var queuedOp = await migrationsDbContext.TryStartMigrationAsync();
+            Assert.NotNull(queuedOp);
+
+            // Action.
+            var requested = await migrationsDbContext.TryAbortMigrationAsync(queuedOp.Id);
+            await migrationsDbContext.ExecuteMigrationAsync(queuedOp.Id);
+
+            // Assert.
+            Assert.True(requested);
+            Assert.Equal(0, processedDocuments);
+            using var verifyScope = fixture.ServiceProvider.CreateScope();
+            var verifyDbContext = verifyScope.ServiceProvider.GetRequiredService<IMigrationsDbContext>();
+            var abortedOp = await verifyDbContext.GetMigrationAsync(queuedOp.Id);
+            Assert.Equal(DbMigrationOperation.Status.Cancelled, abortedOp.CurrentStatus);
+            Assert.NotNull(abortedOp.AbortRequestedDateTime);
+            Assert.Empty(abortedOp.Logs);
+            //the execution released the claim, as every execution does at its end
+            Assert.False(await migrationsDbContext.Engine.DbContextLock.IsLockedAsync());
+        }
+
+        [Fact]
+        public async Task AbortRequestStopsARunningMigrationAtItsNextSafePoint()
+        {
+            /* The request comes from another scope, like a dashboard request does, while the
+             * execution scans: the execution observes it at its polling interval, stops at the
+             * next document and closes the operation cancelled, releasing the lock only then. */
+
+            // Setup.
+            using var contextHandler = AsyncLocalContext.Instance.InitAsyncLocalContext();
+            await DeleteMigrationOperationsAsync();
+            await migrationsDbContext.Notes.DeleteManyAsync(Builders<Note>.Filter.Empty);
+            for (var i = 0; i < 60; i++)
+                await migrationsDbContext.Notes.CreateAsync(new Note($"note {i}"));
+
+            var startedOp = await migrationsDbContext.TryStartMigrationAsync(dryRun: true);
+            Assert.NotNull(startedOp);
+
+            //the execution on a scope of its own, like the task runner's: a slow scan, signalling its first document
+            var firstDocumentProcessed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            var processedDocuments = 0;
+            var executionTask = Task.Run(async () =>
+            {
+                using var executionContextHandler = AsyncLocalContext.Instance.InitAsyncLocalContext();
+                using var executionScope = fixture.ServiceProvider.CreateScope();
+                var executionDbContext = executionScope.ServiceProvider.GetRequiredService<IMigrationsDbContext>();
+                executionDbContext.DocumentMigrations =
+                [
+                    new DocumentMigration<Note, string>(executionDbContext.Notes, async _ =>
+                    {
+                        Interlocked.Increment(ref processedDocuments);
+                        firstDocumentProcessed.TrySetResult();
+                        await Task.Delay(TimeSpan.FromMilliseconds(150));
+                    })
+                ];
+                await executionDbContext.ExecuteMigrationAsync(startedOp.Id);
+            });
+            await firstDocumentProcessed.Task.WaitAsync(TestTimeout);
+
+            // Action.
+            using var requestScope = fixture.ServiceProvider.CreateScope();
+            var requestDbContext = requestScope.ServiceProvider.GetRequiredService<IMigrationsDbContext>();
+            var requested = await requestDbContext.TryAbortMigrationAsync(startedOp.Id);
+            var requestedAgain = await requestDbContext.TryAbortMigrationAsync(startedOp.Id);
+            var lockedAfterRequest = await migrationsDbContext.Engine.DbContextLock.IsLockedAsync();
+            await executionTask.WaitAsync(TestTimeout);
+
+            // Assert.
+            //a request is recorded once, and the lock holds until the body has actually stopped
+            Assert.True(requested);
+            Assert.False(requestedAgain);
+            Assert.True(lockedAfterRequest);
+            Assert.False(await migrationsDbContext.Engine.DbContextLock.IsLockedAsync());
+            //the scan stopped at a document boundary, before its end
+            Assert.InRange(processedDocuments, 1, 59);
+            using var verifyScope = fixture.ServiceProvider.CreateScope();
+            var verifyDbContext = verifyScope.ServiceProvider.GetRequiredService<IMigrationsDbContext>();
+            var abortedOp = await verifyDbContext.GetMigrationAsync(startedOp.Id);
+            Assert.Equal(DbMigrationOperation.Status.Cancelled, abortedOp.CurrentStatus);
+            Assert.NotNull(abortedOp.AbortRequestedDateTime);
+            var documentLog = Assert.Single(abortedOp.Logs.OfType<DocumentMigrationLog>());
+            //the scan closed interrupted, not failed by its documents, with what it processed
+            Assert.Equal(MigrationLogBase.ExecutionState.Interrupted, documentLog.State);
+            Assert.InRange(documentLog.TotMigratedDocs, 1, 59);
+            //a closed operation takes no request
+            Assert.False(await requestDbContext.TryAbortMigrationAsync(startedOp.Id));
+        }
+
         [Fact]
         public async Task AlreadySeededDbContextClaimsNoLock()
         {
@@ -320,6 +434,9 @@ namespace Etherna.Scrinium.IntegrationTests
 
             var runningOp = new DbMigrationOperation(migrationsDbContext.Engine);
             runningOp.TaskStarted("dead-task");
+            //the dead owner was scanning a collection, after an index step it had completed
+            runningOp.AddLog(new DeleteOldIndexesMigrationLog("notes", MigrationLogBase.ExecutionState.Succeeded));
+            runningOp.AddDocumentMigrationLog(new DocumentMigrationLog("notes", MigrationLogBase.ExecutionState.Executing, 500));
             await migrationsDbContext.DbOperations.CreateAsync(runningOp);
 
             // Action.
@@ -330,9 +447,66 @@ namespace Etherna.Scrinium.IntegrationTests
             Assert.NotNull(restartedOp);
             using var verifyScope = fixture.ServiceProvider.CreateScope();
             var verifyDbContext = verifyScope.ServiceProvider.GetRequiredService<IMigrationsDbContext>();
-            Assert.Equal(
-                DbMigrationOperation.Status.Failed,
-                (await verifyDbContext.GetMigrationAsync(runningOp.Id)).CurrentStatus);
+            var sweptOp = await verifyDbContext.GetMigrationAsync(runningOp.Id);
+            Assert.Equal(DbMigrationOperation.Status.Failed, sweptOp.CurrentStatus);
+            //the swept operation says what closed it, and when: nothing else of its owner survives
+            Assert.NotNull(sweptOp.FailureReason);
+            Assert.Contains(restartedOp.Id, sweptOp.FailureReason, StringComparison.Ordinal);
+            Assert.Contains("stopped renewing", sweptOp.FailureReason, StringComparison.Ordinal);
+            Assert.NotNull(sweptOp.CompletedDateTime);
+            //the same update closed the executing log as interrupted, keeping its counter
+            var sweptLogs = sweptOp.Logs.ToArray();
+            Assert.Equal(MigrationLogBase.ExecutionState.Succeeded, sweptLogs[0].State);
+            var sweptDocumentLog = Assert.IsType<DocumentMigrationLog>(sweptLogs[1]);
+            Assert.Equal(MigrationLogBase.ExecutionState.Interrupted, sweptDocumentLog.State);
+            Assert.Equal(500, sweptDocumentLog.TotMigratedDocs);
+
+            //cleanup: execute the restarted operation, releasing the claim
+            await migrationsDbContext.ExecuteMigrationAsync(restartedOp.Id);
+        }
+
+        [Fact]
+        public async Task OrphanedRunningReferencesRepairClosesFailedWithItsPathsInterrupted()
+        {
+            /* The sweep closes every kind: a repair orphaned by a dead owner closes failed with
+             * the path it was repairing interrupted, in the same server side update. */
+
+            // Setup.
+            using var contextHandler = AsyncLocalContext.Instance.InitAsyncLocalContext();
+            migrationsDbContext.DocumentMigrations = [];
+            await DeleteMigrationOperationsAsync();
+
+            var runningRepairOp = new ReferencesRepairOperation(
+                migrationsDbContext.Engine,
+                "notes",
+                new Dictionary<string, OriginDeleteMode>
+                {
+                    ["Author"] = OriginDeleteMode.RemoveReference,
+                    ["Editor"] = OriginDeleteMode.RemoveReference
+                });
+            runningRepairOp.TaskStarted("dead-task");
+            runningRepairOp.ReportPathsStarted();
+            runningRepairOp.ReportPathEnded("Author", 1, 1, 0);
+            runningRepairOp.ReportPathProgress("Editor", 3, 2, 0);
+            await migrationsDbContext.DbOperations.CreateAsync(runningRepairOp);
+
+            // Action.
+            var restartedOp = await migrationsDbContext.TryStartMigrationAsync();
+
+            // Assert.
+            Assert.NotNull(restartedOp);
+            using var verifyScope = fixture.ServiceProvider.CreateScope();
+            var verifyDbContext = verifyScope.ServiceProvider.GetRequiredService<IMigrationsDbContext>();
+            var sweptOp = await verifyDbContext.DbOperations.QueryElementsAsync(elements =>
+                elements.OfType<ReferencesRepairOperation>()
+                        .Where(op => op.Id == runningRepairOp.Id)
+                        .FirstAsync());
+            Assert.Equal(ReferencesRepairOperation.Status.Failed, sweptOp.CurrentStatus);
+            var sweptPaths = sweptOp.PathStates.ToArray();
+            Assert.Equal(ReferencesRepairPathState.ExecutionState.Succeeded, sweptPaths[0].State);
+            Assert.Equal(ReferencesRepairPathState.ExecutionState.Interrupted, sweptPaths[1].State);
+            Assert.Equal(3, sweptPaths[1].MissingOriginIdsCount);
+            Assert.Equal(2, sweptPaths[1].UpdatedDocumentsCount);
 
             //cleanup: execute the restarted operation, releasing the claim
             await migrationsDbContext.ExecuteMigrationAsync(restartedOp.Id);
@@ -460,6 +634,11 @@ namespace Etherna.Scrinium.IntegrationTests
         private Task DeleteMigrationOperationsAsync() =>
             migrationsDbContext.DbOperations.DeleteManyAsync(
                 Builders<OperationBase>.Filter.OfType<DbMigrationOperation>(op =>
+                    op.DbContextName == migrationsDbContext.Engine.Identifier));
+
+        private Task DeleteReferencesRepairOperationsAsync() =>
+            migrationsDbContext.DbOperations.DeleteManyAsync(
+                Builders<OperationBase>.Filter.OfType<ReferencesRepairOperation>(op =>
                     op.DbContextName == migrationsDbContext.Engine.Identifier));
 
         private Task DropLockCollectionAsync() =>

@@ -12,6 +12,8 @@
 // You should have received a copy of the GNU Lesser General Public License along with Scrinium.
 // If not, see <https://www.gnu.org/licenses/>.
 
+using System;
+
 namespace Etherna.Scrinium.Core.Domain.Models.DbMigrationOpAgg
 {
     public class BuildNewIndexesMigrationLog : MigrationLogBase
@@ -21,6 +23,14 @@ namespace Etherna.Scrinium.Core.Domain.Models.DbMigrationOpAgg
             string repository,
             ExecutionState state)
             : base(state)
+        {
+            Repository = repository;
+        }
+        internal BuildNewIndexesMigrationLog(
+            string repository,
+            ExecutionState state,
+            DateTimeOffset creationDateTime)
+            : base(state, creationDateTime)
         {
             Repository = repository;
         }

@@ -18,6 +18,7 @@ using Etherna.Scrinium.Core.Domain.Models;
 using Etherna.Scrinium.Core.Domain.Models.DbMigrationOpAgg;
 using Etherna.Scrinium.Core.Exceptions;
 using Etherna.Scrinium.Core.Extensions;
+using Etherna.Scrinium.Core.Repositories;
 using Etherna.Scrinium.Core.Tasks;
 using Microsoft.Extensions.Logging;
 using System;
@@ -62,7 +63,7 @@ namespace Etherna.Scrinium.Core.Utility
             var dbMigrationOp = (DbMigrationOperation)await dbContext.DbOperations.FindOneAsync(dbMigrationOpId).ConfigureAwait(false);
 
             List<Exception> errors = [];
-            var executed = await DbOperationLifecycle.TryExecuteAsync(
+            var execution = await DbOperationLifecycle.TryExecuteAsync(
                 dbContext,
                 dbMigrationOpId,
                 dbMigrationOp,
@@ -73,39 +74,34 @@ namespace Etherna.Scrinium.Core.Utility
                 {
                     try
                     {
+                        var writableRepositories = dbContext.RepositoryRegistry.Repositories
+                            .Where(repository => !repository.IsReadOnly)
+                            .ToArray();
+
+                        /* The steps stop at the first cancellation: a lost lease or an abort
+                         * observed by a step ends the operation at that step, the following
+                         * ones never start. */
+
                         // Remove old indexes.
                         /* Read-only repositories deny index management: their indexes belong to the
                          * collection owner, so they stay out of the migration index steps.
                          * A dry run skips the index steps entirely: index management has no simulation. */
                         if (!dbMigrationOp.IsDryRun)
-                        {
-                            foreach (var repository in dbContext.RepositoryRegistry.Repositories.Where(r => !r.IsReadOnly))
+                            foreach (var repository in writableRepositories)
                             {
-                                dbMigrationOp.AddLog(new DeleteOldIndexesMigrationLog(
-                                    repository.Name,
-                                    MigrationLogBase.ExecutionState.Executing));
-                                await dbContext.SaveChangesAsync(CancellationToken.None).ConfigureAwait(false);
+                                if (lockLostCancellation.IsCancellationRequested)
+                                    break;
 
-                                try
-                                {
-                                    await repository.DeleteOldIndexesAsync(lockLostCancellation).ConfigureAwait(false);
-
-                                    dbMigrationOp.AddLog(new DeleteOldIndexesMigrationLog(
-                                        repository.Name,
-                                        MigrationLogBase.ExecutionState.Succeded));
-                                }
-                                catch (Exception e)
-                                {
-                                    errors.Add(e);
-
-                                    dbMigrationOp.AddLog(new DeleteOldIndexesMigrationLog(
-                                        repository.Name,
-                                        MigrationLogBase.ExecutionState.Failed));
-                                }
-
-                                await dbContext.SaveChangesAsync(CancellationToken.None).ConfigureAwait(false);
+                                await ExecuteIndexStepAsync(
+                                    dbContext,
+                                    dbMigrationOp,
+                                    repository,
+                                    "Old indexes deletion",
+                                    new DeleteOldIndexesMigrationLog(repository.Name, MigrationLogBase.ExecutionState.Executing),
+                                    repository.DeleteOldIndexesAsync,
+                                    errors,
+                                    lockLostCancellation).ConfigureAwait(false);
                             }
-                        }
 
                         // Migrate documents.
                         /* The document migrations the application declares, and then, when the
@@ -117,12 +113,13 @@ namespace Etherna.Scrinium.Core.Utility
                         var documentMigrations = dbContext.DocumentMigrationList;
                         if (dbMigrationOp.IsDeprecatedSchemaRewriteEnabled)
                             documentMigrations = documentMigrations.Concat(
-                                dbContext.RepositoryRegistry.Repositories
-                                    .Where(repository => !repository.IsReadOnly)
-                                    .Select(repository => repository.BuildDeprecatedSchemaDocumentsMigration()));
+                                writableRepositories.Select(repository => repository.BuildDeprecatedSchemaDocumentsMigration()));
 
                         foreach (var docMigration in documentMigrations)
                         {
+                            if (lockLostCancellation.IsCancellationRequested)
+                                break;
+
                             //running document migration, reporting progress on a single rolling log
                             var result = await docMigration.MigrateAsync(
                                 dbContext.Engine.Options.MigrationCallbackEveryTotDocuments,
@@ -140,18 +137,32 @@ namespace Etherna.Scrinium.Core.Utility
                                 dbContext.Engine.Options.MigrationEvictEveryTotDocuments,
                                 lockLostCancellation).ConfigureAwait(false);
 
-                            if (!result.Succeded)
-                                errors.Add(new ScriniumDbMigrationException(
-                                    result.TotDocumentErrors > 0
-                                        ? $"Documents migration failed on \"{docMigration.SourceRepository.Name}\" repository with {result.TotDocumentErrors} document errors"
-                                        : $"Documents migration failed on \"{docMigration.SourceRepository.Name}\" repository"));
+                            /* A scan cancelled through the token (the lost lease, or an abort) is
+                             * interrupted, not failed by its documents: its log closes interrupted
+                             * with what it processed until the stop, and its error says so, the
+                             * token saying why. */
+                            var interrupted = lockLostCancellation.IsCancellationRequested;
+                            if (!result.IsSucceeded)
+                            {
+                                var outcome = interrupted ? "interrupted" : "failed";
+                                var failureMessage = result.TotDocumentErrors > 0
+                                    ? $"Documents migration {outcome} on \"{docMigration.SourceRepository.Name}\" repository with {result.TotDocumentErrors} document errors"
+                                    : $"Documents migration {outcome} on \"{docMigration.SourceRepository.Name}\" repository";
+
+                                //the exception aborting the scan is the root cause: it travels inner, into the log and the reason
+                                errors.Add(result.Exception is null
+                                    ? new ScriniumDbMigrationException(failureMessage)
+                                    : new ScriniumDbMigrationException(failureMessage, result.Exception));
+                            }
 
                             //ended document migration log, replacing the rolling progress one
                             dbMigrationOp.AddDocumentMigrationLog(new DocumentMigrationLog(
                                 docMigration.SourceRepository.Name,
-                                result.Succeded
-                                    ? MigrationLogBase.ExecutionState.Succeded
-                                    : MigrationLogBase.ExecutionState.Failed,
+                                result.IsSucceeded
+                                    ? MigrationLogBase.ExecutionState.Succeeded
+                                    : interrupted
+                                        ? MigrationLogBase.ExecutionState.Interrupted
+                                        : MigrationLogBase.ExecutionState.Failed,
                                 result.MigratedDocuments,
                                 result.DocumentErrors,
                                 result.TotDocumentErrors));
@@ -162,34 +173,21 @@ namespace Etherna.Scrinium.Core.Utility
                         // Build new indexes.
                         //read-only repositories and dry runs stay out of the index steps, like above
                         if (!dbMigrationOp.IsDryRun)
-                        {
-                            foreach (var repository in dbContext.RepositoryRegistry.Repositories.Where(r => !r.IsReadOnly))
+                            foreach (var repository in writableRepositories)
                             {
-                                dbMigrationOp.AddLog(new BuildNewIndexesMigrationLog(
-                                    repository.Name,
-                                    MigrationLogBase.ExecutionState.Executing));
-                                await dbContext.SaveChangesAsync(CancellationToken.None).ConfigureAwait(false);
+                                if (lockLostCancellation.IsCancellationRequested)
+                                    break;
 
-                                try
-                                {
-                                    await repository.BuildNewIndexesAsync(lockLostCancellation).ConfigureAwait(false);
-
-                                    dbMigrationOp.AddLog(new BuildNewIndexesMigrationLog(
-                                        repository.Name,
-                                        MigrationLogBase.ExecutionState.Succeded));
-                                }
-                                catch (Exception e)
-                                {
-                                    errors.Add(e);
-
-                                    dbMigrationOp.AddLog(new BuildNewIndexesMigrationLog(
-                                        repository.Name,
-                                        MigrationLogBase.ExecutionState.Failed));
-                                }
-
-                                await dbContext.SaveChangesAsync(CancellationToken.None).ConfigureAwait(false);
+                                await ExecuteIndexStepAsync(
+                                    dbContext,
+                                    dbMigrationOp,
+                                    repository,
+                                    "New indexes build",
+                                    new BuildNewIndexesMigrationLog(repository.Name, MigrationLogBase.ExecutionState.Executing),
+                                    repository.BuildNewIndexesAsync,
+                                    errors,
+                                    lockLostCancellation).ConfigureAwait(false);
                             }
-                        }
                     }
                     catch (Exception e)
                     {
@@ -198,16 +196,31 @@ namespace Etherna.Scrinium.Core.Utility
                         errors.Add(e);
                     }
 
-                    return errors.Count == 0;
+                    //the operation records every error, one line each: the aggregate exception below is for the caller
+                    return errors.Count == 0
+                        ? null
+                        : string.Join('\n', errors.Select(DescribeFailure));
+
                 },
                 logger).ConfigureAwait(false);
 
             // Report errors.
-            if (!executed)
+            if (execution is DbOperationExecution.ClaimNotResumed or DbOperationExecution.AlreadyRunning)
+            {
+                if (throwOnErrors)
+                    throw new ScriniumDbMigrationException(execution == DbOperationExecution.AlreadyRunning
+                        ? $"Error migrating {dbContext.Engine.Identifier} dbContext: operation {dbMigrationOpId} was already running, re-executed after the worker executing it died"
+                        : $"Error migrating {dbContext.Engine.Identifier} dbContext: operation {dbMigrationOpId} doesn't own the db context lock anymore");
+                return;
+            }
+
+            /* An aborted operation stopped on request: what its cancelled steps reported is
+             * not a failure of the operation, so nothing of it logs as one. */
+            if (execution == DbOperationExecution.Aborted)
             {
                 if (throwOnErrors)
                     throw new ScriniumDbMigrationException(
-                        $"Error migrating {dbContext.Engine.Identifier} dbContext: operation {dbMigrationOpId} doesn't own the db context lock anymore");
+                        $"Error migrating {dbContext.Engine.Identifier} dbContext: operation {dbMigrationOpId} was aborted on request");
                 return;
             }
 
@@ -273,6 +286,31 @@ namespace Etherna.Scrinium.Core.Utility
             return migrateOp;
         }
 
+        public async Task<bool> TryAbortDbContextMigrationAsync(IDbContext dbContext, string dbMigrationOpId)
+        {
+            ArgumentNullException.ThrowIfNull(dbContext);
+            ArgumentNullException.ThrowIfNull(dbMigrationOpId);
+
+            // A read-only db context runs no migration: nothing to abort.
+            if (dbContext.Engine.Options.IsReadOnly)
+                return false;
+
+            var requestDateTime = DateTimeOffset.UtcNow;
+            return await DbOperationLifecycle.TryRequestAbortAsync(
+                dbContext,
+                dbMigrationOpId,
+                Builders<OperationBase>.Filter.OfType<DbMigrationOperation>(op =>
+                    op.Id == dbMigrationOpId &&
+                    op.DbContextName == dbContext.Engine.Identifier &&
+                    (op.CurrentStatus == DbMigrationOperation.Status.New ||
+                     op.CurrentStatus == DbMigrationOperation.Status.Running) &&
+                    op.AbortRequestedDateTime == null),
+                Builders<OperationBase>.Update.Set(
+                    op => ((DbMigrationOperation)op).AbortRequestedDateTime,
+                    requestDateTime),
+                logger).ConfigureAwait(false);
+        }
+
         public async Task<DbMigrationOperation?> TryStartDbContextMigrationAsync(
             IDbContext dbContext,
             bool dryRun = false,
@@ -299,5 +337,52 @@ namespace Etherna.Scrinium.Core.Utility
             return started ? migrateOp : null;
         }
 
+        // Helpers.
+        /* An index step logs once: its log opens executing and closes in place with the end of
+         * the step. A step cancelled through the token is interrupted, not failed: its error
+         * says so, the token saying why; any other failure keeps its step in the reason, the
+         * cause travelling inner. */
+        private static async Task ExecuteIndexStepAsync(
+            IDbContext dbContext,
+            DbMigrationOperation operation,
+            IRepository repository,
+            string stepName,
+            MigrationLogBase log,
+            Func<CancellationToken, Task> stepAsync,
+            List<Exception> errors,
+            CancellationToken cancellationToken)
+        {
+            operation.AddLog(log);
+            await dbContext.SaveChangesAsync(CancellationToken.None).ConfigureAwait(false);
+
+            try
+            {
+                await stepAsync(cancellationToken).ConfigureAwait(false);
+
+                log.Close(MigrationLogBase.ExecutionState.Succeeded);
+            }
+            catch (Exception e)
+            {
+                var interrupted = cancellationToken.IsCancellationRequested;
+                errors.Add(new ScriniumDbMigrationException(
+                    $"{stepName} {(interrupted ? "interrupted" : "failed")} on \"{repository.Name}\" repository", e));
+
+                log.Close(interrupted
+                    ? MigrationLogBase.ExecutionState.Interrupted
+                    : MigrationLogBase.ExecutionState.Failed);
+            }
+
+            await dbContext.SaveChangesAsync(CancellationToken.None).ConfigureAwait(false);
+        }
+
+        /* A migration exception of this manager carries its context in the message, with the
+         * cause inner: the reason reads as the operator needs it, context first, then the type
+         * and message of the exception that failed the step. */
+        private static string DescribeFailure(Exception e) => e switch
+        {
+            ScriniumDbMigrationException { InnerException: { } cause } => $"{e.Message}: {DescribeFailure(cause)}",
+            ScriniumDbMigrationException => e.Message,
+            _ => $"{e.GetType().Name}: {e.Message}"
+        };
     }
 }

@@ -470,7 +470,7 @@ namespace Etherna.Scrinium.IntegrationTests
 
             Assert.Equal(ReferencesRepairOperation.Status.Completed, completedOp.CurrentStatus);
             var repairedPath = Assert.Single(completedOp.PathStates);
-            Assert.Equal(ReferencesRepairPathState.ExecutionState.Succeded, repairedPath.State);
+            Assert.Equal(ReferencesRepairPathState.ExecutionState.Succeeded, repairedPath.State);
             Assert.Equal(1, repairedPath.MissingOriginIdsCount);
             Assert.Equal(1, repairedPath.DeletedDocumentsCount);
             Assert.Equal(0, repairedPath.UpdatedDocumentsCount);
