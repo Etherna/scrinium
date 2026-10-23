@@ -613,6 +613,83 @@ namespace Etherna.Scrinium.IntegrationTests
         }
 
         [Fact]
+        public async Task MigrationRewritesTheLegacyIndexLogsOfTheOperationsLeftOnADeprecatedSchema()
+        {
+            /* The operations written by MongODM 0.24 log their single index step with a log type
+             * obsolete since the step split. The rewrite of the deprecated schemas stores them
+             * converted into the current logs, so no stored document names that type anymore. */
+
+            // Setup.
+            using var contextHandler = AsyncLocalContext.Instance.InitAsyncLocalContext();
+            fixture.TaskRunner.ClearPending();
+
+            //a migration as MongODM 0.24 stored it: schema id under the deprecated element, index step logged once per state
+            var legacyMigrationOp = BsonDocument.Parse(
+                """
+                {
+                    "_m" : "afdb63c9-791b-41f8-8216-556e233df0de",
+                    "_t" : "DbMigrationOperation",
+                    "CreationDateTime" : ISODate("2024-06-01T10:00:00.000+0000"),
+                    "DbContextName" : "MigrationsDbContext",
+                    "CompletedDateTime" : ISODate("2024-06-01T10:05:00.000+0000"),
+                    "CurrentStatus" : "Completed",
+                    "Logs" : [
+                        {
+                            "_m" : "24d65670-a3c3-443c-977a-51112df04e2a",
+                            "_t" : "IndexMigrationLog",
+                            "State" : "Executing",
+                            "CreationDateTime" : ISODate("2024-06-01T10:02:00.000+0000"),
+                            "Repository" : "notes"
+                        },
+                        {
+                            "_m" : "24d65670-a3c3-443c-977a-51112df04e2a",
+                            "_t" : "IndexMigrationLog",
+                            "State" : "Succeded",
+                            "CreationDateTime" : ISODate("2024-06-01T10:03:00.000+0000"),
+                            "Repository" : "notes"
+                        }
+                    ],
+                    "TaskId" : "9d2ad0b6"
+                }
+                """);
+            var operationsCollection = migrationsDbContext.Engine.Database.GetCollection<BsonDocument>(
+                migrationsDbContext.Engine.Options.DbOperationsCollectionName);
+            await operationsCollection.InsertOneAsync(legacyMigrationOp);
+            var legacyOperationId = legacyMigrationOp["_id"].AsObjectId;
+
+            try
+            {
+                // Action.
+                var migrationOp = await migrationsDbContext.TryStartMigrationAsync(rewriteDeprecatedSchemas: true);
+                Assert.NotNull(migrationOp);
+                await migrationsDbContext.ExecuteMigrationAsync(migrationOp.Id);
+
+                // Assert.
+                var completedOp = await migrationsDbContext.GetMigrationAsync(migrationOp.Id);
+                Assert.Equal(DbMigrationOperation.Status.Completed, completedOp.CurrentStatus);
+
+                //the stored logs are the current ones, on their own schemas, each legacy entry as a build and a deletion
+                var rawMigrationOp = await operationsCollection
+                    .Find(Builders<BsonDocument>.Filter.Eq("_id", legacyOperationId))
+                    .SingleAsync();
+                Assert.Equal(ActiveSchemaId(typeof(DbMigrationOperation)), rawMigrationOp[SchemaIdElementName].AsString);
+                var rawLogs = rawMigrationOp["Logs"].AsBsonArray.Select(log => log.AsBsonDocument).ToArray();
+                Assert.Equal(
+                    ["BuildNewIndexesMigrationLog", "DeleteOldIndexesMigrationLog", "BuildNewIndexesMigrationLog", "DeleteOldIndexesMigrationLog"],
+                    rawLogs.Select(log => log["_t"].AsString));
+                Assert.Equal(["Executing", "Executing", "Succeeded", "Succeeded"], rawLogs.Select(log => log["State"].AsString));
+                Assert.All(rawLogs, log => Assert.Equal("notes", log["Repository"].AsString));
+                Assert.DoesNotContain(rawLogs, log => log[SchemaIdElementName].AsString == "24d65670-a3c3-443c-977a-51112df04e2a");
+                Assert.Equal(new DateTime(2024, 06, 01, 10, 03, 00, DateTimeKind.Utc), rawLogs[3]["CreationDateTime"].ToUniversalTime());
+            }
+            finally
+            {
+                //the operations history of the db context stays as the other tests expect it
+                await operationsCollection.DeleteOneAsync(Builders<BsonDocument>.Filter.Eq("_id", legacyOperationId));
+            }
+        }
+
+        [Fact]
         public async Task MigrationScanDoesNotRetainReferencedSummaries()
         {
             // Setup.

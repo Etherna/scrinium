@@ -133,6 +133,31 @@ namespace Etherna.Scrinium.Core.Domain.Models
             AbortRequestedDateTime ??= requestedDateTime;
         }
 
+        /// <summary>
+        /// Replace the index logs written by MongODM 0.24 and earlier, whose single index step
+        /// built the new indexes and removed the old ones in one call, with the logs of the
+        /// two steps it did: a build and a deletion log of the same repository, state and
+        /// instant each. The operation then reads and rewrites as the current ones do, naming
+        /// no obsolete log type.
+        /// </summary>
+        internal void ReplaceLegacyIndexLogs()
+        {
+#pragma warning disable CS0618 // Type or member is obsolete: the logs written by MongODM 0.24 are converted here
+            for (var i = _logs.Count - 1; i >= 0; i--)
+            {
+                if (_logs[i] is not IndexMigrationLog legacyLog)
+                    continue;
+
+                _logs.RemoveAt(i);
+                _logs.InsertRange(i,
+                [
+                    new BuildNewIndexesMigrationLog(legacyLog.Repository, legacyLog.State, legacyLog.CreationDateTime),
+                    new DeleteOldIndexesMigrationLog(legacyLog.Repository, legacyLog.State, legacyLog.CreationDateTime)
+                ]);
+            }
+#pragma warning restore CS0618 // Type or member is obsolete
+        }
+
         public virtual void TaskCancelled()
         {
             if (CurrentStatus is Status.Completed or Status.Failed)

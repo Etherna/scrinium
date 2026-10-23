@@ -27,7 +27,7 @@ namespace Etherna.Scrinium.Core.Domain.ModelMaps
     {
         public void Register(IDbContextEngine dbContextEngine)
         {
-            dbContextEngine.MapRegistry.AddModelMap<ReferencesRepairOperation>("9955882f-b262-44d3-9f8e-81c9d4b16acd",
+            dbContextEngine.MapRegistry.AddModelMap<ReferencesRepairOperation>("9955882f-b262-44d3-9f8e-81c9d4b16acd", //0.25.8
                 mm =>
                 {
                     mm.AutoMap();
@@ -42,7 +42,7 @@ namespace Etherna.Scrinium.Core.Domain.ModelMaps
                  * the succeeded state "Succeded": the same members, kept as a secondary schema
                  * so the rewrite of the deprecated schemas migrates those operations like any
                  * other document. Dropped in 1.0.0, with the deprecated schema id element. */
-                .AddSecondarySchema("f2a7c1e4-63b9-4d08-9a35-7e0c4b8d1f62",
+                .AddSecondarySchema("f2a7c1e4-63b9-4d08-9a35-7e0c4b8d1f62", //0.25.4
                     mm =>
                     {
                         mm.AutoMap();
@@ -53,7 +53,7 @@ namespace Etherna.Scrinium.Core.Domain.ModelMaps
                         mm.GetMemberMap(m => m.CompletedDateTime).SetSerializer(
                             new NullableSerializer<DateTimeOffset>(new DateTimeOffsetSerializer(BsonType.DateTime)));
                     });
-            dbContextEngine.MapRegistry.AddModelMap<ReferencesRepairPathState>("6d3e0b95-84f1-42a7-b0c6-9f5a2d7e3b18",
+            dbContextEngine.MapRegistry.AddModelMap<ReferencesRepairPathState>("6d3e0b95-84f1-42a7-b0c6-9f5a2d7e3b18", //0.25.4
                 mm =>
                 {
                     mm.AutoMap();

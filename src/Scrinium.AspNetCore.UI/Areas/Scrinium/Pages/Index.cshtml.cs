@@ -606,9 +606,6 @@ namespace Etherna.Scrinium.AspNetCore.UI.Areas.Scrinium.Pages
                     DeleteOldIndexesMigrationLog deleteLog => $"Delete old indexes on \"{deleteLog.Repository}\"",
                     DocumentMigrationLog { TotErrorDocs: > 0 } docLog => $"Migrate documents on \"{docLog.CollectionName}\" ({docLog.TotMigratedDocs} docs, {docLog.TotErrorDocs} errors)",
                     DocumentMigrationLog docLog => $"Migrate documents on \"{docLog.CollectionName}\" ({docLog.TotMigratedDocs} docs)",
-#pragma warning disable CS0618 // Type or member is obsolete: the logs written by MongODM 0.24 are still read
-                    IndexMigrationLog indexLog => $"Migrate indexes on \"{indexLog.Repository}\"",
-#pragma warning restore CS0618 // Type or member is obsolete
                     _ => log.GetType().Name
                 },
                 errors = (log as DocumentMigrationLog)?.Errors.Select(error => new
