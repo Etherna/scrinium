@@ -25,9 +25,9 @@ namespace Etherna.Scrinium.Core.Domain.ModelMaps
         public void Register(IDbContextEngine dbContextEngine)
         {
             // Register class maps.
-            dbContextEngine.MapRegistry.AddModelMap<ModelBase>("bff55d53-0517-4a93-8fda-7bd448181449");
+            dbContextEngine.MapRegistry.AddModelMap<ModelBase>("bff55d53-0517-4a93-8fda-7bd448181449"); //0.22.0
 
-            dbContextEngine.MapRegistry.AddModelMap<EntityModelBase<string>>("586b48f5-ba1f-45e3-a812-744f88c1c969",
+            dbContextEngine.MapRegistry.AddModelMap<EntityModelBase<string>>("586b48f5-ba1f-45e3-a812-744f88c1c969", //0.22.0
                 schema =>
                 {
                     schema.AutoMap();

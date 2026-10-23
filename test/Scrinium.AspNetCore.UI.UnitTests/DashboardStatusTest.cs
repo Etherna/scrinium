@@ -47,6 +47,7 @@ namespace Etherna.Scrinium.AspNetCore.UI
         // Fields.
         private readonly Mock<IDbContext> dbContextMock;
         private readonly Mock<IResourceLock> dbContextLockMock = new();
+        private readonly DbMigrationOperation openOperation;
 
         // Constructor.
         public DashboardStatusTest()
@@ -60,7 +61,7 @@ namespace Etherna.Scrinium.AspNetCore.UI
             repositoryRegistryMock.Setup(registry => registry.Repositories).Returns([]);
 
             //an operation left open by the instance that was executing it
-            var openOperation = new DbMigrationOperation(engineMock.Object);
+            openOperation = new DbMigrationOperation(engineMock.Object);
             openOperation.TaskStarted("dead-task");
 
             dbContextMock = new Mock<IDbContext>();
@@ -91,6 +92,25 @@ namespace Etherna.Scrinium.AspNetCore.UI
             // Assert.
             Assert.Contains("\"isLocked\":true", responseJson, StringComparison.Ordinal);
             Assert.Contains("\"runningOperation\":{", responseJson, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public async Task StatusReportsTheAbortRequestOfTheRunningOperation()
+        {
+            /* Once requested, the running block says so instead of offering the control: the
+             * projection carries the request instant. */
+
+            // Setup.
+            dbContextLockMock.Setup(dbContextLock => dbContextLock.IsLockedAsync())
+                .ReturnsAsync(true);
+            openOperation.ObserveAbortRequest(new DateTimeOffset(2026, 10, 20, 16, 00, 00, TimeSpan.Zero));
+            using var host = await StartDashboardHostAsync();
+
+            // Action.
+            var responseJson = await ReadStatusAsync(host);
+
+            // Assert.
+            Assert.Contains("\"abortRequestedDateTime\":\"2026-10-20T16:00:00+00:00\"", responseJson, StringComparison.Ordinal);
         }
 
         [Fact]

@@ -266,6 +266,30 @@ namespace Etherna.Scrinium.Core
         Task<bool> SeedIfNeededAsync(TimeSpan? lockWaitTimeout = null, TimeSpan? lockLeaseDuration = null);
 
         /// <summary>
+        /// Request the abort of an open migration operation of this db context. The request is
+        /// persisted on the operation, atomically on the server: its execution, usually in
+        /// another process, observes it at a short fixed interval and stops at its next safe
+        /// point, closing the operation cancelled with the logs of what it did until then.
+        /// Nothing is rolled back, and the db context lock releases when the body has actually
+        /// stopped, never before. A request on an operation still queued closes it without
+        /// running anything.
+        /// </summary>
+        /// <param name="dbMigrationOpId">The operation to abort</param>
+        /// <returns>True when the request was recorded, false when the operation isn't open on
+        /// this db context, its abort was already requested, or the db context is read-only</returns>
+        Task<bool> TryAbortMigrationAsync(string dbMigrationOpId);
+
+        /// <summary>
+        /// Request the abort of an open references repair operation of this db context, like
+        /// <see cref="TryAbortMigrationAsync"/> does for a migration: the two kinds share the
+        /// lifecycle and the lock.
+        /// </summary>
+        /// <param name="referencesRepairOpId">The operation to abort</param>
+        /// <returns>True when the request was recorded, false when the operation isn't open on
+        /// this db context, its abort was already requested, or the db context is read-only</returns>
+        Task<bool> TryAbortReferencesRepairAsync(string referencesRepairOpId);
+
+        /// <summary>
         /// Try to acquire the lock of an application resource, atomically on the server,
         /// across every application instance connected to the database. An exclusive
         /// acquisition admits a single holder, denied by any live lease; a shared one admits

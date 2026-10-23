@@ -30,7 +30,11 @@ namespace Etherna.Scrinium.Core.Utility
         /// The execution resumes the db context lock claimed with the operation, keeping its
         /// lease renewed and releasing it at completion, unless an outer flow (e.g. seeding)
         /// already holds a lease; an operation whose claim doesn't resume (its lock has been
-        /// taken over by another owner, or released) closes cancelled without migrating.
+        /// taken over by another owner, or released) closes cancelled without migrating, and
+        /// so does an operation whose abort was requested, at the next safe point of its
+        /// steps when the request arrives while they run. A failed operation records why
+        /// (<see cref="DbMigrationOperation.FailureReason"/>), whatever closed it, and every
+        /// closed operation its closing instant.
         /// </summary>
         /// <param name="dbContext">The db context to migrate</param>
         /// <param name="dbMigrationOpId">Id of the migration operation to execute</param>
@@ -43,6 +47,23 @@ namespace Etherna.Scrinium.Core.Utility
         Task<List<DbMigrationOperation>> GetLastMigrationsAsync(IDbContext dbContext, int page, int take);
 
         Task<DbMigrationOperation> GetMigrationAsync(IDbContext dbContext, string migrateOperationId);
+
+        /// <summary>
+        /// Request the abort of an open migration operation: the request is persisted on the
+        /// operation, atomically on the server, and its execution observes it at a short
+        /// fixed interval, stopping at its next safe point — between one document and the
+        /// next of a scan, between one repository and the next of an index step — and closing
+        /// the operation cancelled, with the logs of what it did until then. Nothing is rolled
+        /// back: a migration is not transactional, and an index build already sent to the
+        /// server completes there. The db context lock releases when the body has actually
+        /// stopped, never before. A request on an operation still queued closes it without
+        /// running anything.
+        /// </summary>
+        /// <param name="dbContext">The db context of the operation</param>
+        /// <param name="dbMigrationOpId">The operation to abort</param>
+        /// <returns>True when the request was recorded, false when the operation isn't open on
+        /// the db context, its abort was already requested, or the db context is read-only</returns>
+        Task<bool> TryAbortDbContextMigrationAsync(IDbContext dbContext, string dbMigrationOpId);
 
         /// <summary>
         /// Try to start a db context migration process, claiming the db context lock with the

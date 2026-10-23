@@ -125,7 +125,7 @@ namespace Etherna.Scrinium.IntegrationTests
             var migrationResult = await dbContext.Blogs.MigrateDeprecatedSchemaIdDocumentsAsync();
 
             // Assert.
-            Assert.True(migrationResult.Succeded);
+            Assert.True(migrationResult.IsSucceeded);
             Assert.Equal(baseline + 2, migrationResult.MigratedDocuments);
             Assert.Equal(0, migrationResult.TotDocumentErrors);
             //the migration repairs every document carrying the previous name, this baseline included

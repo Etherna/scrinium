@@ -21,7 +21,7 @@ namespace Etherna.Scrinium.Core.Domain.ModelMaps
     {
         public void Register(IDbContextEngine dbContextEngine)
         {
-            dbContextEngine.MapRegistry.AddModelMap<SeedOperation>("f9bfe56e-8045-4559-b91b-4745c2fd9766");
+            dbContextEngine.MapRegistry.AddModelMap<SeedOperation>("f9bfe56e-8045-4559-b91b-4745c2fd9766"); //0.22.0
         }
     }
 }

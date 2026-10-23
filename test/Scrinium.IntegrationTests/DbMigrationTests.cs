@@ -153,7 +153,7 @@ namespace Etherna.Scrinium.IntegrationTests
             Assert.Contains(completedOp.Logs, log => log is DocumentMigrationLog
             {
                 CollectionName: "digests",
-                State: MigrationLogBase.ExecutionState.Succeded,
+                State: MigrationLogBase.ExecutionState.Succeeded,
                 TotMigratedDocs: 1
             });
 
@@ -214,7 +214,7 @@ namespace Etherna.Scrinium.IntegrationTests
             Assert.Equal(DbMigrationOperation.Status.Completed, completedOp.CurrentStatus);
             Assert.Contains(completedOp.Logs, log => log is DocumentMigrationLog
             {
-                State: MigrationLogBase.ExecutionState.Succeded,
+                State: MigrationLogBase.ExecutionState.Succeeded,
                 TotMigratedDocs: 2,
                 TotErrorDocs: 0
             });
@@ -391,7 +391,7 @@ namespace Etherna.Scrinium.IntegrationTests
             Assert.Contains(completedOp.Logs, log => log is BuildNewIndexesMigrationLog { Repository: "notes" });
             Assert.Contains(completedOp.Logs, log => log is DocumentMigrationLog
             {
-                State: MigrationLogBase.ExecutionState.Succeded,
+                State: MigrationLogBase.ExecutionState.Succeeded,
                 TotMigratedDocs: 1,
                 TotErrorDocs: 0
             });
@@ -432,7 +432,7 @@ namespace Etherna.Scrinium.IntegrationTests
             var completedOp = await verifyDbContext.GetMigrationAsync(migrationOp.Id);
             Assert.Equal(DbMigrationOperation.Status.Completed, completedOp.CurrentStatus);
             var documentLog = Assert.Single(completedOp.Logs.OfType<DocumentMigrationLog>());
-            Assert.Equal(MigrationLogBase.ExecutionState.Succeded, documentLog.State);
+            Assert.Equal(MigrationLogBase.ExecutionState.Succeeded, documentLog.State);
             Assert.Equal(601, documentLog.TotMigratedDocs);
             Assert.Equal(0, documentLog.TotErrorDocs);
         }
@@ -484,7 +484,7 @@ namespace Etherna.Scrinium.IntegrationTests
             Assert.Contains(completedOp.Logs, log => log is DocumentMigrationLog
             {
                 CollectionName: "digests",
-                State: MigrationLogBase.ExecutionState.Succeded,
+                State: MigrationLogBase.ExecutionState.Succeeded,
                 TotMigratedDocs: 2,
                 TotErrorDocs: 0
             });
@@ -501,6 +501,192 @@ namespace Etherna.Scrinium.IntegrationTests
 
             //the document already on the active schema is left as it was
             Assert.Equal("kept", (await ReadRawDigestAsync(activeSchemaDigest.Id))["StrayElement"].AsString);
+        }
+
+        [Fact]
+        public async Task MigrationRewritesTheOperationsLeftOnADeprecatedSchemaWhenAsked()
+        {
+            /* The operations collection is a repository of the db context like any other: the
+             * operations written until 0.25.7 are on a since deprecated schema, spelling the
+             * succeeded execution state "Succeded", and the rewrite lands them on the active
+             * one, spelled right. */
+
+            // Setup.
+            using var contextHandler = AsyncLocalContext.Instance.InitAsyncLocalContext();
+            fixture.TaskRunner.ClearPending();
+
+            //a migration and a references repair, as 0.25.7 stored them
+            var legacyMigrationOp = BsonDocument.Parse(
+                """
+                {
+                    "_s" : "afdb63c9-791b-41f8-8216-556e233df0de",
+                    "_t" : "DbMigrationOperation",
+                    "DbContextName" : "MigrationsDbContext",
+                    "CompletedDateTime" : ISODate("2026-10-19T08:05:00.000+0000"),
+                    "CurrentStatus" : "Completed",
+                    "IsDeprecatedSchemaRewriteEnabled" : false,
+                    "IsDryRun" : true,
+                    "IsStopAtFirstErrorEnabled" : false,
+                    "Logs" : [
+                        {
+                            "_s" : "d2b49514-464e-4b28-8b38-ad2d0cc69d3e",
+                            "_t" : "DocumentMigrationLog",
+                            "State" : "Succeded",
+                            "CreationDateTime" : ISODate("2026-10-19T08:04:00.000+0000"),
+                            "CollectionName" : "notes",
+                            "Errors" : [],
+                            "TotErrorDocs" : NumberLong(0),
+                            "TotMigratedDocs" : NumberLong(42)
+                        }
+                    ],
+                    "TaskId" : "task-1"
+                }
+                """);
+            var legacyRepairOp = BsonDocument.Parse(
+                """
+                {
+                    "_s" : "f2a7c1e4-63b9-4d08-9a35-7e0c4b8d1f62",
+                    "_t" : "ReferencesRepairOperation",
+                    "DbContextName" : "MigrationsDbContext",
+                    "CompletedDateTime" : ISODate("2026-10-19T08:30:00.000+0000"),
+                    "CurrentStatus" : "Completed",
+                    "IsDryRun" : false,
+                    "PathStates" : [
+                        {
+                            "_s" : "6d3e0b95-84f1-42a7-b0c6-9f5a2d7e3b18",
+                            "DeletedDocumentsCount" : NumberLong(0),
+                            "ElementPath" : "Note",
+                            "ErrorMessage" : null,
+                            "MissingOriginIdsCount" : NumberLong(3),
+                            "RepairMode" : "RemoveReference",
+                            "State" : "Succeded",
+                            "UpdatedDocumentsCount" : NumberLong(2)
+                        }
+                    ],
+                    "RepositoryName" : "digests",
+                    "TaskId" : "task-2"
+                }
+                """);
+            var operationsCollection = migrationsDbContext.Engine.Database.GetCollection<BsonDocument>(
+                migrationsDbContext.Engine.Options.DbOperationsCollectionName);
+            await operationsCollection.InsertManyAsync([legacyMigrationOp, legacyRepairOp]);
+            var legacyOperationIds = new[] { legacyMigrationOp["_id"].AsObjectId, legacyRepairOp["_id"].AsObjectId };
+
+            try
+            {
+                // Action.
+                var migrationOp = await migrationsDbContext.TryStartMigrationAsync(rewriteDeprecatedSchemas: true);
+                Assert.NotNull(migrationOp);
+                await migrationsDbContext.ExecuteMigrationAsync(migrationOp.Id);
+
+                // Assert.
+                var completedOp = await migrationsDbContext.GetMigrationAsync(migrationOp.Id);
+                Assert.Equal(DbMigrationOperation.Status.Completed, completedOp.CurrentStatus);
+                var operationsLog = Assert.Single(completedOp.Logs.OfType<DocumentMigrationLog>(),
+                    log => log.CollectionName == migrationsDbContext.Engine.Options.DbOperationsCollectionName);
+                Assert.Equal(MigrationLogBase.ExecutionState.Succeeded, operationsLog.State);
+                Assert.Equal(0, operationsLog.TotErrorDocs);
+
+                //both operations landed on their active schema, spelled right at every level
+                var rawMigrationOp = await operationsCollection
+                    .Find(Builders<BsonDocument>.Filter.Eq("_id", legacyOperationIds[0]))
+                    .SingleAsync();
+                Assert.Equal(ActiveSchemaId(typeof(DbMigrationOperation)), rawMigrationOp[SchemaIdElementName].AsString);
+                Assert.Equal("Succeeded", rawMigrationOp["Logs"][0]["State"].AsString);
+                var rawRepairOp = await operationsCollection
+                    .Find(Builders<BsonDocument>.Filter.Eq("_id", legacyOperationIds[1]))
+                    .SingleAsync();
+                Assert.Equal(ActiveSchemaId(typeof(ReferencesRepairOperation)), rawRepairOp[SchemaIdElementName].AsString);
+                Assert.Equal("Succeeded", rawRepairOp["PathStates"][0]["State"].AsString);
+
+                //and they still read whole, their history untouched
+                var migratedOp = Assert.IsAssignableFrom<DbMigrationOperation>(
+                    await migrationsDbContext.DbOperations.FindOneAsync(legacyOperationIds[0].ToString()));
+                Assert.Equal(DbMigrationOperation.Status.Completed, migratedOp.CurrentStatus);
+                Assert.Equal(42, Assert.IsType<DocumentMigrationLog>(Assert.Single(migratedOp.Logs)).TotMigratedDocs);
+            }
+            finally
+            {
+                //the operations history of the db context stays as the other tests expect it
+                await operationsCollection.DeleteManyAsync(Builders<BsonDocument>.Filter.In("_id", legacyOperationIds));
+            }
+        }
+
+        [Fact]
+        public async Task MigrationRewritesTheLegacyIndexLogsOfTheOperationsLeftOnADeprecatedSchema()
+        {
+            /* The operations written by MongODM 0.24 log their single index step with a log type
+             * obsolete since the step split. The rewrite of the deprecated schemas stores them
+             * converted into the current logs, so no stored document names that type anymore. */
+
+            // Setup.
+            using var contextHandler = AsyncLocalContext.Instance.InitAsyncLocalContext();
+            fixture.TaskRunner.ClearPending();
+
+            //a migration as MongODM 0.24 stored it: schema id under the deprecated element, index step logged once per state
+            var legacyMigrationOp = BsonDocument.Parse(
+                """
+                {
+                    "_m" : "afdb63c9-791b-41f8-8216-556e233df0de",
+                    "_t" : "DbMigrationOperation",
+                    "CreationDateTime" : ISODate("2024-06-01T10:00:00.000+0000"),
+                    "DbContextName" : "MigrationsDbContext",
+                    "CompletedDateTime" : ISODate("2024-06-01T10:05:00.000+0000"),
+                    "CurrentStatus" : "Completed",
+                    "Logs" : [
+                        {
+                            "_m" : "24d65670-a3c3-443c-977a-51112df04e2a",
+                            "_t" : "IndexMigrationLog",
+                            "State" : "Executing",
+                            "CreationDateTime" : ISODate("2024-06-01T10:02:00.000+0000"),
+                            "Repository" : "notes"
+                        },
+                        {
+                            "_m" : "24d65670-a3c3-443c-977a-51112df04e2a",
+                            "_t" : "IndexMigrationLog",
+                            "State" : "Succeded",
+                            "CreationDateTime" : ISODate("2024-06-01T10:03:00.000+0000"),
+                            "Repository" : "notes"
+                        }
+                    ],
+                    "TaskId" : "9d2ad0b6"
+                }
+                """);
+            var operationsCollection = migrationsDbContext.Engine.Database.GetCollection<BsonDocument>(
+                migrationsDbContext.Engine.Options.DbOperationsCollectionName);
+            await operationsCollection.InsertOneAsync(legacyMigrationOp);
+            var legacyOperationId = legacyMigrationOp["_id"].AsObjectId;
+
+            try
+            {
+                // Action.
+                var migrationOp = await migrationsDbContext.TryStartMigrationAsync(rewriteDeprecatedSchemas: true);
+                Assert.NotNull(migrationOp);
+                await migrationsDbContext.ExecuteMigrationAsync(migrationOp.Id);
+
+                // Assert.
+                var completedOp = await migrationsDbContext.GetMigrationAsync(migrationOp.Id);
+                Assert.Equal(DbMigrationOperation.Status.Completed, completedOp.CurrentStatus);
+
+                //the stored logs are the current ones, on their own schemas, each legacy entry as a build and a deletion
+                var rawMigrationOp = await operationsCollection
+                    .Find(Builders<BsonDocument>.Filter.Eq("_id", legacyOperationId))
+                    .SingleAsync();
+                Assert.Equal(ActiveSchemaId(typeof(DbMigrationOperation)), rawMigrationOp[SchemaIdElementName].AsString);
+                var rawLogs = rawMigrationOp["Logs"].AsBsonArray.Select(log => log.AsBsonDocument).ToArray();
+                Assert.Equal(
+                    ["BuildNewIndexesMigrationLog", "DeleteOldIndexesMigrationLog", "BuildNewIndexesMigrationLog", "DeleteOldIndexesMigrationLog"],
+                    rawLogs.Select(log => log["_t"].AsString));
+                Assert.Equal(["Executing", "Executing", "Succeeded", "Succeeded"], rawLogs.Select(log => log["State"].AsString));
+                Assert.All(rawLogs, log => Assert.Equal("notes", log["Repository"].AsString));
+                Assert.DoesNotContain(rawLogs, log => log[SchemaIdElementName].AsString == "24d65670-a3c3-443c-977a-51112df04e2a");
+                Assert.Equal(new DateTime(2024, 06, 01, 10, 03, 00, DateTimeKind.Utc), rawLogs[3]["CreationDateTime"].ToUniversalTime());
+            }
+            finally
+            {
+                //the operations history of the db context stays as the other tests expect it
+                await operationsCollection.DeleteOneAsync(Builders<BsonDocument>.Filter.Eq("_id", legacyOperationId));
+            }
         }
 
         [Fact]
@@ -539,7 +725,7 @@ namespace Etherna.Scrinium.IntegrationTests
             Assert.Equal(DbMigrationOperation.Status.Completed, completedOp.CurrentStatus);
             Assert.Contains(completedOp.Logs, log => log is DocumentMigrationLog
             {
-                State: MigrationLogBase.ExecutionState.Succeded,
+                State: MigrationLogBase.ExecutionState.Succeeded,
                 TotMigratedDocs: 1,
                 TotErrorDocs: 0
             });
@@ -580,7 +766,7 @@ namespace Etherna.Scrinium.IntegrationTests
 
             // Assert.
             //the first two documents share the scope, the eviction after the second starts a new one
-            Assert.True(result.Succeded);
+            Assert.True(result.IsSucceeded);
             Assert.Equal([1, 2, 1, 2], loadedScannedNotesCounts);
             foreach (var noteId in noteIds)
                 Assert.Null(migrationsDbContext.TryGetLoadedModel(migrationsDbContext.Notes, noteId));
@@ -636,7 +822,7 @@ namespace Etherna.Scrinium.IntegrationTests
             Assert.Equal(DbMigrationOperation.Status.Completed, completedOp.CurrentStatus);
             Assert.Contains(completedOp.Logs, log => log is DocumentMigrationLog
             {
-                State: MigrationLogBase.ExecutionState.Succeded,
+                State: MigrationLogBase.ExecutionState.Succeeded,
                 TotMigratedDocs: 5,
                 TotErrorDocs: 0
             });
@@ -671,7 +857,7 @@ namespace Etherna.Scrinium.IntegrationTests
             });
 
             // Assert.
-            Assert.True(result.Succeded);
+            Assert.True(result.IsSucceeded);
             Assert.Equal(4, result.MigratedDocuments);
             Assert.Equal(2, callbackCount);
 
@@ -731,6 +917,9 @@ namespace Etherna.Scrinium.IntegrationTests
         }
 
         // Helpers.
+        private string ActiveSchemaId(Type modelType) =>
+            migrationsDbContext.Engine.MapRegistry.GetActiveSchemaIdBsonElement(modelType).Value.AsString;
+
         /* Persist a raw note document breaking deserialization: a valid document, cloned with a
          * new id, gets a document value on its string text member. */
         private Task<BsonDocument> InsertBrokenNoteDocumentAsync(string sourceNoteText) =>

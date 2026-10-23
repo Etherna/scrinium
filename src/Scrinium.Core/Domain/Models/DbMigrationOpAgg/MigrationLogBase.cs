@@ -22,15 +22,27 @@ namespace Etherna.Scrinium.Core.Domain.Models.DbMigrationOpAgg
         public enum ExecutionState
         {
             Executing,
-            Succeded,
+            Succeeded,
             Skipped,
-            Failed
+            Failed,
+            /// <summary>
+            /// The operation closed while the step was executing: what the log reports is
+            /// what the step did until the stop, not its end.
+            /// </summary>
+            Interrupted
         }
 
         // Constructors.
         protected MigrationLogBase(ExecutionState state)
+            : this(state, DateTimeOffset.UtcNow)
+        { }
+        /// <summary>
+        /// A log dated at an instant of the past: the conversion of a stored log keeps the
+        /// instant it was written at.
+        /// </summary>
+        protected MigrationLogBase(ExecutionState state, DateTimeOffset creationDateTime)
         {
-            CreationDateTime = DateTimeOffset.UtcNow;
+            CreationDateTime = creationDateTime;
             State = state;
         }
         protected MigrationLogBase() { }
@@ -38,5 +50,26 @@ namespace Etherna.Scrinium.Core.Domain.Models.DbMigrationOpAgg
         // Properties.
         public virtual ExecutionState State { get; protected set; }
         public virtual DateTimeOffset CreationDateTime { get; protected set; }
+
+        // Methods.
+        /// <summary>
+        /// Close an executing log with the end of its step, in place: a step logs once, its log
+        /// opening executing and closing succeeded, failed or interrupted.
+        /// </summary>
+        internal void Close(ExecutionState endState)
+        {
+            if (endState == ExecutionState.Executing)
+                throw new ArgumentOutOfRangeException(nameof(endState), "A log closes with an ended state");
+            if (State != ExecutionState.Executing)
+                throw new InvalidOperationException($"Can't close a migration log whose state is {State}");
+
+            State = endState;
+        }
+
+        /// <summary>
+        /// Close an executing log as interrupted: the operation closed while its step was
+        /// executing, so the log keeps what the step reported until the stop, as its end.
+        /// </summary>
+        internal void Interrupt() => Close(ExecutionState.Interrupted);
     }
 }

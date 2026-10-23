@@ -623,6 +623,8 @@
 
         var body = document.createElement('tbody');
         operation.pathStates.forEach(function (pathState) {
+            //a closed operation can't still be repairing a path: it reads as interrupted
+            var state = pathState.state === 'Executing' && isClosed(operation) ? 'Interrupted' : pathState.state;
             var row = document.createElement('tr');
 
             var pathCell = document.createElement('td');
@@ -638,8 +640,8 @@
 
             var stateCell = document.createElement('td');
             var stateBadge = document.createElement('span');
-            stateBadge.className = 'status-badge ' + repairStateBadgeClass(pathState.state);
-            stateBadge.textContent = pathState.state;
+            stateBadge.className = 'status-badge ' + repairStateBadgeClass(state);
+            stateBadge.textContent = state;
             stateCell.appendChild(stateBadge);
             if (pathState.errorMessage) {
                 var error = document.createElement('div');
@@ -667,12 +669,18 @@
 
     function repairStateBadgeClass(state) {
         switch (state) {
-            case 'Succeded': return 'idle';
+            case 'Succeeded': return 'idle';
             case 'Failed': return 'locked';
             case 'Skipped': return 'cancelled';
             case 'Executing': return 'running';
+            case 'Interrupted': return 'interrupted';
             default: return '';
         }
+    }
+
+    //an operation neither queued nor running is closed, whatever closed it
+    function isClosed(operation) {
+        return operation.status !== 'New' && operation.status !== 'Running';
     }
 
     function refreshStatus() {
@@ -767,6 +775,30 @@
             (operation.stopAtFirstError ? ' — stops at the first failing document' : '');
         container.appendChild(meta);
 
+        /* The abort, for both kinds: once requested, the block says so until the status
+         * reports the operation closed; until then the control, as long as the operation runs. */
+        if (operation.abortRequestedDateTime) {
+            var abortNotice = document.createElement('p');
+            abortNotice.className = 'migration-live-meta abort-requested';
+            abortNotice.textContent = 'Abort requested at ' + formatDateTime(operation.abortRequestedDateTime) +
+                ': the operation stops at its next safe point.';
+            container.appendChild(abortNotice);
+        } else {
+            var abortButton = document.createElement('button');
+            abortButton.type = 'button';
+            abortButton.className = 'btn danger';
+            abortButton.dataset.role = 'abort';
+            abortButton.textContent = 'Abort';
+            abortButton.addEventListener('click', function () {
+                abortOperation(container.closest('.dbcontext-card'), operation, abortButton);
+            });
+            //the control takes the row of the notice it alternates with, spaced from the logs below like it
+            var abortRow = document.createElement('p');
+            abortRow.className = 'migration-live-meta';
+            abortRow.appendChild(abortButton);
+            container.appendChild(abortRow);
+        }
+
         //each kind reports what it records: the migration logs, the state of each repaired path
         if (operation.kind === 'ReferencesRepair') {
             container.appendChild(buildRepairPathsTable(operation));
@@ -775,8 +807,50 @@
 
         var logList = document.createElement('ol');
         logList.className = 'log-list';
-        renderLogs(logList, operation.logs, true);
+        renderLogs(logList, operation, true);
         container.appendChild(logList);
+    }
+
+    function abortOperation(card, operation, button) {
+        var message = 'Abort the ' + operationKindLabel(operation.kind).toLowerCase() + ' operation ' + operation.id +
+            ' on "' + card.dataset.identifier + '"?\n\n' +
+            'It stops at its next safe point and closes cancelled, with the logs of what it did until then. ' +
+            'Nothing is rolled back: the documents already rewritten stay rewritten, and an index build ' +
+            'already sent to the server completes there.\n\n' +
+            'The db context lock releases when the operation has actually stopped.';
+        if (!window.confirm(message))
+            return;
+
+        button.disabled = true;
+
+        fetch(baseUrl + '?handler=AbortOperation', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'RequestVerificationToken': antiforgeryToken
+            },
+            body: new URLSearchParams({
+                identifier: card.dataset.identifier,
+                operationId: operation.id
+            })
+        }).then(function (response) {
+            //a request rejected by the server reports its reason in the body, with an error status
+            return response.json().then(function (result) {
+                if (!response.ok && !result.error)
+                    throw new Error('HTTP ' + response.status);
+                return result;
+            });
+        }).then(function (result) {
+            if (result.error)
+                showFeedback(card, result.error);
+            else if (!result.requested)
+                showFeedback(card, 'Abort not requested: the operation closed, or its abort was already requested.');
+            refreshStatus();
+        }).catch(function () {
+            showFeedback(card, 'Abort request failed.');
+            button.disabled = false;
+            refreshStatus();
+        });
     }
 
     function toggleHistoryExpansion(card) {
@@ -859,11 +933,22 @@
         container.appendChild(older);
     }
 
-    function renderLogs(list, logs, scrollToBottom) {
+    function renderLogs(list, operation, scrollToBottom) {
         list.innerHTML = '';
-        logs.forEach(function (log) {
+        operation.logs.forEach(function (log, index) {
+            /* A step logs once, its ended log replacing the executing one. The operations written
+             * by the previous versions keep both for the index steps: an entry left executing, or
+             * interrupted by the close, followed by the ended entry of the same step is that
+             * step's start, rendered once by its end. */
+            if ((log.state === 'Executing' || log.state === 'Interrupted') &&
+                operation.logs.slice(index + 1).some(function (later) { return later.description === log.description; }))
+                return;
+
+            /* A closed operation can't still be executing a step: the operations closed by the
+             * versions before 0.25.8 keep such a log, and it reads as interrupted. */
+            var logState = log.state === 'Executing' && isClosed(operation) ? 'Interrupted' : log.state;
             var entry = document.createElement('li');
-            entry.className = 'log-entry ' + log.state.toLowerCase();
+            entry.className = 'log-entry ' + logState.toLowerCase();
 
             var time = document.createElement('time');
             time.textContent = formatTime(log.creationDateTime);
@@ -871,7 +956,7 @@
 
             var state = document.createElement('span');
             state.className = 'log-state';
-            state.textContent = log.state.toUpperCase();
+            state.textContent = logState.toUpperCase();
             entry.appendChild(state);
 
             var description = document.createElement('span');
@@ -992,14 +1077,18 @@
 
         var dates = document.createElement('span');
         dates.className = 'history-dates';
-        //a cancelled operation never executed: it has no completion instant to render
-        dates.textContent = 'started ' + formatDateTime(operation.creationDateTime) +
-            (operation.completedDateTime
-                ? ' — completed ' + formatDateTime(operation.completedDateTime)
-                : (operation.status === 'Cancelled' ? ' — cancelled before executing' : ''));
+        dates.textContent = 'started ' + formatDateTime(operation.creationDateTime) + closingLabel(operation);
         summary.appendChild(dates);
 
         entry.appendChild(summary);
+
+        if (operation.failureReason) {
+            var failure = document.createElement('p');
+            failure.className = 'operation-failure';
+            //the reason quotes the exception that failed the operation: never innerHTML
+            failure.textContent = operation.failureReason;
+            entry.appendChild(failure);
+        }
 
         //each kind expands into what it records: the migration logs, the repaired paths
         if (operation.kind === 'ReferencesRepair') {
@@ -1007,11 +1096,36 @@
         } else {
             var logList = document.createElement('ol');
             logList.className = 'log-list';
-            renderLogs(logList, operation.logs, false);
+            renderLogs(logList, operation, false);
             entry.appendChild(logList);
         }
 
         return entry;
+    }
+
+    /* How an operation closed, with its closing instant: stamped on every terminal status
+     * since 0.25.8, on the completed ones only by the previous versions, whose failed and
+     * cancelled operations render without it. */
+    function closingLabel(operation) {
+        switch (operation.status) {
+            case 'Completed':
+                return ' — completed ' + formatDateTime(operation.completedDateTime);
+            case 'Failed':
+                return operation.completedDateTime
+                    ? ' — failed ' + formatDateTime(operation.completedDateTime)
+                    : ' — failed';
+            case 'Cancelled':
+                /* An aborted operation stopped on request, and tells when it was asked; a
+                 * cancelled one without a request never executed. */
+                if (operation.abortRequestedDateTime)
+                    return ' — aborted ' + formatDateTime(operation.completedDateTime) +
+                        ' on the request of ' + formatDateTime(operation.abortRequestedDateTime);
+                return operation.completedDateTime
+                    ? ' — cancelled ' + formatDateTime(operation.completedDateTime)
+                    : ' — cancelled before executing';
+            default:
+                return '';
+        }
     }
 
     function historyBadgeClass(status) {

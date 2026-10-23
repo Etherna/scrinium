@@ -158,6 +158,31 @@ namespace Etherna.Scrinium.AspNetCore.UI
             Assert.Contains("\"elementPath\":\"Author\"", responseJson, StringComparison.Ordinal);
         }
 
+        [Fact]
+        public async Task HistoryPageCarriesTheFailureReasonOfAFailedOperation()
+        {
+            /* The reason is all an operator reads of a failure: the page renders it as the
+             * operation records it, exceptions quoted. */
+
+            // Setup.
+            var failedOperation = new DbMigrationOperation(engineMock.Object);
+            failedOperation.TaskStarted("task");
+            failedOperation.TaskFailed("TimeoutException: the cursor timed out");
+            dbContextMock.Setup(dbContext => dbContext.GetLastOperationsAsync(It.IsAny<int>(), It.IsAny<int>()))
+                .ReturnsAsync([failedOperation]);
+            using var host = await StartDashboardHostAsync();
+
+            // Action.
+            var response = await GetHistoryPageAsync(host, "0");
+
+            // Assert.
+            response.EnsureSuccessStatusCode();
+            Assert.Contains(
+                "\"failureReason\":\"TimeoutException: the cursor timed out\"",
+                await response.Content.ReadAsStringAsync(),
+                StringComparison.Ordinal);
+        }
+
         [Theory]
         //a negative page, and one whose skipped operations amount doesn't fit an int
         [InlineData("-1")]

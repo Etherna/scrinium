@@ -67,14 +67,36 @@ namespace Etherna.Scrinium.Core.Domain.Models
         protected ReferencesRepairOperation() { }
 
         // Properties.
+        /// <summary>
+        /// The instant an abort of the operation was requested, when it was: the execution
+        /// observes the stored request and stops at its next safe point, closing the operation
+        /// cancelled. Null when nobody asked for it.
+        /// </summary>
+        public virtual DateTimeOffset? AbortRequestedDateTime { get; protected set; }
+        /// <summary>
+        /// The instant the operation closed, whatever its terminal status: completed, failed
+        /// or cancelled. Null while it is open, and on the failed and cancelled operations
+        /// closed by a version stamping it on the completed ones only.
+        /// </summary>
         public virtual DateTimeOffset? CompletedDateTime { get; protected set; }
         public virtual Status CurrentStatus { get; protected set; }
+        /// <summary>
+        /// Why the operation failed, when it did: the exception failing the repair (recorded
+        /// on its open paths too), the unhandled exception of the execution, the lost lock
+        /// lease, or the orphan sweep of a later start. Null on every other status.
+        /// </summary>
+        public virtual string? FailureReason { get; protected set; }
         public virtual bool IsDryRun { get; protected set; }
         /// <summary>
         /// True while the operation is neither closed nor cancelled: a status reporting a
         /// repair in progress, whether or not its owner is still alive.
         /// </summary>
         public virtual bool IsOpen => CurrentStatus is Status.New or Status.Running;
+        /// <summary>
+        /// True while the operation is started and not closed: its task is executing it, or
+        /// died while executing it.
+        /// </summary>
+        public virtual bool IsRunning => CurrentStatus == Status.Running;
 
         /// <summary>
         /// What the operation does to each reference element path it was started with, and how
@@ -123,7 +145,7 @@ namespace Etherna.Scrinium.Core.Domain.Models
             long deletedDocumentsCount) =>
             ReplacePathState(
                 elementPath,
-                ReferencesRepairPathState.ExecutionState.Succeded,
+                ReferencesRepairPathState.ExecutionState.Succeeded,
                 missingOriginIdsCount,
                 updatedDocumentsCount,
                 deletedDocumentsCount);
@@ -166,41 +188,68 @@ namespace Etherna.Scrinium.Core.Domain.Models
                     _pathStates[i].ErrorMessage);
         }
 
+        public virtual void ObserveAbortRequest(DateTimeOffset requestedDateTime)
+        {
+            if (!IsOpen)
+                throw new InvalidOperationException();
+
+            AbortRequestedDateTime ??= requestedDateTime;
+        }
+
         public virtual void TaskCancelled()
         {
             if (CurrentStatus is Status.Completed or Status.Failed)
-                throw new InvalidOperationException();
+                throw DeniedTransition("cancel");
 
+            CompletedDateTime = DateTimeOffset.UtcNow;
             CurrentStatus = Status.Cancelled;
+            InterruptExecutingPaths();
         }
 
         public virtual void TaskCompleted()
         {
             if (CurrentStatus != Status.Running)
-                throw new InvalidOperationException();
+                throw DeniedTransition("complete");
 
             CompletedDateTime = DateTimeOffset.UtcNow;
             CurrentStatus = Status.Completed;
         }
 
-        public virtual void TaskFailed()
+        public virtual void TaskFailed(string reason)
         {
+            ArgumentException.ThrowIfNullOrWhiteSpace(reason);
             if (CurrentStatus is Status.Completed or Status.Cancelled)
-                throw new InvalidOperationException();
+                throw DeniedTransition("fail");
 
+            CompletedDateTime = DateTimeOffset.UtcNow;
             CurrentStatus = Status.Failed;
+            FailureReason = reason;
+            InterruptExecutingPaths();
         }
 
         public virtual void TaskStarted(string? taskId = null)
         {
             if (CurrentStatus != Status.New)
-                throw new InvalidOperationException();
+                throw DeniedTransition("start");
 
             CurrentStatus = Status.Running;
             TaskId = taskId;
         }
 
         // Helpers.
+        //a denied transition names the operation and the status denying it: it is what the task runner reports
+        private InvalidOperationException DeniedTransition(string transition) =>
+            new($"Can't {transition} the references repair operation {Id}: its status is {CurrentStatus}");
+
+        /* An operation closing while a path repairs can't leave its state saying so: the path
+         * closes interrupted, keeping what it reported, while the paths never reached stay
+         * pending, as the plan never started them. */
+        private void InterruptExecutingPaths()
+        {
+            foreach (var pathState in _pathStates.Where(pathState => pathState.State == ReferencesRepairPathState.ExecutionState.Executing))
+                pathState.Interrupt();
+        }
+
         /* A path state is written once: advancing one replaces it in place, keeping the order
          * the operation was started with — the plan reads the same, whatever stage it is at. */
         private void ReplacePathState(

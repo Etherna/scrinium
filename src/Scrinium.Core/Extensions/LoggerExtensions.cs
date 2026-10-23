@@ -389,6 +389,24 @@ namespace Etherna.Scrinium.Core.Extensions
                 new EventId(82, nameof(DbContextReferenceWriteLazyLoad)),
                 "DbContext {DbName} loaded the origin document of a summary model of type {ModelType} to write its member {MemberName}: the stored reference documents don't carry it, so every write of one of them costs a load");
 
+        private static readonly Action<ILogger, string, string, Exception> _dbOperationAbortRequestPollFailed =
+            LoggerMessage.Define<string, string>(
+                LogLevel.Warning,
+                new EventId(86, nameof(DbOperationAbortRequestPollFailed)),
+                "Db operation {DbOperationId} of DbContext {DbName}: reading its abort request failed, the next poll retries");
+
+        private static readonly Action<ILogger, string, string, Exception> _dbOperationAbortRequested =
+            LoggerMessage.Define<string, string>(
+                LogLevel.Information,
+                new EventId(84, nameof(DbOperationAbortRequested)),
+                "Db operation {DbOperationId} of DbContext {DbName}: abort requested, the execution stops at its next safe point");
+
+        private static readonly Action<ILogger, string, string, DateTimeOffset, Exception> _dbOperationAborted =
+            LoggerMessage.Define<string, string, DateTimeOffset>(
+                LogLevel.Warning,
+                new EventId(85, nameof(DbOperationAborted)),
+                "Db operation {DbOperationId} of DbContext {DbName} closed cancelled on the abort requested at {AbortRequestedDateTime}");
+
         private static readonly Action<ILogger, string, string, Exception> _dbOperationCancelledWithoutLockClaim =
             LoggerMessage.Define<string, string>(
                 LogLevel.Warning,
@@ -406,6 +424,12 @@ namespace Etherna.Scrinium.Core.Extensions
                 LogLevel.Warning,
                 new EventId(58, nameof(DbOperationDeniedStartCleanupFailed)),
                 "Db operation {DbOperationId} of DbContext {DbName} didn't claim the db context lock, and couldn't be deleted: it closes with the orphaned operations at the next start");
+
+        private static readonly Action<ILogger, string, string, Exception> _dbOperationFailedOnReExecution =
+            LoggerMessage.Define<string, string>(
+                LogLevel.Warning,
+                new EventId(83, nameof(DbOperationFailedOnReExecution)),
+                "Db operation {DbOperationId} of DbContext {DbName} closed failed: it was already running when its execution resumed the lock claim, re-executed after the worker executing it died");
 
         private static readonly Action<ILogger, string, string, Exception> _dbOperationStartCleanupFailed =
             LoggerMessage.Define<string, string>(
@@ -615,6 +639,15 @@ namespace Etherna.Scrinium.Core.Extensions
         public static void DbMigrationManagerInitialized(this ILogger logger, string dbName) =>
             _dbMigrationManagerInitialized(logger, dbName, null!);
 
+        public static void DbOperationAbortRequestPollFailed(this ILogger logger, string dbOperationId, string dbName, Exception exception) =>
+            _dbOperationAbortRequestPollFailed(logger, dbOperationId, dbName, exception);
+
+        public static void DbOperationAbortRequested(this ILogger logger, string dbOperationId, string dbName) =>
+            _dbOperationAbortRequested(logger, dbOperationId, dbName, null!);
+
+        public static void DbOperationAborted(this ILogger logger, string dbOperationId, string dbName, DateTimeOffset abortRequestedDateTime) =>
+            _dbOperationAborted(logger, dbOperationId, dbName, abortRequestedDateTime, null!);
+
         public static void DbOperationCancelledWithoutLockClaim(this ILogger logger, string dbOperationId, string dbName) =>
             _dbOperationCancelledWithoutLockClaim(logger, dbOperationId, dbName, null!);
 
@@ -623,6 +656,9 @@ namespace Etherna.Scrinium.Core.Extensions
 
         public static void DbOperationDeniedStartCleanupFailed(this ILogger logger, string dbOperationId, string dbName, Exception exception) =>
             _dbOperationDeniedStartCleanupFailed(logger, dbOperationId, dbName, exception);
+
+        public static void DbOperationFailedOnReExecution(this ILogger logger, string dbOperationId, string dbName) =>
+            _dbOperationFailedOnReExecution(logger, dbOperationId, dbName, null!);
 
         public static void DbOperationStartCleanupFailed(this ILogger logger, string dbOperationId, string dbName, Exception exception) =>
             _dbOperationStartCleanupFailed(logger, dbOperationId, dbName, exception);

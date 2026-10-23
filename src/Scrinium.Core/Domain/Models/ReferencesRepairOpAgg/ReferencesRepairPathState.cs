@@ -13,6 +13,7 @@
 // If not, see <https://www.gnu.org/licenses/>.
 
 using Etherna.Scrinium.Core.Options;
+using System;
 
 namespace Etherna.Scrinium.Core.Domain.Models.ReferencesRepairOpAgg
 {
@@ -20,9 +21,9 @@ namespace Etherna.Scrinium.Core.Domain.Models.ReferencesRepairOpAgg
     /// What a references repair operation does to one reference element path of its
     /// collection, and how far it got. The operation is created with one of these per chosen
     /// path, so its plan is readable before anything runs.
-    /// It is written once, like every other element of an operation log: the operation owns
-    /// the transitions of its paths and replaces the state it advances, nothing mutates one
-    /// of these from outside the aggregate.
+    /// The operation owns the transitions of its paths: it replaces the state it advances, and
+    /// closes an executing one as interrupted in place; nothing mutates one of these from
+    /// outside the aggregate.
     /// </summary>
     public class ReferencesRepairPathState : ModelBase
     {
@@ -31,9 +32,14 @@ namespace Etherna.Scrinium.Core.Domain.Models.ReferencesRepairOpAgg
         {
             Pending,
             Executing,
-            Succeded,
+            Succeeded,
             Skipped,
-            Failed
+            Failed,
+            /// <summary>
+            /// The operation closed while the path was repairing: what the state reports is
+            /// what the repair did until the stop, not its end.
+            /// </summary>
+            Interrupted
         }
 
         // Constructors.
@@ -98,5 +104,18 @@ namespace Etherna.Scrinium.Core.Domain.Models.ReferencesRepairOpAgg
         /// The documents updated by the reference removals at this path.
         /// </summary>
         public virtual long UpdatedDocumentsCount { get; protected set; }
+
+        // Methods.
+        /// <summary>
+        /// Close an executing path as interrupted: the operation closed while the path was
+        /// repairing, so the state keeps what the repair reported until the stop, as its end.
+        /// </summary>
+        internal void Interrupt()
+        {
+            if (State != ExecutionState.Executing)
+                throw new InvalidOperationException($"Can't interrupt a references repair path whose state is {State}");
+
+            State = ExecutionState.Interrupted;
+        }
     }
 }

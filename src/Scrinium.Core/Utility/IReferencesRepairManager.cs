@@ -28,7 +28,8 @@ namespace Etherna.Scrinium.Core.Utility
     public interface IReferencesRepairManager : IDbContextEngineInitializable
     {
         /// <summary>
-        /// Execute the repair of an operation started before, closing it completed or failed.
+        /// Execute the repair of an operation started before, closing it completed, or failed
+        /// with the reason recorded on it (<see cref="ReferencesRepairOperation.FailureReason"/>).
         /// </summary>
         /// <param name="dbContext">The db context of the operation</param>
         /// <param name="repairOpId">The operation id</param>
@@ -54,6 +55,19 @@ namespace Etherna.Scrinium.Core.Utility
         /// really in progress from one orphaned by a dead owner.
         /// </summary>
         Task<ReferencesRepairOperation?> IsReferencesRepairRunningAsync(IDbContext dbContext);
+
+        /// <summary>
+        /// Request the abort of an open references repair operation: the request is persisted
+        /// on the operation, atomically on the server, and its execution observes it at a
+        /// short fixed interval, stopping at its next safe point and closing the operation
+        /// cancelled, with the state of each path as it was. Nothing is rolled back. The db
+        /// context lock releases when the body has actually stopped, never before.
+        /// </summary>
+        /// <param name="dbContext">The db context of the operation</param>
+        /// <param name="repairOpId">The operation to abort</param>
+        /// <returns>True when the request was recorded, false when the operation isn't open on
+        /// the db context, its abort was already requested, or the db context is read-only</returns>
+        Task<bool> TryAbortReferencesRepairAsync(IDbContext dbContext, string repairOpId);
 
         /// <summary>
         /// Start the repair of the missing origin references of one collection, claiming the

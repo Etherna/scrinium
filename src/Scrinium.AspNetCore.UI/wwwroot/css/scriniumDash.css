@@ -555,6 +555,12 @@ code {
   font-style: italic;
 }
 
+/* A path the operation was repairing when it closed: what it reports is partial. */
+.status-badge.interrupted {
+  background-color: var(--warning-bg);
+  color: var(--warning);
+}
+
 .status-badge.read-only {
   background-color: var(--info-bg);
   color: var(--info);
@@ -595,6 +601,12 @@ code {
 .btn.secondary:hover:not(:disabled) {
   background-color: var(--accent);
   color: #fff;
+}
+
+/* The abort of a running operation: a control that stops work, told apart from the starts. */
+.btn.danger {
+  background-color: var(--danger);
+  border-color: var(--danger);
 }
 
 .btn:disabled {
@@ -656,6 +668,10 @@ code {
   margin: 0 0 0.5rem;
 }
 
+.abort-requested {
+  color: var(--warning);
+}
+
 .spinner {
   display: inline-block;
   width: 0.8rem;
@@ -707,12 +723,16 @@ code {
   color: #fbbf24;
 }
 
-.log-entry.succeded .log-state {
+.log-entry.succeeded .log-state {
   color: #4ade80;
 }
 
 .log-entry.failed .log-state {
   color: #f87171;
+}
+
+.log-entry.interrupted .log-state {
+  color: #fb923c;
 }
 
 .log-entry.skipped .log-state {
@@ -792,6 +812,15 @@ code {
 .history-entry .schemas-table {
   margin: 0 0.75rem 0.75rem;
   width: calc(100% - 1.5rem);
+}
+
+/* Why a failed operation failed: one line per error, as the operation records them. */
+.operation-failure {
+  color: var(--danger);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.75rem;
+  margin: 0.4rem 0 0.2rem;
+  white-space: pre-wrap;
 }
 
 .history-dates {

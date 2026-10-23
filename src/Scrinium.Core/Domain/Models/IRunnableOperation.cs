@@ -12,6 +12,8 @@
 // You should have received a copy of the GNU Lesser General Public License along with Scrinium.
 // If not, see <https://www.gnu.org/licenses/>.
 
+using System;
+
 namespace Etherna.Scrinium.Core.Domain.Models
 {
     /// <summary>
@@ -33,9 +35,31 @@ namespace Etherna.Scrinium.Core.Domain.Models
         /// </summary>
         bool IsOpen { get; }
 
+        /// <summary>
+        /// True while the operation is started and not closed: its task is executing it, or
+        /// died while executing it.
+        /// </summary>
+        bool IsRunning { get; }
+
+        /// <summary>
+        /// Observe the request to abort the operation, persisted on the stored operation by
+        /// whoever asked it: the execution mirrors its instant here, so the operation saves the
+        /// moment the abort was asked, not the one it was noticed. The first request is the
+        /// one that counts.
+        /// </summary>
+        /// <param name="requestedDateTime">The instant the request was made, as stored</param>
+        void ObserveAbortRequest(DateTimeOffset requestedDateTime);
+
         void TaskCancelled();
         void TaskCompleted();
-        void TaskFailed();
+
+        /// <summary>
+        /// Close the operation failed, recording why: every closing path names its cause,
+        /// since the operation document is what an operator reads afterwards.
+        /// </summary>
+        /// <param name="reason">What failed the operation, as an operator reads it</param>
+        void TaskFailed(string reason);
+
         void TaskStarted(string? taskId = null);
     }
 }
