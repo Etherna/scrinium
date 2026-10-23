@@ -36,6 +36,21 @@ namespace Etherna.Scrinium.Core.Domain.Models
 
         // Tests.
         [Fact]
+        public void AddLogAppendsWithoutReplacing()
+        {
+            // Setup.
+            dbMigrationOp.AddLog(new DocumentMigrationLog(
+                "models", MigrationLogBase.ExecutionState.Executing, 500));
+
+            // Action.
+            dbMigrationOp.AddLog(new DocumentMigrationLog(
+                "models", MigrationLogBase.ExecutionState.Executing, 1000));
+
+            // Assert.
+            Assert.Equal(2, dbMigrationOp.Logs.Count());
+        }
+
+        [Fact]
         public void AddDocumentMigrationLogKeepsLogsOfOtherCollectionsAndTypes()
         {
             // Setup.
@@ -91,18 +106,21 @@ namespace Etherna.Scrinium.Core.Domain.Models
         }
 
         [Fact]
-        public void AddLogAppendsWithoutReplacing()
+        public void ObserveAbortRequestKeepsTheFirstRequestOnAnOpenOperation()
         {
             // Setup.
-            dbMigrationOp.AddLog(new DocumentMigrationLog(
-                "models", MigrationLogBase.ExecutionState.Executing, 500));
+            var firstRequest = new DateTimeOffset(2026, 10, 20, 16, 00, 00, TimeSpan.Zero);
+            dbMigrationOp.TaskStarted("task");
 
             // Action.
-            dbMigrationOp.AddLog(new DocumentMigrationLog(
-                "models", MigrationLogBase.ExecutionState.Executing, 1000));
+            dbMigrationOp.ObserveAbortRequest(firstRequest);
+            dbMigrationOp.ObserveAbortRequest(firstRequest.AddMinutes(1));
 
             // Assert.
-            Assert.Equal(2, dbMigrationOp.Logs.Count());
+            //the first request is the one that counts, and a closed operation takes none
+            Assert.Equal(firstRequest, dbMigrationOp.AbortRequestedDateTime);
+            dbMigrationOp.TaskCancelled();
+            Assert.Throws<InvalidOperationException>(() => dbMigrationOp.ObserveAbortRequest(firstRequest));
         }
 
         [Fact]

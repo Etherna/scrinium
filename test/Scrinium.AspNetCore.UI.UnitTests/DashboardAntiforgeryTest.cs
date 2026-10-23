@@ -97,6 +97,28 @@ namespace Etherna.Scrinium.AspNetCore.UI
         }
 
         [Fact]
+        public async Task AbortOperationPostWithoutTokenIsRejected()
+        {
+            // Setup.
+            using var host = await StartDashboardHostAsync();
+            var client = host.GetTestClient();
+
+            using var request = new HttpRequestMessage(HttpMethod.Post, PagePath + "?handler=AbortOperation");
+            request.Content = new FormUrlEncodedContent(new Dictionary<string, string>
+            {
+                ["identifier"] = DbContextIdentifier,
+                ["operationId"] = "op-1"
+            });
+
+            // Action.
+            var response = await client.SendAsync(request);
+
+            // Assert.
+            Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+            dbContextMock.Verify(dbContext => dbContext.TryAbortMigrationAsync(It.IsAny<string>()), Times.Never());
+        }
+
+        [Fact]
         public async Task MigrateDeprecatedSchemaIdDocumentsPostWithoutTokenIsRejected()
         {
             // Setup.

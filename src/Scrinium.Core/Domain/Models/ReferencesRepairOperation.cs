@@ -68,6 +68,12 @@ namespace Etherna.Scrinium.Core.Domain.Models
 
         // Properties.
         /// <summary>
+        /// The instant an abort of the operation was requested, when it was: the execution
+        /// observes the stored request and stops at its next safe point, closing the operation
+        /// cancelled. Null when nobody asked for it.
+        /// </summary>
+        public virtual DateTimeOffset? AbortRequestedDateTime { get; protected set; }
+        /// <summary>
         /// The instant the operation closed, whatever its terminal status: completed, failed
         /// or cancelled. Null while it is open, and on the failed and cancelled operations
         /// closed by a version stamping it on the completed ones only.
@@ -180,6 +186,14 @@ namespace Etherna.Scrinium.Core.Domain.Models
                     _pathStates[i].UpdatedDocumentsCount,
                     _pathStates[i].DeletedDocumentsCount,
                     _pathStates[i].ErrorMessage);
+        }
+
+        public virtual void ObserveAbortRequest(DateTimeOffset requestedDateTime)
+        {
+            if (!IsOpen)
+                throw new InvalidOperationException();
+
+            AbortRequestedDateTime ??= requestedDateTime;
         }
 
         public virtual void TaskCancelled()

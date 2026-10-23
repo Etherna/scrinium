@@ -15,13 +15,13 @@
 namespace Etherna.Scrinium.Core.Utility
 {
     /// <summary>
-    /// How <see cref="DbOperationLifecycle.TryExecuteAsync"/> ended: the body ran, or why it
-    /// didn't.
+    /// How <see cref="DbOperationLifecycle.TryExecuteAsync"/> ended: the body ran to its end,
+    /// or why it didn't.
     /// </summary>
     internal enum DbOperationExecution
     {
         /// <summary>
-        /// The body ran, and the operation closed completed or failed by its result.
+        /// The body ran to its end, and the operation closed completed or failed by its result.
         /// </summary>
         Executed,
 
@@ -35,6 +35,12 @@ namespace Etherna.Scrinium.Core.Utility
         /// The operation was already running when its claim resumed, re-executed after the
         /// worker executing it died: it closed failed without running anything.
         /// </summary>
-        AlreadyRunning
+        AlreadyRunning,
+
+        /// <summary>
+        /// An abort was requested: the operation closed cancelled, without running anything
+        /// when the request preceded its start, or at the next safe point of its body.
+        /// </summary>
+        Aborted
     }
 }

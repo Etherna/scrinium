@@ -46,15 +46,23 @@ namespace Etherna.Scrinium.Core.Domain.Models.DbMigrationOpAgg
 
         // Methods.
         /// <summary>
+        /// Close an executing log with the end of its step, in place: a step logs once, its log
+        /// opening executing and closing succeeded, failed or interrupted.
+        /// </summary>
+        internal void Close(ExecutionState endState)
+        {
+            if (endState == ExecutionState.Executing)
+                throw new ArgumentOutOfRangeException(nameof(endState), "A log closes with an ended state");
+            if (State != ExecutionState.Executing)
+                throw new InvalidOperationException($"Can't close a migration log whose state is {State}");
+
+            State = endState;
+        }
+
+        /// <summary>
         /// Close an executing log as interrupted: the operation closed while its step was
         /// executing, so the log keeps what the step reported until the stop, as its end.
         /// </summary>
-        internal void Interrupt()
-        {
-            if (State != ExecutionState.Executing)
-                throw new InvalidOperationException($"Can't interrupt a migration log whose state is {State}");
-
-            State = ExecutionState.Interrupted;
-        }
+        internal void Interrupt() => Close(ExecutionState.Interrupted);
     }
 }
