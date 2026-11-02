@@ -81,6 +81,7 @@ The Etherna services must be migrated to 0.25.0, the breaking release that opene
 ## General Principles
 
 - Keep commits clean: only include changes strictly necessary for the task at hand.
+- A security fix keeps its commit message and PR title neutral: the Jira key and what changes, never the vulnerability. The write-up stays in the Jira work item, hidden until the fixed version is released; outside reporters are directed to [SECURITY.md](SECURITY.md).
 - Keep `README.md` aligned: when a change touches configuration, features, build/run steps, or architecture, update `README.md` in the same change.
 - Keep the documentation wiki aligned: user-facing docs live in the sibling `scrinium.wiki` repo (published at https://github.com/Etherna/scrinium/wiki, checked out next to this one). Every substantial change to the public API, configuration, features, or architecture must be reported there in the same work line. The wiki currently documents the 0.25.0 API; see its own `AGENTS.md` for its conventions.
 - Never reference AI agents or assistants in commits or code — no agent names, no `Co-Authored-By` agent trailers, no "generated/assisted by" notes. Commit messages and code must read as the team's own work.

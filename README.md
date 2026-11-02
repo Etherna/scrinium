@@ -458,6 +458,8 @@ based on Jira: https://etherna.atlassian.net/projects/SCR.
 
 Detailed reports with stack traces, actual and expected behaviours are welcome.
 
+For a security problem, don't open a public issue: follow [SECURITY.md](SECURITY.md) to report it privately.
+
 ## Questions? Problems?
 
 For questions or problems please write an email to [info@etherna.io](mailto:info@etherna.io).
