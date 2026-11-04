@@ -434,6 +434,7 @@ test/
   Scrinium.AspNetCore.UI.UnitTests    admin dashboard tests, over an in-memory test host
   Scrinium.Core.UnitTests             xUnit + Moq unit tests of the core
   Scrinium.Core.Generators.UnitTests  generator tests, running it in-memory on sample compilations
+  Scrinium.Hangfire.UnitTests         Hangfire filter tests, over the job contexts Hangfire builds
   Scrinium.IntegrationTests           end-to-end tests against a real MongoDB instance
 samples/
   AspNetCoreSample          runnable demo web app (not packed)

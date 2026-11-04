@@ -19,22 +19,28 @@ using System.Collections.Generic;
 
 namespace Etherna.Scrinium.HF.Filters
 {
+    /// <summary>
+    /// Opens an isolated async local context for each performance of a Hangfire job, disposed at its end.
+    /// </summary>
+    /// <remarks>
+    /// The context handler travels in the items of the performance, shared by its performing and performed
+    /// contexts. Hangfire performs a job at least once: a job whose fetch expired is handed to another worker,
+    /// in another process or in the one still running it, so the context belongs to the performance, never
+    /// to the job id.
+    /// </remarks>
     public class AsyncLocalContextHangfireFilter(IAsyncLocalContext asyncLocalContext) : IServerFilter
     {
-        // Fields.
-        private readonly Dictionary<string, IAsyncLocalContextHandler> contextHandlers = new();
+        // Consts.
+        private const string ContextHandlerItemKey = "Scrinium.AsyncLocalContextHandler";
 
         // Methods.
         public void OnPerformed(PerformedContext context)
         {
             ArgumentNullException.ThrowIfNull(context);
 
-            lock (contextHandlers)
+            if (context.Items.Remove(ContextHandlerItemKey, out var contextHandler))
             {
-                var jobId = context.BackgroundJob.Id;
-                var contextHandler = contextHandlers[jobId];
-                contextHandlers.Remove(jobId);
-                contextHandler.Dispose();
+                ((IAsyncLocalContextHandler)contextHandler).Dispose();
             }
         }
 
@@ -42,10 +48,7 @@ namespace Etherna.Scrinium.HF.Filters
         {
             ArgumentNullException.ThrowIfNull(context);
 
-            lock (contextHandlers)
-            {
-                contextHandlers.Add(context.BackgroundJob.Id, asyncLocalContext.InitAsyncLocalContext());
-            }
+            context.Items[ContextHandlerItemKey] = asyncLocalContext.InitAsyncLocalContext();
         }
     }
 }
